@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import {
   Copy,
   Check,
@@ -18,7 +18,9 @@ import Link from "next/link"
 interface Room {
   id: string
   code: string
+  status: string
   created_at: string
+  started_at?: string | null
 }
 
 interface RoomPlayer {
@@ -32,6 +34,7 @@ interface RoomPlayer {
 
 export default function SalaPage() {
   const params = useParams()
+  const router = useRouter()
   const code = (params.code as string).toUpperCase()
   const supabase = createClient()
 
@@ -42,6 +45,7 @@ export default function SalaPage() {
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [togglingReady, setTogglingReady] = useState(false)
+  const [startingGame, setStartingGame] = useState(false)
 
   const myPlayer = useMemo(
     () => players.find((player) => player.id === myPlayerId) ?? null,
@@ -68,6 +72,11 @@ export default function SalaPage() {
         }
 
         setRoom(roomData)
+
+        if (roomData.status === "playing") {
+          router.push(`/juego/${code}`)
+          return
+        }
 
         const { data: existingPlayers, error: playersError } = await supabase
           .from("room_players")
@@ -171,8 +180,8 @@ export default function SalaPage() {
 
     loadRoomAndPlayers()
 
-    const channel = supabase
-      .channel(`room-${code}`)
+    const playersChannel = supabase
+      .channel(`room-players-${code}`)
       .on(
         "postgres_changes",
         {
@@ -198,10 +207,39 @@ export default function SalaPage() {
       )
       .subscribe()
 
+    const roomChannel = supabase
+      .channel(`room-status-${code}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "rooms",
+          filter: `code=eq.${code}`,
+        },
+        async () => {
+          const { data, error } = await supabase
+            .from("rooms")
+            .select("*")
+            .eq("code", code)
+            .single()
+
+          if (error || !data) return
+
+          setRoom(data)
+
+          if (data.status === "playing") {
+            router.push(`/juego/${code}`)
+          }
+        },
+      )
+      .subscribe()
+
     return () => {
-      supabase.removeChannel(channel)
+      supabase.removeChannel(playersChannel)
+      supabase.removeChannel(roomChannel)
     }
-  }, [code, supabase])
+  }, [code, router, supabase])
 
   const copyCode = async () => {
     await navigator.clipboard.writeText(code)
@@ -237,7 +275,24 @@ export default function SalaPage() {
       return
     }
 
-    alert("La partida ya se puede iniciar. El siguiente paso es crear el estado del juego.")
+    setStartingGame(true)
+
+    const { error } = await supabase
+      .from("rooms")
+      .update({
+        status: "playing",
+        started_at: new Date().toISOString(),
+      })
+      .eq("code", code)
+
+    if (error) {
+      console.error("Error al iniciar partida:", error)
+      alert("No se pudo iniciar la partida.")
+      setStartingGame(false)
+      return
+    }
+
+    setStartingGame(false)
   }
 
   if (loading) {
@@ -347,7 +402,7 @@ export default function SalaPage() {
               variant={myPlayer?.is_ready ? "outline" : "default"}
               className="flex-1"
               onClick={handleToggleReady}
-              disabled={!myPlayer || togglingReady}
+              disabled={!myPlayer || togglingReady || startingGame}
             >
               {myPlayer?.is_ready ? "Quitar listo" : "Estoy listo"}
             </Button>
@@ -355,10 +410,10 @@ export default function SalaPage() {
             <Button
               className="flex-1 flex gap-2"
               onClick={handleStartGame}
-              disabled={!isHost || !allReady}
+              disabled={!isHost || !allReady || startingGame}
             >
               <Play size={16} />
-              Iniciar partida
+              {startingGame ? "Iniciando..." : "Iniciar partida"}
             </Button>
           </div>
         </div>
