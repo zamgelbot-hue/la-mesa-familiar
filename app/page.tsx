@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
 
 type Game = {
   id: string;
@@ -83,12 +84,19 @@ export default function HomePage() {
   const [joinCode, setJoinCode] = useState("");
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(null);
 
   const selectedGame = useMemo(
     () => games.find((game) => game.slug === selectedGameSlug) ?? null,
     [games, selectedGameSlug]
   );
+
+  const loadPlayerIdentity = useCallback(async () => {
+    const identity = await getPlayerIdentity();
+    setPlayerIdentity(identity);
+  }, []);
 
   const loadGames = useCallback(async () => {
     const { data, error } = await supabase
@@ -158,7 +166,20 @@ export default function HomePage() {
   useEffect(() => {
     loadGames();
     loadStats();
-  }, [loadGames, loadStats]);
+    loadPlayerIdentity();
+  }, [loadGames, loadStats, loadPlayerIdentity]);
+
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(() => {
+      loadPlayerIdentity();
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase, loadPlayerIdentity]);
 
   const handleCreateRoom = async () => {
     if (!selectedGame) {
@@ -168,6 +189,12 @@ export default function HomePage() {
 
     if (selectedGame.status !== "available") {
       setErrorMessage("Ese juego todavía no está disponible.");
+      return;
+    }
+
+    if (!playerIdentity) {
+      setErrorMessage("Primero inicia sesión o entra como invitado.");
+      router.push("/acceso");
       return;
     }
 
@@ -197,9 +224,11 @@ export default function HomePage() {
 
         const { error: playerError } = await supabase.from("room_players").insert({
           room_code: roomCode,
-          player_name: "Anfitrión",
+          player_name: playerIdentity.name,
           is_host: true,
           is_ready: false,
+          user_id: playerIdentity.user_id,
+          is_guest: playerIdentity.is_guest,
         });
 
         if (playerError) {
@@ -208,7 +237,7 @@ export default function HomePage() {
           continue;
         }
 
-        savePlayerIdentity(roomCode, "Anfitrión", true);
+        savePlayerIdentity(roomCode, playerIdentity.name, true);
         created = true;
       }
 
@@ -228,6 +257,12 @@ export default function HomePage() {
 
     if (!normalizedCode) {
       setErrorMessage("Ingresa un código de sala.");
+      return;
+    }
+
+    if (!playerIdentity) {
+      setErrorMessage("Primero inicia sesión o entra como invitado.");
+      router.push("/acceso");
       return;
     }
 
@@ -260,11 +295,15 @@ export default function HomePage() {
 
       const list = existingPlayers ?? [];
 
-      const guestPlayer = list.find(
-        (player) => !player.is_host && player.player_name === "Jugador 1"
-      );
-      if (guestPlayer) {
-        savePlayerIdentity(normalizedCode, "Jugador 1", false);
+      const existingMe = list.find((player) => {
+        if (player.user_id && playerIdentity.user_id) {
+          return player.user_id === playerIdentity.user_id;
+        }
+        return !player.user_id && player.player_name === playerIdentity.name;
+      });
+
+      if (existingMe) {
+        savePlayerIdentity(normalizedCode, existingMe.player_name, !!existingMe.is_host);
         router.push(`/sala/${normalizedCode}`);
         return;
       }
@@ -274,11 +313,20 @@ export default function HomePage() {
         return;
       }
 
+      let finalName = playerIdentity.name;
+
+      const nameAlreadyUsed = list.some((player) => player.player_name === finalName);
+      if (nameAlreadyUsed) {
+        finalName = `${playerIdentity.name} 2`;
+      }
+
       const { error: insertError } = await supabase.from("room_players").insert({
         room_code: normalizedCode,
-        player_name: "Jugador 1",
+        player_name: finalName,
         is_host: false,
         is_ready: false,
+        user_id: playerIdentity.user_id,
+        is_guest: playerIdentity.is_guest,
       });
 
       if (insertError) {
@@ -287,10 +335,28 @@ export default function HomePage() {
         return;
       }
 
-      savePlayerIdentity(normalizedCode, "Jugador 1", false);
+      savePlayerIdentity(normalizedCode, finalName, false);
       router.push(`/sala/${normalizedCode}`);
     } finally {
       setJoining(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      setSigningOut(true);
+
+      await supabase.auth.signOut();
+
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("lmf:guest-profile");
+        sessionStorage.removeItem("lmf:guest-profile");
+      }
+
+      setPlayerIdentity(null);
+      router.refresh();
+    } finally {
+      setSigningOut(false);
     }
   };
 
@@ -306,24 +372,54 @@ export default function HomePage() {
           </div>
 
           <nav className="hidden items-center gap-10 text-white/70 md:flex">
-            <a href="#juegos" className="transition hover:text-white">Juegos</a>
-            <a href="#como-funciona" className="transition hover:text-white">Cómo funciona</a>
-            <a href="#funciones" className="transition hover:text-white">Funciones</a>
+            <a href="#juegos" className="transition hover:text-white">
+              Juegos
+            </a>
+            <a href="#como-funciona" className="transition hover:text-white">
+              Cómo funciona
+            </a>
+            <a href="#funciones" className="transition hover:text-white">
+              Funciones
+            </a>
           </nav>
 
           <div className="flex items-center gap-3">
-          <button
-          onClick={() => router.push("/acceso")}
-          className="hidden rounded-2xl px-4 py-2 font-semibold text-white transition hover:bg-white/5 md:block"
-          >
-          Iniciar sesión
-          </button>
-          <button
-           onClick={() => router.push("/acceso")}
-            className="rounded-2xl bg-orange-500 px-5 py-2.5 font-bold text-black transition hover:bg-orange-400"
-          >
-          Empezar
-          </button>
+            {!playerIdentity ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => router.push("/acceso")}
+                  className="hidden rounded-2xl px-4 py-2 font-semibold text-white transition hover:bg-white/5 md:block"
+                >
+                  Iniciar sesión
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => router.push("/acceso")}
+                  className="rounded-2xl bg-orange-500 px-5 py-2.5 font-bold text-black transition hover:bg-orange-400"
+                >
+                  Empezar
+                </button>
+              </>
+            ) : (
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => router.push("/perfil")}
+                  className="hidden rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10 md:block"
+                >
+                  👤 {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
+                </button>
+
+                <button
+                  onClick={handleSignOut}
+                  disabled={signingOut}
+                  className="rounded-2xl bg-orange-500 px-5 py-2.5 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {signingOut ? "Saliendo..." : "Cerrar sesión"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -351,6 +447,12 @@ export default function HomePage() {
               La Mesa Familiar trae tus juegos clásicos favoritos en línea. Crea una sala,
               invita a tu familia y hagan recuerdos juntos sin importar la distancia.
             </p>
+
+            {playerIdentity && (
+              <div className="mx-auto mt-6 inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+                Jugando como: {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
+              </div>
+            )}
           </div>
 
           <div className="mx-auto mt-14 grid max-w-4xl gap-6 md:grid-cols-2">
@@ -363,6 +465,12 @@ export default function HomePage() {
               <p className="mt-3 text-base leading-relaxed text-white/65">
                 Inicia una nueva sesión de juego e invita a tu familia a unirse.
               </p>
+
+              {!playerIdentity && (
+                <div className="mt-4 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300">
+                  Para crear una sala primero inicia sesión o entra como invitado.
+                </div>
+              )}
 
               <div className="mt-6">
                 <label className="mb-2 block text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
@@ -415,7 +523,12 @@ export default function HomePage() {
 
               <button
                 onClick={handleCreateRoom}
-                disabled={creating || !selectedGame || selectedGame.status !== "available"}
+                disabled={
+                  creating ||
+                  !selectedGame ||
+                  selectedGame.status !== "available" ||
+                  !playerIdentity
+                }
                 className="mt-6 w-full rounded-2xl bg-orange-500 px-5 py-3.5 text-lg font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {creating ? "Creando sala..." : "Crear sala →"}
@@ -432,6 +545,12 @@ export default function HomePage() {
                 Ingresa un código de sala para unirte a una sesión existente.
               </p>
 
+              {!playerIdentity && (
+                <div className="mt-4 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300">
+                  Para unirte a una sala primero inicia sesión o entra como invitado.
+                </div>
+              )}
+
               <div className="mt-6 flex gap-3">
                 <input
                   value={joinCode}
@@ -442,7 +561,7 @@ export default function HomePage() {
 
                 <button
                   onClick={handleJoinRoom}
-                  disabled={joining}
+                  disabled={joining || !playerIdentity}
                   className="rounded-2xl bg-white/10 px-5 py-3 font-bold transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {joining ? "Uniendo..." : "Unirse"}
