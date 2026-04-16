@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
+import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
 
 type Game = {
   id: string;
@@ -92,6 +93,9 @@ export default function HomePage() {
     () => games.find((game) => game.slug === selectedGameSlug) ?? null,
     [games, selectedGameSlug]
   );
+
+  const selectedAvatar = getAvatarByKey(playerIdentity?.avatar_key);
+  const selectedFrame = getFrameByKey(playerIdentity?.frame_key);
 
   const loadPlayerIdentity = useCallback(async () => {
     const identity = await getPlayerIdentity();
@@ -314,7 +318,6 @@ export default function HomePage() {
       }
 
       let finalName = playerIdentity.name;
-
       const nameAlreadyUsed = list.some((player) => player.player_name === finalName);
       if (nameAlreadyUsed) {
         finalName = `${playerIdentity.name} 2`;
@@ -372,15 +375,9 @@ export default function HomePage() {
           </div>
 
           <nav className="hidden items-center gap-10 text-white/70 md:flex">
-            <a href="#juegos" className="transition hover:text-white">
-              Juegos
-            </a>
-            <a href="#como-funciona" className="transition hover:text-white">
-              Cómo funciona
-            </a>
-            <a href="#funciones" className="transition hover:text-white">
-              Funciones
-            </a>
+            <a href="#juegos" className="transition hover:text-white">Juegos</a>
+            <a href="#como-funciona" className="transition hover:text-white">Cómo funciona</a>
+            <a href="#funciones" className="transition hover:text-white">Funciones</a>
           </nav>
 
           <div className="flex items-center gap-3">
@@ -406,9 +403,16 @@ export default function HomePage() {
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => router.push("/perfil")}
-                  className="hidden rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10 md:block"
+                  className="hidden items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10 md:flex"
                 >
-                  👤 {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-full border-2 bg-black text-lg ${selectedFrame.className}`}
+                  >
+                    <span>{selectedAvatar.emoji}</span>
+                  </div>
+                  <span>
+                    {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
+                  </span>
                 </button>
 
                 <button
@@ -449,8 +453,15 @@ export default function HomePage() {
             </p>
 
             {playerIdentity && (
-              <div className="mx-auto mt-6 inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-                Jugando como: {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
+              <div className="mx-auto mt-6 inline-flex items-center gap-3 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+                <div
+                  className={`flex h-10 w-10 items-center justify-center rounded-full border-2 bg-black text-lg ${selectedFrame.className}`}
+                >
+                  <span>{selectedAvatar.emoji}</span>
+                </div>
+                <span>
+                  Jugando como: {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
+                </span>
               </div>
             )}
           </div>
@@ -483,11 +494,7 @@ export default function HomePage() {
                   className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
                 >
                   {games.map((game) => (
-                    <option
-                      key={game.id}
-                      value={game.slug}
-                      disabled={game.status !== "available"}
-                    >
+                    <option key={game.id} value={game.slug} disabled={game.status !== "available"}>
                       {game.name} {game.status === "coming_soon" ? "— Próximamente" : ""}
                     </option>
                   ))}
@@ -523,12 +530,7 @@ export default function HomePage() {
 
               <button
                 onClick={handleCreateRoom}
-                disabled={
-                  creating ||
-                  !selectedGame ||
-                  selectedGame.status !== "available" ||
-                  !playerIdentity
-                }
+                disabled={creating || !selectedGame || selectedGame.status !== "available" || !playerIdentity}
                 className="mt-6 w-full rounded-2xl bg-orange-500 px-5 py-3.5 text-lg font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {creating ? "Creando sala..." : "Crear sala →"}
