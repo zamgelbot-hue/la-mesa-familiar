@@ -233,162 +233,159 @@ export default function JuegoPage() {
 
   const fetchProfilesForPlayers = useCallback(
     async (playerList: RoomPlayer[]) => {
-      const userIds = Array.from(
-        new Set(playerList.map((p) => p.user_id).filter(Boolean))
-      ) as string[];
+      try {
+        const userIds = Array.from(
+          new Set(playerList.map((p) => p.user_id).filter(Boolean))
+        ) as string[];
 
-      if (userIds.length === 0) {
+        if (userIds.length === 0) {
+          setProfilesMap({});
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("id, display_name, avatar_key, frame_key, points")
+          .in("id", userIds);
+
+        if (error) {
+          console.error("Error cargando perfiles del juego:", error);
+          setProfilesMap({});
+          return;
+        }
+
+        const nextMap: ProfileMap = {};
+        for (const profile of data ?? []) {
+          nextMap[profile.id] = {
+            display_name: profile.display_name,
+            avatar_key: profile.avatar_key,
+            frame_key: profile.frame_key,
+            points: profile.points,
+          };
+        }
+
+        setProfilesMap(nextMap);
+      } catch (error) {
+        console.error("Error inesperado cargando perfiles del juego:", error);
         setProfilesMap({});
-        return;
       }
-
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, display_name, avatar_key, frame_key, points")
-        .in("id", userIds);
-
-      if (error) {
-        console.error("Error cargando perfiles del juego:", error);
-        return;
-      }
-
-      const nextMap: ProfileMap = {};
-      for (const profile of data ?? []) {
-        nextMap[profile.id] = {
-          display_name: profile.display_name,
-          avatar_key: profile.avatar_key,
-          frame_key: profile.frame_key,
-          points: profile.points,
-        };
-      }
-
-      setProfilesMap(nextMap);
     },
     [supabase]
   );
 
   const fetchPlayers = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("room_players")
-      .select("*")
-      .eq("room_code", code)
-      .order("created_at", { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from("room_players")
+        .select("*")
+        .eq("room_code", code)
+        .order("created_at", { ascending: true });
 
-    if (error) {
-      console.error("Error cargando jugadores:", error);
+      if (error) {
+        console.error("Error cargando jugadores:", error);
+        return [];
+      }
+
+      const list = (data ?? []) as RoomPlayer[];
+      setPlayers(list);
+      await fetchProfilesForPlayers(list);
+
+      const resolvedName = resolveCurrentPlayerName(list);
+      setCurrentPlayerName(resolvedName);
+
+      return list;
+    } catch (error) {
+      console.error("Error inesperado cargando jugadores:", error);
       return [];
     }
-
-    const list = (data ?? []) as RoomPlayer[];
-    setPlayers(list);
-    await fetchProfilesForPlayers(list);
-
-    const resolvedName = resolveCurrentPlayerName(list);
-    setCurrentPlayerName(resolvedName);
-
-    return list;
   }, [supabase, code, resolveCurrentPlayerName, fetchProfilesForPlayers]);
 
   const fetchRoom = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("rooms")
-      .select("status")
-      .eq("code", code)
-      .maybeSingle();
+    try {
+      const { data, error } = await supabase
+        .from("rooms")
+        .select("status")
+        .eq("code", code)
+        .maybeSingle();
 
-    if (error) {
-      console.error("Error cargando room:", error);
-      return;
-    }
+      if (error) {
+        console.error("Error cargando room:", error);
+        return;
+      }
 
-    if (data?.status) {
-      setRoomStatus(data.status);
+      if (data?.status) {
+        setRoomStatus(data.status);
+      }
+    } catch (error) {
+      console.error("Error inesperado cargando room:", error);
     }
   }, [supabase, code]);
 
   const ensureGameStateRow = useCallback(
     async (playerList: RoomPlayer[]) => {
-      const { data, error } = await supabase
-        .from("game_state")
-        .select("id, state")
-        .eq("room_code", code)
-        .maybeSingle();
-
-      if (error) {
-        console.error("Error consultando game_state:", error);
-        return;
-      }
-
-      if (data) {
-        const merged: GameState = {
-          ...DEFAULT_STATE,
-          ...(data.state as Partial<GameState>),
-        };
-        setGameState(merged);
-        return;
-      }
-
-      const fresh = buildFreshState(playerList);
-
-      const { error: insertError } = await supabase.from("game_state").insert({
-        room_code: code,
-        state: fresh,
-        updated_at: new Date().toISOString(),
-      });
-
-      if (insertError) {
-        console.error("Error creando game_state:", insertError);
-
-        const { data: retryData, error: retryError } = await supabase
+      try {
+        const { data, error } = await supabase
           .from("game_state")
           .select("id, state")
           .eq("room_code", code)
           .maybeSingle();
 
-        if (retryError) {
-          console.error("Error releyendo game_state tras conflicto:", retryError);
+        if (error) {
+          console.error("Error consultando game_state:", error);
           return;
         }
 
-        if (retryData?.state) {
-          const mergedRetry: GameState = {
+        if (data) {
+          const merged: GameState = {
             ...DEFAULT_STATE,
-            ...(retryData.state as Partial<GameState>),
+            ...(data.state as Partial<GameState>),
           };
-          setGameState(mergedRetry);
+          setGameState(merged);
+          return;
         }
-        return;
-      }
 
-      setGameState(fresh);
+        const fresh = buildFreshState(playerList);
+
+        const { error: insertError } = await supabase.from("game_state").insert({
+          room_code: code,
+          state: fresh,
+          updated_at: new Date().toISOString(),
+        });
+
+        if (insertError) {
+          console.error("Error creando game_state:", insertError);
+
+          const { data: retryData, error: retryError } = await supabase
+            .from("game_state")
+            .select("id, state")
+            .eq("room_code", code)
+            .maybeSingle();
+
+          if (retryError) {
+            console.error("Error releyendo game_state tras conflicto:", retryError);
+            return;
+          }
+
+          if (retryData?.state) {
+            const mergedRetry: GameState = {
+              ...DEFAULT_STATE,
+              ...(retryData.state as Partial<GameState>),
+            };
+            setGameState(mergedRetry);
+          }
+          return;
+        }
+
+        setGameState(fresh);
+      } catch (error) {
+        console.error("Error inesperado asegurando game_state:", error);
+      }
     },
     [supabase, code, buildFreshState]
   );
 
   const refreshGameState = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("game_state")
-      .select("state")
-      .eq("room_code", code)
-      .maybeSingle();
-
-    if (error) {
-      console.error("Error refrescando game_state:", error);
-      return;
-    }
-
-    if (!data?.state) return;
-
-    const merged: GameState = {
-      ...DEFAULT_STATE,
-      ...(data.state as Partial<GameState>),
-    };
-
-    setGameState(merged);
-  }, [supabase, code]);
-
-  const updateGameState = useCallback(
-    async (updater: (prev: GameState) => GameState) => {
+    try {
       const { data, error } = await supabase
         .from("game_state")
         .select("state")
@@ -396,52 +393,87 @@ export default function JuegoPage() {
         .maybeSingle();
 
       if (error) {
-        console.error("Error leyendo state antes de actualizar:", error);
+        console.error("Error refrescando game_state:", error);
         return;
       }
 
-      const prev: GameState = {
+      if (!data?.state) return;
+
+      const merged: GameState = {
         ...DEFAULT_STATE,
-        ...((data?.state as Partial<GameState>) ?? {}),
+        ...(data.state as Partial<GameState>),
       };
 
-      const next = updater(prev);
+      setGameState(merged);
+    } catch (error) {
+      console.error("Error inesperado refrescando game_state:", error);
+    }
+  }, [supabase, code]);
 
-      const { error: updateError } = await supabase
-        .from("game_state")
-        .update({
-          state: next,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("room_code", code);
+  const updateGameState = useCallback(
+    async (updater: (prev: GameState) => GameState) => {
+      try {
+        const { data, error } = await supabase
+          .from("game_state")
+          .select("state")
+          .eq("room_code", code)
+          .maybeSingle();
 
-      if (updateError) {
-        console.error("Error actualizando state:", updateError);
-        return;
+        if (error) {
+          console.error("Error leyendo state antes de actualizar:", error);
+          return;
+        }
+
+        const prev: GameState = {
+          ...DEFAULT_STATE,
+          ...((data?.state as Partial<GameState>) ?? {}),
+        };
+
+        const next = updater(prev);
+
+        const { error: updateError } = await supabase
+          .from("game_state")
+          .update({
+            state: next,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("room_code", code);
+
+        if (updateError) {
+          console.error("Error actualizando state:", updateError);
+          return;
+        }
+
+        setGameState(next);
+      } catch (error) {
+        console.error("Error inesperado actualizando game_state:", error);
       }
-
-      setGameState(next);
     },
     [supabase, code]
   );
 
   const writeGameState = useCallback(
     async (nextState: GameState) => {
-      const { error } = await supabase
-        .from("game_state")
-        .update({
-          state: nextState,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("room_code", code);
+      try {
+        const { error } = await supabase
+          .from("game_state")
+          .update({
+            state: nextState,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("room_code", code);
 
-      if (error) {
-        console.error("Error guardando game_state:", error);
+        if (error) {
+          console.error("Error guardando game_state:", error);
+          return false;
+        }
+
+        setGameState(nextState);
+        return true;
+      } catch (error) {
+        console.error("Error inesperado guardando game_state:", error);
         return false;
       }
-
-      setGameState(nextState);
-      return true;
     },
     [supabase, code]
   );
@@ -633,6 +665,141 @@ export default function JuegoPage() {
 
     return "Esperando...";
   };
+
+  useEffect(() => {
+    let mounted = true;
+
+    const init = async () => {
+      setLoading(true);
+
+      try {
+        const playerList = await fetchPlayers();
+        await fetchRoom();
+        await ensureGameStateRow(playerList);
+      } catch (error) {
+        console.error("Error inicializando juego:", error);
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    if (code) {
+      init();
+    }
+
+    return () => {
+      mounted = false;
+    };
+  }, [code, fetchPlayers, fetchRoom, ensureGameStateRow]);
+
+  useEffect(() => {
+    if (!code) return;
+
+    const channel = supabase
+      .channel(`game-room-${code}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "room_players",
+          filter: `room_code=eq.${code}`,
+        },
+        async () => {
+          await fetchPlayers();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "game_state",
+          filter: `room_code=eq.${code}`,
+        },
+        async () => {
+          await refreshGameState();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "rooms",
+          filter: `code=eq.${code}`,
+        },
+        async (payload) => {
+          const nextStatus = (payload.new as { status?: string } | null)?.status;
+
+          if (nextStatus) {
+            setRoomStatus(nextStatus);
+
+            if (nextStatus === "waiting") {
+              router.push(`/sala/${code}`);
+            }
+          } else {
+            await fetchRoom();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, code, fetchPlayers, refreshGameState, fetchRoom, router]);
+
+  useEffect(() => {
+    resolveRoundIfNeeded();
+  }, [resolveRoundIfNeeded]);
+
+  useEffect(() => {
+    if (!isHost) return;
+    if (!gameState.canAdvanceRound) return;
+    if (gameState.matchOver) return;
+
+    if (autoAdvanceRef.current) {
+      clearTimeout(autoAdvanceRef.current);
+    }
+
+    autoAdvanceRef.current = setTimeout(async () => {
+      await updateGameState((prev) => {
+        if (!prev.canAdvanceRound || prev.matchOver) return prev;
+
+        const clearedChoices: Record<string, Choice> = {};
+        for (const name of Object.keys(prev.playerChoices ?? {})) {
+          clearedChoices[name] = null;
+        }
+
+        return {
+          ...prev,
+          round: prev.round + 1,
+          playerChoices: clearedChoices,
+          roundWinner: null,
+          resultText: null,
+          canAdvanceRound: false,
+          rematchVotes: [],
+        };
+      });
+    }, 2200);
+
+    return () => {
+      if (autoAdvanceRef.current) {
+        clearTimeout(autoAdvanceRef.current);
+      }
+    };
+  }, [isHost, gameState.canAdvanceRound, gameState.matchOver, updateGameState]);
+
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceRef.current) {
+        clearTimeout(autoAdvanceRef.current);
+      }
+    };
+  }, []);
 
   if (loading) {
     return (
