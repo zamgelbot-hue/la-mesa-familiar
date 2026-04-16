@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
 
 type Choice = "piedra" | "papel" | "tijera" | null;
 
@@ -13,6 +14,8 @@ type RoomPlayer = {
   is_host: boolean;
   is_ready: boolean;
   created_at: string;
+  user_id: string | null;
+  is_guest: boolean;
 };
 
 type GameState = {
@@ -27,6 +30,16 @@ type GameState = {
   canAdvanceRound: boolean;
 };
 
+type ProfileMap = Record<
+  string,
+  {
+    display_name: string | null;
+    avatar_key: string | null;
+    frame_key: string | null;
+    points: number | null;
+  }
+>;
+
 const DEFAULT_STATE: GameState = {
   round: 1,
   playerChoices: {},
@@ -39,6 +52,8 @@ const DEFAULT_STATE: GameState = {
   canAdvanceRound: false,
 };
 
+const getPlayerStorageKey = (roomCode: string) => `lmf:player:${roomCode}`;
+
 export default function JuegoPage() {
   const params = useParams();
   const router = useRouter();
@@ -47,6 +62,7 @@ export default function JuegoPage() {
   const code = String(params.code ?? "").toUpperCase();
 
   const [players, setPlayers] = useState<RoomPlayer[]>([]);
+  const [profilesMap, setProfilesMap] = useState<ProfileMap>({});
   const [gameState, setGameState] = useState<GameState>(DEFAULT_STATE);
   const [currentPlayerName, setCurrentPlayerName] = useState("");
   const [roomStatus, setRoomStatus] = useState("playing");
@@ -72,7 +88,29 @@ export default function JuegoPage() {
   const detectStoredPlayerName = useCallback((roomCode: string) => {
     if (typeof window === "undefined") return "";
 
-    const keys = [
+    const canonicalKey = getPlayerStorageKey(roomCode);
+
+    const localCanonical = localStorage.getItem(canonicalKey);
+    if (localCanonical) {
+      try {
+        const parsed = JSON.parse(localCanonical);
+        if (parsed?.playerName && typeof parsed.playerName === "string") {
+          return parsed.playerName.trim();
+        }
+      } catch {}
+    }
+
+    const sessionCanonical = sessionStorage.getItem(canonicalKey);
+    if (sessionCanonical) {
+      try {
+        const parsed = JSON.parse(sessionCanonical);
+        if (parsed?.playerName && typeof parsed.playerName === "string") {
+          return parsed.playerName.trim();
+        }
+      } catch {}
+    }
+
+    const legacyKeys = [
       `la-mesa-player-name-${roomCode}`,
       `mesa-player-name-${roomCode}`,
       `player_name_${roomCode}`,
@@ -84,12 +122,12 @@ export default function JuegoPage() {
       "nombreJugador",
     ];
 
-    for (const key of keys) {
+    for (const key of legacyKeys) {
       const value = localStorage.getItem(key);
       if (value && value.trim()) return value.trim();
     }
 
-    for (const key of keys) {
+    for (const key of legacyKeys) {
       const value = sessionStorage.getItem(key);
       if (value && value.trim()) return value.trim();
     }
@@ -103,7 +141,16 @@ export default function JuegoPage() {
     const value = playerName.trim();
     if (!value) return;
 
-    const keys = [
+    const payload = JSON.stringify({
+      roomCode,
+      playerName: value,
+      savedAt: new Date().toISOString(),
+    });
+
+    localStorage.setItem(getPlayerStorageKey(roomCode), payload);
+    sessionStorage.setItem(getPlayerStorageKey(roomCode), payload);
+
+    const legacyKeys = [
       `la-mesa-player-name-${roomCode}`,
       `mesa-player-name-${roomCode}`,
       `player_name_${roomCode}`,
@@ -115,7 +162,7 @@ export default function JuegoPage() {
       "nombreJugador",
     ];
 
-    for (const key of keys) {
+    for (const key of legacyKeys) {
       localStorage.setItem(key, value);
       sessionStorage.setItem(key, value);
     }
@@ -142,10 +189,7 @@ export default function JuegoPage() {
   }, [hostPlayer, currentPlayerName]);
 
   const opponentName = useMemo(() => {
-    return (
-      sortedPlayers.find((p) => p.player_name !== currentPlayerName)?.player_name ??
-      ""
-    );
+    return sortedPlayers.find((p) => p.player_name !== currentPlayerName)?.player_name ?? "";
   }, [sortedPlayers, currentPlayerName]);
 
   const myChoice = gameState.playerChoices?.[currentPlayerName] ?? null;
@@ -159,12 +203,11 @@ export default function JuegoPage() {
 
     if (!p1 || !p2) return false;
 
-    return Boolean(
-      gameState.playerChoices?.[p1] && gameState.playerChoices?.[p2]
-    );
+    return Boolean(gameState.playerChoices?.[p1] && gameState.playerChoices?.[p2]);
   }, [sortedPlayers, gameState.playerChoices]);
 
-  const shouldRevealChoices = bothChoicesSubmitted || !!gameState.roundWinner || !!gameState.matchOver;
+  const shouldRevealChoices =
+    bothChoicesSubmitted || !!gameState.roundWinner || !!gameState.matchOver;
 
   const buildFreshState = useCallback((playerList: RoomPlayer[]): GameState => {
     const playerChoices: Record<string, Choice> = {};
@@ -188,6 +231,42 @@ export default function JuegoPage() {
     };
   }, []);
 
+  const fetchProfilesForPlayers = useCallback(
+    async (playerList: RoomPlayer[]) => {
+      const userIds = Array.from(
+        new Set(playerList.map((p) => p.user_id).filter(Boolean))
+      ) as string[];
+
+      if (userIds.length === 0) {
+        setProfilesMap({});
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, display_name, avatar_key, frame_key, points")
+        .in("id", userIds);
+
+      if (error) {
+        console.error("Error cargando perfiles del juego:", error);
+        return;
+      }
+
+      const nextMap: ProfileMap = {};
+      for (const profile of data ?? []) {
+        nextMap[profile.id] = {
+          display_name: profile.display_name,
+          avatar_key: profile.avatar_key,
+          frame_key: profile.frame_key,
+          points: profile.points,
+        };
+      }
+
+      setProfilesMap(nextMap);
+    },
+    [supabase]
+  );
+
   const fetchPlayers = useCallback(async () => {
     const { data, error } = await supabase
       .from("room_players")
@@ -202,12 +281,13 @@ export default function JuegoPage() {
 
     const list = (data ?? []) as RoomPlayer[];
     setPlayers(list);
+    await fetchProfilesForPlayers(list);
 
     const resolvedName = resolveCurrentPlayerName(list);
     setCurrentPlayerName(resolvedName);
 
     return list;
-  }, [supabase, code, resolveCurrentPlayerName]);
+  }, [supabase, code, resolveCurrentPlayerName, fetchProfilesForPlayers]);
 
   const fetchRoom = useCallback(async () => {
     const { data, error } = await supabase
@@ -276,9 +356,7 @@ export default function JuegoPage() {
             ...(retryData.state as Partial<GameState>),
           };
           setGameState(mergedRetry);
-          return;
         }
-
         return;
       }
 
@@ -509,7 +587,6 @@ export default function JuegoPage() {
     }
 
     await writeGameState(fresh);
-
     router.push(`/sala/${code}`);
   }, [buildFreshState, sortedPlayers, supabase, code, writeGameState, router]);
 
@@ -543,7 +620,7 @@ export default function JuegoPage() {
     setCurrentPlayerName(playerName);
   };
 
-  const getVisibleChoiceLabel = (playerName: string, selected: Choice, isCurrent: boolean) => {
+  const getVisibleChoiceLabel = (selected: Choice, isCurrent: boolean) => {
     if (!selected) return "Aún no elige";
 
     if (shouldRevealChoices) {
@@ -556,139 +633,6 @@ export default function JuegoPage() {
 
     return "Esperando...";
   };
-
-  useEffect(() => {
-    let mounted = true;
-
-    const init = async () => {
-      setLoading(true);
-
-      try {
-        const playerList = await fetchPlayers();
-        await fetchRoom();
-        await ensureGameStateRow(playerList);
-      } catch (error) {
-        console.error("Error inicializando juego:", error);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-
-    if (code) {
-      init();
-    }
-
-    return () => {
-      mounted = false;
-    };
-  }, [code, fetchPlayers, fetchRoom, ensureGameStateRow]);
-
-  useEffect(() => {
-    if (!code) return;
-
-    const channel = supabase
-      .channel(`game-room-${code}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "room_players",
-          filter: `room_code=eq.${code}`,
-        },
-        async () => {
-          await fetchPlayers();
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "game_state",
-          filter: `room_code=eq.${code}`,
-        },
-        async () => {
-          await refreshGameState();
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "rooms",
-          filter: `code=eq.${code}`,
-        },
-        async (payload) => {
-          const nextStatus = (payload.new as { status?: string } | null)?.status;
-
-          if (nextStatus) {
-            setRoomStatus(nextStatus);
-
-            if (nextStatus === "waiting") {
-              router.push(`/sala/${code}`);
-            }
-          } else {
-            await fetchRoom();
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [supabase, code, fetchPlayers, refreshGameState, fetchRoom, router]);
-
-  useEffect(() => {
-    resolveRoundIfNeeded();
-  }, [resolveRoundIfNeeded]);
-
-  useEffect(() => {
-    if (!isHost) return;
-    if (!gameState.canAdvanceRound) return;
-    if (gameState.matchOver) return;
-
-    if (autoAdvanceRef.current) {
-      clearTimeout(autoAdvanceRef.current);
-    }
-
-    autoAdvanceRef.current = setTimeout(async () => {
-      await updateGameState((prev) => {
-        if (!prev.canAdvanceRound || prev.matchOver) return prev;
-
-        const clearedChoices: Record<string, Choice> = {};
-        for (const name of Object.keys(prev.playerChoices ?? {})) {
-          clearedChoices[name] = null;
-        }
-
-        return {
-          ...prev,
-          round: prev.round + 1,
-          playerChoices: clearedChoices,
-          roundWinner: null,
-          resultText: null,
-          canAdvanceRound: false,
-          rematchVotes: [],
-        };
-      });
-    }, 2200);
-
-    return () => {
-      if (autoAdvanceRef.current) {
-        clearTimeout(autoAdvanceRef.current);
-      }
-    };
-  }, [isHost, gameState.canAdvanceRound, gameState.matchOver, updateGameState]);
-
-  useEffect(() => {
-    return () => {
-      if (autoAdvanceRef.current) {
-        clearTimeout(autoAdvanceRef.current);
-      }
-    };
-  }, []);
 
   if (loading) {
     return (
@@ -709,7 +653,7 @@ export default function JuegoPage() {
 
   return (
     <main className="min-h-screen bg-neutral-950 text-white p-4 md:p-8">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         <div className="mb-6 flex flex-col gap-4 rounded-3xl border border-white/10 bg-white/5 p-5 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-sm uppercase tracking-[0.2em] text-white/60">La Mesa Familiar</p>
@@ -792,7 +736,15 @@ export default function JuegoPage() {
             const score = gameState.scores?.[player.player_name] ?? 0;
             const selected = gameState.playerChoices?.[player.player_name] ?? null;
             const isCurrent = player.player_name === currentPlayerName;
-            const visibleChoice = getVisibleChoiceLabel(player.player_name, selected, isCurrent);
+            const visibleChoice = getVisibleChoiceLabel(selected, isCurrent);
+
+            const profile = player.user_id ? profilesMap[player.user_id] : null;
+            const avatar = getAvatarByKey(
+              player.is_guest ? "avatar_guest" : profile?.avatar_key ?? "avatar_sun"
+            );
+            const frame = getFrameByKey(
+              player.is_guest ? "frame_guest" : profile?.frame_key ?? "frame_orange"
+            );
 
             return (
               <div
@@ -803,12 +755,20 @@ export default function JuegoPage() {
                     : "border-white/10 bg-white/5"
                 }`}
               >
-                <div className="mb-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-xl font-bold">
-                      {player.player_name} {player.is_host ? "👑" : ""}
-                    </p>
-                    <p className="text-sm text-white/60">{isCurrent ? "Tú" : "Rival"}</p>
+                <div className="mb-3 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div
+                      className={`flex h-16 w-16 items-center justify-center rounded-full border-4 bg-black text-2xl ${frame.className}`}
+                    >
+                      <span>{avatar.emoji}</span>
+                    </div>
+
+                    <div>
+                      <p className="text-xl font-bold">
+                        {player.player_name} {player.is_host ? "👑" : ""}
+                      </p>
+                      <p className="text-sm text-white/60">{isCurrent ? "Tú" : "Rival"}</p>
+                    </div>
                   </div>
 
                   <div className="rounded-2xl bg-black/30 px-4 py-2 text-center">
@@ -897,9 +857,7 @@ export default function JuegoPage() {
           <div className="mb-6 rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6">
             <div className="text-center">
               <p className="mb-2 text-sm uppercase tracking-[0.3em] text-yellow-300">Campeón</p>
-              <h2 className="text-4xl font-extrabold text-yellow-400">
-                👑 {gameState.champion}
-              </h2>
+              <h2 className="text-4xl font-extrabold text-yellow-400">👑 {gameState.champion}</h2>
               <p className="mt-3 text-lg text-white/80">
                 La partida terminó. Ya tenemos campeón del mejor de 3.
               </p>
