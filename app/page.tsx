@@ -312,12 +312,18 @@ export default function HomePage() {
           </nav>
 
           <div className="flex items-center gap-3">
-            <button className="hidden rounded-2xl px-4 py-2 font-semibold text-white transition hover:bg-white/5 md:block">
-              Iniciar sesión
-            </button>
-            <button className="rounded-2xl bg-orange-500 px-5 py-2.5 font-bold text-black transition hover:bg-orange-400">
-              Empezar
-            </button>
+          <button
+          onClick={() => router.push("/acceso")}
+          className="hidden rounded-2xl px-4 py-2 font-semibold text-white transition hover:bg-white/5 md:block"
+          >
+          Iniciar sesión
+          </button>
+          <button
+           onClick={() => router.push("/acceso")}
+            className="rounded-2xl bg-orange-500 px-5 py-2.5 font-bold text-black transition hover:bg-orange-400"
+          >
+          Empezar
+          </button>
           </div>
         </div>
       </header>
