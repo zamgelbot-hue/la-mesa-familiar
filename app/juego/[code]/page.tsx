@@ -89,7 +89,48 @@ export default function JuegoPage() {
       if (value && value.trim()) return value.trim();
     }
 
+    const sessionKeys = [
+      `la-mesa-player-name-${roomCode}`,
+      `mesa-player-name-${roomCode}`,
+      `player_name_${roomCode}`,
+      `playerName_${roomCode}`,
+      `room_player_name_${roomCode}`,
+      `roomPlayerName_${roomCode}`,
+      "player_name",
+      "playerName",
+      "nombreJugador",
+    ];
+
+    for (const key of sessionKeys) {
+      const value = sessionStorage.getItem(key);
+      if (value && value.trim()) return value.trim();
+    }
+
     return "";
+  }, []);
+
+  const persistPlayerName = useCallback((roomCode: string, playerName: string) => {
+    if (typeof window === "undefined") return;
+
+    const value = playerName.trim();
+    if (!value) return;
+
+    const keys = [
+      `la-mesa-player-name-${roomCode}`,
+      `mesa-player-name-${roomCode}`,
+      `player_name_${roomCode}`,
+      `playerName_${roomCode}`,
+      `room_player_name_${roomCode}`,
+      `roomPlayerName_${roomCode}`,
+      "player_name",
+      "playerName",
+      "nombreJugador",
+    ];
+
+    for (const key of keys) {
+      localStorage.setItem(key, value);
+      sessionStorage.setItem(key, value);
+    }
   }, []);
 
   const resolveCurrentPlayerName = useCallback(
@@ -103,10 +144,7 @@ export default function JuegoPage() {
         return storedName;
       }
 
-      if (playerList.length === 0) return "";
-
-      // Fallback temporal para no bloquear el juego
-      return playerList[0].player_name;
+      return "";
     },
     [code, detectStoredPlayerName]
   );
@@ -218,7 +256,6 @@ export default function JuegoPage() {
       if (insertError) {
         console.error("Error creando game_state:", insertError);
 
-        // Si otro cliente la creó justo al mismo tiempo, solo volvemos a leer
         const { data: retryData, error: retryError } = await supabase
           .from("game_state")
           .select("id, state")
@@ -498,6 +535,11 @@ export default function JuegoPage() {
     await goBackToRoom();
   };
 
+  const handleSelectIdentity = (playerName: string) => {
+    persistPlayerName(code, playerName);
+    setCurrentPlayerName(playerName);
+  };
+
   useEffect(() => {
     let mounted = true;
 
@@ -643,6 +685,10 @@ export default function JuegoPage() {
   }
 
   const rematchVotesCount = gameState.rematchVotes?.length ?? 0;
+  const needsIdentitySelection =
+    sortedPlayers.length > 0 &&
+    (!currentPlayerName ||
+      !sortedPlayers.some((player) => player.player_name === currentPlayerName));
 
   return (
     <main className="min-h-screen bg-neutral-950 text-white p-4 md:p-8">
@@ -660,7 +706,7 @@ export default function JuegoPage() {
             <p className="text-white/70">
               Jugador actual:{" "}
               <span className="font-semibold text-emerald-400">
-                {currentPlayerName || "No detectado"}
+                {currentPlayerName || "No seleccionado"}
               </span>
             </p>
           </div>
@@ -689,6 +735,34 @@ export default function JuegoPage() {
             </div>
           </div>
         </div>
+
+        {needsIdentitySelection && (
+          <div className="mb-6 rounded-3xl border border-cyan-400/25 bg-cyan-500/10 p-5">
+            <p className="text-lg font-semibold text-cyan-300">
+              Este navegador todavía no sabe qué jugador eres
+            </p>
+            <p className="mt-1 text-white/70">
+              Selecciona tu jugador una sola vez en este navegador.
+            </p>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {sortedPlayers.map((player) => (
+                <button
+                  key={player.id}
+                  onClick={() => handleSelectIdentity(player.player_name)}
+                  className="rounded-2xl border border-white/15 bg-white/10 px-4 py-4 text-left transition hover:bg-white/15"
+                >
+                  <p className="text-lg font-bold">
+                    {player.player_name} {player.is_host ? "👑" : ""}
+                  </p>
+                  <p className="text-sm text-white/60">
+                    Usar esta identidad en este navegador
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {!bothPlayersPresent && (
           <div className="mb-6 rounded-3xl border border-yellow-500/20 bg-yellow-500/10 p-5">
@@ -746,7 +820,9 @@ export default function JuegoPage() {
 
               <div className="rounded-2xl bg-black/20 px-4 py-3">
                 <p className="text-sm text-white/60">
-                  {gameState.resultText
+                  {needsIdentitySelection
+                    ? "Primero selecciona tu jugador"
+                    : gameState.resultText
                     ? gameState.resultText
                     : myChoice
                     ? "Esperando al otro jugador..."
@@ -761,6 +837,7 @@ export default function JuegoPage() {
                 disabled={
                   !bothPlayersPresent ||
                   !currentPlayerName ||
+                  needsIdentitySelection ||
                   !!myChoice ||
                   !!gameState.roundWinner
                 }
@@ -774,6 +851,7 @@ export default function JuegoPage() {
                 disabled={
                   !bothPlayersPresent ||
                   !currentPlayerName ||
+                  needsIdentitySelection ||
                   !!myChoice ||
                   !!gameState.roundWinner
                 }
@@ -787,6 +865,7 @@ export default function JuegoPage() {
                 disabled={
                   !bothPlayersPresent ||
                   !currentPlayerName ||
+                  needsIdentitySelection ||
                   !!myChoice ||
                   !!gameState.roundWinner
                 }
