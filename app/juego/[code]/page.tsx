@@ -478,6 +478,47 @@ export default function JuegoPage() {
     [supabase, code]
   );
 
+  const awardPoints = useCallback(
+    async (championName: string | null) => {
+      try {
+        if (!championName) return;
+        if (sortedPlayers.length < 2) return;
+
+        const winner = sortedPlayers.find(
+          (player) => player.player_name === championName
+        );
+        const loser = sortedPlayers.find(
+          (player) => player.player_name !== championName
+        );
+
+        if (winner?.user_id) {
+          const { error } = await supabase.rpc("add_points", {
+            user_id_input: winner.user_id,
+            points_input: 10,
+          });
+
+          if (error) {
+            console.error("Error dando puntos al ganador:", error);
+          }
+        }
+
+        if (loser?.user_id) {
+          const { error } = await supabase.rpc("add_points", {
+            user_id_input: loser.user_id,
+            points_input: 3,
+          });
+
+          if (error) {
+            console.error("Error dando puntos al perdedor:", error);
+          }
+        }
+      } catch (error) {
+        console.error("Error general dando puntos:", error);
+      }
+    },
+    [sortedPlayers, supabase]
+  );
+
   const getWinnerChoice = (a: Exclude<Choice, null>, b: Exclude<Choice, null>) => {
     if (a === b) return "empate";
 
@@ -510,6 +551,8 @@ export default function JuegoPage() {
     if (!c1 || !c2) return;
 
     resolvingRoundRef.current = true;
+
+    let awardedChampion: string | null = null;
 
     await updateGameState((prev) => {
       const player1 = sortedPlayers[0]?.player_name;
@@ -547,11 +590,13 @@ export default function JuegoPage() {
 
       if ((scores[player1] ?? 0) >= 2) {
         champion = player1;
+        awardedChampion = player1;
         matchOver = true;
         canAdvanceRound = false;
         resultText = `${player1} es el campeón`;
       } else if ((scores[player2] ?? 0) >= 2) {
         champion = player2;
+        awardedChampion = player2;
         matchOver = true;
         canAdvanceRound = false;
         resultText = `${player2} es el campeón`;
@@ -568,8 +613,12 @@ export default function JuegoPage() {
       };
     });
 
+    if (awardedChampion) {
+      await awardPoints(awardedChampion);
+    }
+
     resolvingRoundRef.current = false;
-  }, [isHost, bothPlayersPresent, gameState, sortedPlayers, updateGameState]);
+  }, [isHost, bothPlayersPresent, gameState, sortedPlayers, updateGameState, awardPoints]);
 
   const handleChoice = async (choice: Exclude<Choice, null>) => {
     if (!currentPlayerName) return;
