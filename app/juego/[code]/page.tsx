@@ -1,11 +1,10 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Trophy } from "lucide-react"
+import { ArrowLeft, Trophy, Hand, Scroll, Scissors, Home, LogOut } from "lucide-react"
 
 interface Room {
   id: string
@@ -44,12 +43,10 @@ interface GameStateRow {
   updated_at: string
 }
 
-const OPTIONS = ["piedra", "papel", "tijera"]
+const OPTIONS = ["piedra", "papel", "tijera"] as const
 
 function getWinner(moveA: string, moveB: string) {
-  if (moveA === moveB) {
-    return "tie"
-  }
+  if (moveA === moveB) return "tie"
 
   if (
     (moveA === "piedra" && moveB === "tijera") ||
@@ -62,8 +59,23 @@ function getWinner(moveA: string, moveB: string) {
   return "player2"
 }
 
+function getMoveLabel(move?: string | null) {
+  if (!move) return ""
+  if (move === "piedra") return "✊ Piedra"
+  if (move === "papel") return "✋ Papel"
+  if (move === "tijera") return "✌️ Tijera"
+  return move
+}
+
+function getMoveIcon(move: string) {
+  if (move === "piedra") return <Hand size={18} />
+  if (move === "papel") return <Scroll size={18} />
+  return <Scissors size={18} />
+}
+
 export default function JuegoPage() {
   const params = useParams()
+  const router = useRouter()
   const code = (params.code as string).toUpperCase()
   const supabase = createClient()
 
@@ -75,12 +87,14 @@ export default function JuegoPage() {
   const [error, setError] = useState<string | null>(null)
   const [submittingMove, setSubmittingMove] = useState(false)
   const [resettingRound, setResettingRound] = useState(false)
+  const [endingMatch, setEndingMatch] = useState(false)
 
   const myPlayer = useMemo(
     () => players.find((p) => p.id === myPlayerId) ?? null,
     [players, myPlayerId],
   )
 
+  const isHost = !!myPlayer?.is_host
   const myMove = myPlayer ? gameState?.state.moves?.[myPlayer.id] : null
 
   const bothPlayed =
@@ -134,7 +148,6 @@ export default function JuegoPage() {
 
       if (!stateData) {
         const initialScores: ScoreMap = {}
-
         currentPlayers.forEach((player) => {
           initialScores[player.id] = 0
         })
@@ -224,11 +237,33 @@ export default function JuegoPage() {
       )
       .subscribe()
 
+    const roomChannel = supabase
+      .channel(`room-status-${code}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "rooms",
+          filter: `code=eq.${code}`,
+        },
+        (payload) => {
+          const updatedRoom = payload.new as Room
+          setRoom(updatedRoom)
+
+          if (updatedRoom.status === "waiting") {
+            router.push(`/sala/${code}`)
+          }
+        },
+      )
+      .subscribe()
+
     return () => {
       supabase.removeChannel(playersChannel)
       supabase.removeChannel(gameStateChannel)
+      supabase.removeChannel(roomChannel)
     }
-  }, [code, supabase])
+  }, [code, router, supabase])
 
   const submitMove = async (move: string) => {
     if (!myPlayer || !gameState || submittingMove) return
@@ -325,6 +360,74 @@ export default function JuegoPage() {
     setResettingRound(false)
   }
 
+  const endMatch = async () => {
+    if (!isHost || endingMatch) return
+
+    const confirmed = window.confirm(
+      "¿Seguro que quieres terminar la partida y volver a la sala?"
+    )
+
+    if (!confirmed) return
+
+    setEndingMatch(true)
+
+    const resetScores: ScoreMap = {}
+    players.forEach((player) => {
+      resetScores[player.id] = 0
+    })
+
+    const gameStatePromise = supabase
+      .from("game_state")
+      .update({
+        state: {
+          phase: "playing",
+          moves: {},
+          result: null,
+          winnerId: null,
+          round: 1,
+          scores: resetScores,
+        },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("room_code", code)
+
+    const roomPlayersPromise = supabase
+      .from("room_players")
+      .update({ is_ready: false })
+      .eq("room_code", code)
+
+    const roomPromise = supabase
+      .from("rooms")
+      .update({
+        status: "waiting",
+        started_at: null,
+      })
+      .eq("code", code)
+
+    const [gameStateResult, playersResult, roomResult] = await Promise.all([
+      gameStatePromise,
+      roomPlayersPromise,
+      roomPromise,
+    ])
+
+    if (gameStateResult.error || playersResult.error || roomResult.error) {
+      console.error("Error terminando partida:", {
+        gameStateError: gameStateResult.error,
+        playersError: playersResult.error,
+        roomError: roomResult.error,
+      })
+      alert("No se pudo terminar la partida correctamente.")
+      setEndingMatch(false)
+      return
+    }
+
+    router.push(`/sala/${code}`)
+  }
+
+  const goBackToSala = () => {
+    router.push(`/sala/${code}`)
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-white">
@@ -337,9 +440,7 @@ export default function JuegoPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center text-white gap-4">
         <p>{error || "No se pudo cargar el juego"}</p>
-        <Link href="/">
-          <Button>Volver al inicio</Button>
-        </Link>
+        <Button onClick={() => router.push("/")}>Volver al inicio</Button>
       </div>
     )
   }
@@ -347,12 +448,24 @@ export default function JuegoPage() {
   return (
     <div className="min-h-screen text-white p-6">
       <div className="max-w-5xl mx-auto">
-        <Link href={`/sala/${code}`}>
-          <Button variant="outline" className="mb-6 flex gap-2">
+        <div className="flex flex-wrap gap-3 mb-6">
+          <Button variant="outline" className="flex gap-2" onClick={goBackToSala}>
             <ArrowLeft size={16} />
             Volver a la sala
           </Button>
-        </Link>
+
+          {isHost && (
+            <Button
+              variant="destructive"
+              className="flex gap-2"
+              onClick={endMatch}
+              disabled={endingMatch}
+            >
+              <LogOut size={16} />
+              Terminar partida
+            </Button>
+          )}
+        </div>
 
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
@@ -396,8 +509,9 @@ export default function JuegoPage() {
                       {move ? "Ya eligió" : "Esperando jugada..."}
                     </p>
                   ) : (
-                    <p className="text-zinc-300">
-                      Eligió: <span className="font-semibold">{move}</span>
+                    <p className="text-zinc-300 flex items-center gap-2">
+                      {move ? getMoveIcon(move) : null}
+                      <span className="font-semibold">{getMoveLabel(move)}</span>
                     </p>
                   )}
 
@@ -422,16 +536,16 @@ export default function JuegoPage() {
                     gameState.state.phase === "finished" ||
                     submittingMove
                   }
+                  className="flex items-center gap-2"
                 >
+                  {getMoveIcon(option)}
                   {option}
                 </Button>
               ))}
             </div>
 
             <div className="text-zinc-400">
-              {myMove
-                ? `Ya elegiste: ${myMove}`
-                : "Aún no has elegido"}
+              {myMove ? `Ya elegiste: ${getMoveLabel(myMove)}` : "Aún no has elegido"}
             </div>
 
             {!bothPlayed && myMove && (
@@ -448,9 +562,16 @@ export default function JuegoPage() {
                 {gameState.state.result}
               </p>
 
-              <Button onClick={resetRound} disabled={resettingRound}>
-                Jugar otra vez
-              </Button>
+              <div className="flex flex-wrap gap-3">
+                <Button onClick={resetRound} disabled={resettingRound}>
+                  Jugar otra vez
+                </Button>
+
+                <Button variant="secondary" onClick={goBackToSala}>
+                  <Home size={16} className="mr-2" />
+                  Volver a sala
+                </Button>
+              </div>
             </div>
           )}
         </div>
