@@ -2,7 +2,13 @@ import { createClient } from "@/lib/supabase/client";
 
 const GUEST_STORAGE_KEY = "lmf:guest-profile";
 
-export async function getPlayerIdentity() {
+export type PlayerIdentity = {
+  name: string;
+  user_id: string | null;
+  is_guest: boolean;
+};
+
+export async function getPlayerIdentity(): Promise<PlayerIdentity | null> {
   const supabase = createClient();
 
   const {
@@ -15,8 +21,13 @@ export async function getPlayerIdentity() {
   }
 
   if (user) {
+    const displayName =
+      user.user_metadata?.display_name ||
+      user.user_metadata?.name ||
+      (user.email ? user.email.split("@")[0] : "Usuario");
+
     return {
-      name: user.email || "Usuario",
+      name: String(displayName),
       user_id: user.id,
       is_guest: false,
     };
