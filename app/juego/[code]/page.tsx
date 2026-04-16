@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
+import RoomChat from "@/components/RoomChat";
 
 type Choice = "piedra" | "papel" | "tijera" | null;
 
@@ -84,6 +85,10 @@ export default function JuegoPage() {
   const hostPlayer = useMemo(() => {
     return sortedPlayers.find((p) => p.is_host) ?? null;
   }, [sortedPlayers]);
+
+  const currentPlayer = useMemo(() => {
+    return sortedPlayers.find((p) => p.player_name === currentPlayerName) ?? null;
+  }, [sortedPlayers, currentPlayerName]);
 
   const detectStoredPlayerName = useCallback((roomCode: string) => {
     if (typeof window === "undefined") return "";
@@ -230,6 +235,22 @@ export default function JuegoPage() {
       canAdvanceRound: false,
     };
   }, []);
+
+  const clearGameChat = useCallback(async () => {
+    try {
+      const { error } = await supabase
+        .from("room_messages")
+        .delete()
+        .eq("room_code", code)
+        .eq("context", "game");
+
+      if (error) {
+        console.error("Error limpiando chat de partida:", error);
+      }
+    } catch (error) {
+      console.error("Error inesperado limpiando chat de partida:", error);
+    }
+  }, [supabase, code]);
 
   const fetchProfilesForPlayers = useCallback(
     async (playerList: RoomPlayer[]) => {
@@ -667,9 +688,10 @@ export default function JuegoPage() {
       return;
     }
 
+    await clearGameChat();
     await writeGameState(fresh);
     router.push(`/sala/${code}`);
-  }, [buildFreshState, sortedPlayers, supabase, code, writeGameState, router]);
+  }, [buildFreshState, sortedPlayers, supabase, code, clearGameChat, writeGameState, router]);
 
   const handleRematch = async () => {
     if (!currentPlayerName) return;
@@ -1117,7 +1139,7 @@ export default function JuegoPage() {
             </div>
 
             <p className="mt-4 text-center text-sm text-white/60">
-              Votos de revancha: {rematchVotesCount}/{Math.max(sortedPlayers.length, 2)}
+              Votos de revancha: {gameState.rematchVotes?.length ?? 0}/{Math.max(sortedPlayers.length, 2)}
             </p>
           </div>
         )}
@@ -1146,6 +1168,15 @@ export default function JuegoPage() {
           </div>
         </div>
       </div>
+
+      <RoomChat
+        roomCode={code}
+        context="game"
+        title="Chat de partida"
+        currentPlayerName={currentPlayerName}
+        currentUserId={currentPlayer?.user_id ?? null}
+        isGuest={currentPlayer?.is_guest ?? true}
+      />
     </main>
   );
 }
