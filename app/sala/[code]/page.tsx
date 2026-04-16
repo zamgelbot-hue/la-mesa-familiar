@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
+import RoomChat from "@/components/RoomChat";
 
 type Room = {
   id: string;
@@ -154,10 +155,11 @@ export default function SalaPage() {
     return sortedPlayers.length >= 2 && sortedPlayers.every((p) => p.is_ready);
   }, [sortedPlayers]);
 
-  const isHost = useMemo(() => {
-    const me = sortedPlayers.find((p) => p.player_name === currentPlayerName);
-    return !!me?.is_host;
+  const currentPlayer = useMemo(() => {
+    return sortedPlayers.find((p) => p.player_name === currentPlayerName) ?? null;
   }, [sortedPlayers, currentPlayerName]);
+
+  const isHost = !!currentPlayer?.is_host;
 
   const fetchProfilesForPlayers = useCallback(
     async (playerList: RoomPlayer[]) => {
@@ -483,7 +485,9 @@ export default function SalaPage() {
                   <p className="text-xs uppercase tracking-[0.3em] text-orange-200">
                     Juego seleccionado
                   </p>
-                  <p className="mt-2 text-4xl font-extrabold text-white">{game.name}</p>
+                  <p className="mt-2 text-4xl font-extrabold text-white">
+                    {game.name}
+                  </p>
                   <p className="mt-2 text-sm text-white/70">
                     {game.min_players}-{game.max_players} jugadores
                   </p>
@@ -511,7 +515,9 @@ export default function SalaPage() {
                     <p className="text-lg font-bold">
                       {player.player_name} {player.is_host ? "👑" : ""}
                     </p>
-                    <p className="text-sm text-white/60">Usar esta identidad en este navegador</p>
+                    <p className="text-sm text-white/60">
+                      Usar esta identidad en este navegador
+                    </p>
                   </button>
                 ))}
               </div>
@@ -590,6 +596,14 @@ export default function SalaPage() {
           </div>
         </div>
       </div>
+
+      <RoomChat
+        roomCode={code}
+        context="lobby"
+        currentPlayerName={currentPlayerName}
+        currentUserId={currentPlayer?.user_id ?? null}
+        isGuest={currentPlayer?.is_guest ?? true}
+      />
     </main>
   );
 }
