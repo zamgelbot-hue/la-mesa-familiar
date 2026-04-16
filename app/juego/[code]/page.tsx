@@ -1,200 +1,453 @@
-"use client"
+"use client";
 
-import { useEffect, useMemo, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
-import { ArrowLeft, Trophy, Hand, Scroll, Scissors, Home, LogOut } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
-interface Room {
-  id: string
-  code: string
-  status: string
-  created_at: string
-  started_at?: string | null
-}
+type Choice = "piedra" | "papel" | "tijera" | null;
 
-interface RoomPlayer {
-  id: string
-  room_code: string
-  player_name: string
-  is_host: boolean
-  is_ready: boolean
-  created_at: string
-}
+type RoomPlayer = {
+  id: string;
+  room_code: string;
+  player_name: string;
+  is_host: boolean;
+  is_ready: boolean;
+  created_at: string;
+};
 
-interface ScoreMap {
-  [playerId: string]: number
-}
+type GameState = {
+  round: number;
+  playerChoices: Record<string, Choice>;
+  scores: Record<string, number>;
+  roundWinner: string | null;
+  resultText: string | null;
+  champion: string | null;
+  matchOver: boolean;
+  rematchVotes: string[];
+  canAdvanceRound: boolean;
+};
 
-interface GameStateData {
-  phase: "playing" | "finished"
-  moves: Record<string, string>
-  result: string | null
-  winnerId: string | null
-  round: number
-  scores: ScoreMap
-}
+const supabase = createClient();
 
-interface GameStateRow {
-  id: string
-  room_code: string
-  state: GameStateData
-  updated_at: string
-}
-
-const OPTIONS = ["piedra", "papel", "tijera"] as const
-
-function getWinner(moveA: string, moveB: string) {
-  if (moveA === moveB) return "tie"
-
-  if (
-    (moveA === "piedra" && moveB === "tijera") ||
-    (moveA === "tijera" && moveB === "papel") ||
-    (moveA === "papel" && moveB === "piedra")
-  ) {
-    return "player1"
-  }
-
-  return "player2"
-}
-
-function getMoveLabel(move?: string | null) {
-  if (!move) return ""
-  if (move === "piedra") return "✊ Piedra"
-  if (move === "papel") return "✋ Papel"
-  if (move === "tijera") return "✌️ Tijera"
-  return move
-}
-
-function getMoveIcon(move: string) {
-  if (move === "piedra") return <Hand size={18} />
-  if (move === "papel") return <Scroll size={18} />
-  return <Scissors size={18} />
-}
+const DEFAULT_STATE: GameState = {
+  round: 1,
+  playerChoices: {},
+  scores: {},
+  roundWinner: null,
+  resultText: null,
+  champion: null,
+  matchOver: false,
+  rematchVotes: [],
+  canAdvanceRound: false,
+};
 
 export default function JuegoPage() {
-  const params = useParams()
-  const router = useRouter()
-  const code = (params.code as string).toUpperCase()
-  const supabase = createClient()
+  const params = useParams();
+  const router = useRouter();
 
-  const [room, setRoom] = useState<Room | null>(null)
-  const [players, setPlayers] = useState<RoomPlayer[]>([])
-  const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
-  const [gameState, setGameState] = useState<GameStateRow | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [submittingMove, setSubmittingMove] = useState(false)
-  const [resettingRound, setResettingRound] = useState(false)
-  const [endingMatch, setEndingMatch] = useState(false)
+  const code = String(params.code ?? "").toUpperCase();
 
-  const myPlayer = useMemo(
-    () => players.find((p) => p.id === myPlayerId) ?? null,
-    [players, myPlayerId],
-  )
+  const [players, setPlayers] = useState<RoomPlayer[]>([]);
+  const [gameState, setGameState] = useState<GameState>(DEFAULT_STATE);
+  const [currentPlayerName, setCurrentPlayerName] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [roomStatus, setRoomStatus] = useState<string>("playing");
 
-  const isHost = !!myPlayer?.is_host
-  const myMove = myPlayer ? gameState?.state.moves?.[myPlayer.id] : null
+  const autoAdvanceRef = useRef<NodeJS.Timeout | null>(null);
+  const lastAutoAdvanceRoundRef = useRef<number | null>(null);
 
-  const bothPlayed =
-    !!gameState &&
-    players.length >= 2 &&
-    players.every((player) => !!gameState.state.moves[player.id])
+  const sortedPlayers = useMemo(() => {
+    return [...players].sort((a, b) => {
+      if (a.is_host && !b.is_host) return -1;
+      if (!a.is_host && b.is_host) return 1;
+      return a.created_at.localeCompare(b.created_at);
+    });
+  }, [players]);
 
-  useEffect(() => {
-    const loadGame = async () => {
-      const storageKey = `room_player_${code}`
-      const savedPlayerId = sessionStorage.getItem(storageKey)
+  const hostPlayer = useMemo(() => {
+    return sortedPlayers.find((p) => p.is_host) ?? null;
+  }, [sortedPlayers]);
 
-      if (savedPlayerId) {
-        setMyPlayerId(savedPlayerId)
+  const isHost = useMemo(() => {
+    return currentPlayerName !== "" && hostPlayer?.player_name === currentPlayerName;
+  }, [currentPlayerName, hostPlayer]);
+
+  const opponentName = useMemo(() => {
+    return sortedPlayers.find((p) => p.player_name !== currentPlayerName)?.player_name ?? "";
+  }, [sortedPlayers, currentPlayerName]);
+
+  const myChoice = gameState.playerChoices?.[currentPlayerName] ?? null;
+  const opponentChoice = gameState.playerChoices?.[opponentName] ?? null;
+
+  const bothPlayersPresent = sortedPlayers.length >= 2;
+
+  const buildFreshState = useCallback(
+    (playerList: RoomPlayer[]): GameState => {
+      const playerChoices: Record<string, Choice> = {};
+      const scores: Record<string, number> = {};
+
+      for (const player of playerList) {
+        playerChoices[player.player_name] = null;
+        scores[player.player_name] = 0;
       }
 
-      const { data: roomData, error: roomError } = await supabase
-        .from("rooms")
-        .select("*")
-        .eq("code", code)
-        .single()
+      return {
+        round: 1,
+        playerChoices,
+        scores,
+        roundWinner: null,
+        resultText: null,
+        champion: null,
+        matchOver: false,
+        rematchVotes: [],
+        canAdvanceRound: false,
+      };
+    },
+    []
+  );
 
-      if (roomError || !roomData) {
-        setError("Sala no encontrada")
-        setLoading(false)
-        return
-      }
+  const getStoredPlayerName = useCallback((roomCode: string) => {
+    if (typeof window === "undefined") return "";
 
-      setRoom(roomData)
+    const possibleKeys = [
+      `la-mesa-player-name-${roomCode}`,
+      `mesa-player-name-${roomCode}`,
+      `player_name_${roomCode}`,
+      `playerName_${roomCode}`,
+      `room_player_name_${roomCode}`,
+      "player_name",
+      "playerName",
+      "nombreJugador",
+    ];
 
-      const { data: playersData, error: playersError } = await supabase
-        .from("room_players")
-        .select("*")
-        .eq("room_code", code)
-        .order("created_at", { ascending: true })
-
-      if (playersError) {
-        setError("No se pudieron cargar los jugadores")
-        setLoading(false)
-        return
-      }
-
-      const currentPlayers = playersData || []
-      setPlayers(currentPlayers)
-
-      let { data: stateData } = await supabase
-        .from("game_state")
-        .select("*")
-        .eq("room_code", code)
-        .maybeSingle()
-
-      if (!stateData) {
-        const initialScores: ScoreMap = {}
-        currentPlayers.forEach((player) => {
-          initialScores[player.id] = 0
-        })
-
-        const initialState: GameStateData = {
-          phase: "playing",
-          moves: {},
-          result: null,
-          winnerId: null,
-          round: 1,
-          scores: initialScores,
-        }
-
-        const { data: insertedState, error: insertError } = await supabase
-          .from("game_state")
-          .insert([
-            {
-              room_code: code,
-              state: initialState,
-            },
-          ])
-          .select()
-          .single()
-
-        if (insertError) {
-          console.error("Error creando game_state:", insertError)
-
-          const { data: retryState } = await supabase
-            .from("game_state")
-            .select("*")
-            .eq("room_code", code)
-            .maybeSingle()
-
-          stateData = retryState || null
-        } else {
-          stateData = insertedState
-        }
-      }
-
-      setGameState(stateData || null)
-      setLoading(false)
+    for (const key of possibleKeys) {
+      const value = localStorage.getItem(key);
+      if (value && value.trim()) return value.trim();
     }
 
-    loadGame()
+    return "";
+  }, []);
 
-    const playersChannel = supabase
-      .channel(`juego-players-${code}`)
+  const fetchPlayers = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("room_players")
+      .select("*")
+      .eq("room_code", code)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Error cargando jugadores:", error);
+      return [];
+    }
+
+    const list = (data ?? []) as RoomPlayer[];
+    setPlayers(list);
+    return list;
+  }, [code]);
+
+  const fetchRoom = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("rooms")
+      .select("status")
+      .eq("code", code)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error cargando room:", error);
+      return;
+    }
+
+    if (data?.status) {
+      setRoomStatus(data.status);
+    }
+  }, [code]);
+
+  const fetchGameState = useCallback(
+    async (playerList?: RoomPlayer[]) => {
+      const currentPlayers = playerList ?? players;
+
+      const { data, error } = await supabase
+        .from("game_state")
+        .select("id, state")
+        .eq("room_code", code)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error cargando game_state:", error);
+        return;
+      }
+
+      if (!data?.state) {
+        const fresh = buildFreshState(currentPlayers);
+        setGameState(fresh);
+
+        if (currentPlayers.length > 0) {
+          const { error: insertError } = await supabase.from("game_state").upsert(
+            {
+              room_code: code,
+              state: fresh,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "room_code" }
+          );
+
+          if (insertError) {
+            console.error("Error creando game_state:", insertError);
+          }
+        }
+
+        return;
+      }
+
+      const mergedState: GameState = {
+        ...DEFAULT_STATE,
+        ...(data.state as Partial<GameState>),
+      };
+
+      setGameState(mergedState);
+    },
+    [buildFreshState, code, players]
+  );
+
+  const saveGameState = useCallback(
+    async (newState: GameState) => {
+      const { error } = await supabase.from("game_state").upsert(
+        {
+          room_code: code,
+          state: newState,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "room_code" }
+      );
+
+      if (error) {
+        console.error("Error guardando game_state:", error);
+        return false;
+      }
+
+      return true;
+    },
+    [code]
+  );
+
+  const updateGameState = useCallback(
+    async (updater: (prev: GameState) => GameState) => {
+      const { data, error } = await supabase
+        .from("game_state")
+        .select("state")
+        .eq("room_code", code)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error leyendo game_state antes de actualizar:", error);
+        return;
+      }
+
+      const prevState: GameState = {
+        ...DEFAULT_STATE,
+        ...((data?.state as Partial<GameState>) ?? {}),
+      };
+
+      const nextState = updater(prevState);
+      await saveGameState(nextState);
+    },
+    [code, saveGameState]
+  );
+
+  const getWinnerChoice = (a: Exclude<Choice, null>, b: Exclude<Choice, null>) => {
+    if (a === b) return "empate";
+
+    if (
+      (a === "piedra" && b === "tijera") ||
+      (a === "tijera" && b === "papel") ||
+      (a === "papel" && b === "piedra")
+    ) {
+      return "a";
+    }
+
+    return "b";
+  };
+
+  const resolveRoundIfNeeded = useCallback(async () => {
+    if (!isHost) return;
+    if (!bothPlayersPresent) return;
+    if (gameState.matchOver) return;
+    if (gameState.roundWinner || gameState.canAdvanceRound) return;
+
+    const p1 = sortedPlayers[0]?.player_name;
+    const p2 = sortedPlayers[1]?.player_name;
+
+    if (!p1 || !p2) return;
+
+    const c1 = gameState.playerChoices?.[p1];
+    const c2 = gameState.playerChoices?.[p2];
+
+    if (!c1 || !c2) return;
+
+    const winner = getWinnerChoice(c1, c2);
+
+    await updateGameState((prev) => {
+      const player1 = sortedPlayers[0]?.player_name;
+      const player2 = sortedPlayers[1]?.player_name;
+
+      if (!player1 || !player2) return prev;
+
+      const choice1 = prev.playerChoices?.[player1];
+      const choice2 = prev.playerChoices?.[player2];
+
+      if (!choice1 || !choice2) return prev;
+      if (prev.roundWinner || prev.canAdvanceRound || prev.matchOver) return prev;
+
+      const scores = { ...(prev.scores ?? {}) };
+
+      let roundWinner: string | null = null;
+      let resultText = "Empate";
+      let champion: string | null = null;
+      let matchOver = false;
+      let canAdvanceRound = true;
+
+      const result = getWinnerChoice(choice1, choice2);
+
+      if (result === "a") {
+        roundWinner = player1;
+        scores[player1] = (scores[player1] ?? 0) + 1;
+        resultText = `${player1} gana la ronda`;
+      } else if (result === "b") {
+        roundWinner = player2;
+        scores[player2] = (scores[player2] ?? 0) + 1;
+        resultText = `${player2} gana la ronda`;
+      } else {
+        resultText = "Empate";
+      }
+
+      if ((scores[player1] ?? 0) >= 2) {
+        champion = player1;
+        matchOver = true;
+        canAdvanceRound = false;
+        resultText = `${player1} es el campeón`;
+      } else if ((scores[player2] ?? 0) >= 2) {
+        champion = player2;
+        matchOver = true;
+        canAdvanceRound = false;
+        resultText = `${player2} es el campeón`;
+      }
+
+      return {
+        ...prev,
+        scores,
+        roundWinner,
+        resultText,
+        champion,
+        matchOver,
+        canAdvanceRound,
+      };
+    });
+  }, [isHost, bothPlayersPresent, gameState, sortedPlayers, updateGameState]);
+
+  const handleChoice = async (choice: Exclude<Choice, null>) => {
+    if (!currentPlayerName) return;
+    if (!bothPlayersPresent) return;
+    if (gameState.matchOver) return;
+    if (gameState.roundWinner || gameState.canAdvanceRound) return;
+    if (gameState.playerChoices?.[currentPlayerName]) return;
+
+    await updateGameState((prev) => {
+      if (prev.matchOver || prev.roundWinner || prev.canAdvanceRound) return prev;
+      if (prev.playerChoices?.[currentPlayerName]) return prev;
+
+      return {
+        ...prev,
+        playerChoices: {
+          ...(prev.playerChoices ?? {}),
+          [currentPlayerName]: choice,
+        },
+      };
+    });
+  };
+
+  const handleRematch = async () => {
+    if (!currentPlayerName) return;
+
+    await updateGameState((prev) => {
+      const votes = Array.from(new Set([...(prev.rematchVotes ?? []), currentPlayerName]));
+
+      const bothAccepted =
+        sortedPlayers.length >= 2 &&
+        sortedPlayers.every((player) => votes.includes(player.player_name));
+
+      if (bothAccepted) {
+        return buildFreshState(sortedPlayers);
+      }
+
+      return {
+        ...prev,
+        rematchVotes: votes,
+      };
+    });
+  };
+
+  const handleBackToRoom = async () => {
+    const freshState = buildFreshState(sortedPlayers);
+
+    const { error: roomError } = await supabase
+      .from("rooms")
+      .update({
+        status: "waiting",
+        started_at: null,
+      })
+      .eq("code", code);
+
+    if (roomError) {
+      console.error("Error actualizando room:", roomError);
+      return;
+    }
+
+    const { error: playersError } = await supabase
+      .from("room_players")
+      .update({ is_ready: false })
+      .eq("room_code", code);
+
+    if (playersError) {
+      console.error("Error reseteando ready:", playersError);
+      return;
+    }
+
+    const ok = await saveGameState(freshState);
+    if (!ok) return;
+
+    router.push(`/sala/${code}`);
+  };
+
+  useEffect(() => {
+    let active = true;
+
+    const init = async () => {
+      setLoading(true);
+
+      const storedName = getStoredPlayerName(code);
+      if (active) setCurrentPlayerName(storedName);
+
+      const playerList = await fetchPlayers();
+      await fetchRoom();
+      await fetchGameState(playerList);
+
+      if (active) setLoading(false);
+    };
+
+    if (code) {
+      init();
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [code, fetchGameState, fetchPlayers, fetchRoom, getStoredPlayerName]);
+
+  useEffect(() => {
+    if (!code) return;
+
+    const channel = supabase
+      .channel(`juego-${code}`)
       .on(
         "postgres_changes",
         {
@@ -204,19 +457,9 @@ export default function JuegoPage() {
           filter: `room_code=eq.${code}`,
         },
         async () => {
-          const { data } = await supabase
-            .from("room_players")
-            .select("*")
-            .eq("room_code", code)
-            .order("created_at", { ascending: true })
-
-          setPlayers(data || [])
-        },
+          await fetchPlayers();
+        }
       )
-      .subscribe()
-
-    const gameStateChannel = supabase
-      .channel(`game-state-${code}`)
       .on(
         "postgres_changes",
         {
@@ -226,19 +469,9 @@ export default function JuegoPage() {
           filter: `room_code=eq.${code}`,
         },
         async () => {
-          const { data } = await supabase
-            .from("game_state")
-            .select("*")
-            .eq("room_code", code)
-            .maybeSingle()
-
-          setGameState(data || null)
-        },
+          await fetchGameState();
+        }
       )
-      .subscribe()
-
-    const roomChannel = supabase
-      .channel(`room-status-${code}`)
       .on(
         "postgres_changes",
         {
@@ -247,335 +480,283 @@ export default function JuegoPage() {
           table: "rooms",
           filter: `code=eq.${code}`,
         },
-        (payload) => {
-          const updatedRoom = payload.new as Room
-          setRoom(updatedRoom)
+        async (payload) => {
+          const nextStatus = (payload.new as { status?: string } | null)?.status;
+          if (nextStatus) {
+            setRoomStatus(nextStatus);
 
-          if (updatedRoom.status === "waiting") {
-            router.push(`/sala/${code}`)
+            if (nextStatus === "waiting") {
+              router.push(`/sala/${code}`);
+            }
+          } else {
+            await fetchRoom();
           }
-        },
+        }
       )
-      .subscribe()
+      .subscribe();
 
     return () => {
-      supabase.removeChannel(playersChannel)
-      supabase.removeChannel(gameStateChannel)
-      supabase.removeChannel(roomChannel)
-    }
-  }, [code, router, supabase])
+      supabase.removeChannel(channel);
+    };
+  }, [code, fetchGameState, fetchPlayers, fetchRoom, router]);
 
-  const submitMove = async (move: string) => {
-    if (!myPlayer || !gameState || submittingMove) return
-    if (gameState.state.phase === "finished") return
-    if (myMove) return
+  useEffect(() => {
+    resolveRoundIfNeeded();
+  }, [resolveRoundIfNeeded]);
 
-    setSubmittingMove(true)
+  useEffect(() => {
+    if (!isHost) return;
+    if (!gameState.canAdvanceRound) return;
+    if (gameState.matchOver) return;
+    if (lastAutoAdvanceRoundRef.current === gameState.round) return;
 
-    const updatedMoves = {
-      ...gameState.state.moves,
-      [myPlayer.id]: move,
-    }
+    lastAutoAdvanceRoundRef.current = gameState.round;
 
-    let result: string | null = null
-    let winnerId: string | null = null
-    let phase: GameStateData["phase"] = "playing"
-    const updatedScores: ScoreMap = { ...gameState.state.scores }
+    autoAdvanceRef.current = setTimeout(async () => {
+      await updateGameState((prev) => {
+        if (!prev.canAdvanceRound || prev.matchOver) return prev;
 
-    const playerIds = players.map((p) => p.id)
-    const everyonePlayed =
-      playerIds.length >= 2 && playerIds.every((id) => !!updatedMoves[id])
+        const clearedChoices: Record<string, Choice> = {};
+        for (const playerName of Object.keys(prev.playerChoices ?? {})) {
+          clearedChoices[playerName] = null;
+        }
 
-    if (everyonePlayed) {
-      const moveA = updatedMoves[playerIds[0]]
-      const moveB = updatedMoves[playerIds[1]]
-      const winner = getWinner(moveA, moveB)
+        return {
+          ...prev,
+          round: prev.round + 1,
+          playerChoices: clearedChoices,
+          roundWinner: null,
+          resultText: null,
+          canAdvanceRound: false,
+          rematchVotes: [],
+        };
+      });
+    }, 2200);
 
-      phase = "finished"
-
-      if (winner === "tie") {
-        result = "Empate"
-        winnerId = null
-      } else if (winner === "player1") {
-        winnerId = playerIds[0]
-        updatedScores[winnerId] = (updatedScores[winnerId] || 0) + 1
-        const winnerPlayer = players.find((p) => p.id === winnerId)
-        result = `${winnerPlayer?.player_name || "Jugador 1"} gana`
-      } else {
-        winnerId = playerIds[1]
-        updatedScores[winnerId] = (updatedScores[winnerId] || 0) + 1
-        const winnerPlayer = players.find((p) => p.id === winnerId)
-        result = `${winnerPlayer?.player_name || "Jugador 2"} gana`
+    return () => {
+      if (autoAdvanceRef.current) {
+        clearTimeout(autoAdvanceRef.current);
       }
-    }
+    };
+  }, [isHost, gameState.canAdvanceRound, gameState.matchOver, gameState.round, updateGameState]);
 
-    const { error } = await supabase
-      .from("game_state")
-      .update({
-        state: {
-          ...gameState.state,
-          moves: updatedMoves,
-          result,
-          winnerId,
-          phase,
-          scores: updatedScores,
-        },
-        updated_at: new Date().toISOString(),
-      })
-      .eq("room_code", code)
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceRef.current) {
+        clearTimeout(autoAdvanceRef.current);
+      }
+    };
+  }, []);
 
-    if (error) {
-      console.error("Error guardando jugada:", error)
-      alert("No se pudo guardar la jugada")
-    }
-
-    setSubmittingMove(false)
-  }
-
-  const resetRound = async () => {
-    if (!gameState || resettingRound) return
-
-    setResettingRound(true)
-
-    const { error } = await supabase
-      .from("game_state")
-      .update({
-        state: {
-          ...gameState.state,
-          phase: "playing",
-          moves: {},
-          result: null,
-          winnerId: null,
-          round: gameState.state.round + 1,
-        },
-        updated_at: new Date().toISOString(),
-      })
-      .eq("room_code", code)
-
-    if (error) {
-      console.error("Error reiniciando ronda:", error)
-      alert("No se pudo reiniciar la ronda")
-    }
-
-    setResettingRound(false)
-  }
-
-  const endMatch = async () => {
-    if (!isHost || endingMatch) return
-
-    const confirmed = window.confirm(
-      "¿Seguro que quieres terminar la partida y volver a la sala?"
-    )
-
-    if (!confirmed) return
-
-    setEndingMatch(true)
-
-    const resetScores: ScoreMap = {}
-    players.forEach((player) => {
-      resetScores[player.id] = 0
-    })
-
-    const gameStatePromise = supabase
-      .from("game_state")
-      .update({
-        state: {
-          phase: "playing",
-          moves: {},
-          result: null,
-          winnerId: null,
-          round: 1,
-          scores: resetScores,
-        },
-        updated_at: new Date().toISOString(),
-      })
-      .eq("room_code", code)
-
-    const roomPlayersPromise = supabase
-      .from("room_players")
-      .update({ is_ready: false })
-      .eq("room_code", code)
-
-    const roomPromise = supabase
-      .from("rooms")
-      .update({
-        status: "waiting",
-        started_at: null,
-      })
-      .eq("code", code)
-
-    const [gameStateResult, playersResult, roomResult] = await Promise.all([
-      gameStatePromise,
-      roomPlayersPromise,
-      roomPromise,
-    ])
-
-    if (gameStateResult.error || playersResult.error || roomResult.error) {
-      console.error("Error terminando partida:", {
-        gameStateError: gameStateResult.error,
-        playersError: playersResult.error,
-        roomError: roomResult.error,
-      })
-      alert("No se pudo terminar la partida correctamente.")
-      setEndingMatch(false)
-      return
-    }
-
-    router.push(`/sala/${code}`)
-  }
-
-  const goBackToSala = () => {
-    router.push(`/sala/${code}`)
-  }
+  const rematchVotesCount = gameState.rematchVotes?.length ?? 0;
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-white">
-        Cargando juego...
+      <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center p-6">
+        <div className="text-center">
+          <p className="text-xl font-semibold">Cargando partida...</p>
+        </div>
       </div>
-    )
-  }
-
-  if (error || !room || !gameState) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center text-white gap-4">
-        <p>{error || "No se pudo cargar el juego"}</p>
-        <Button onClick={() => router.push("/")}>Volver al inicio</Button>
-      </div>
-    )
+    );
   }
 
   return (
-    <div className="min-h-screen text-white p-6">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex flex-wrap gap-3 mb-6">
-          <Button variant="outline" className="flex gap-2" onClick={goBackToSala}>
-            <ArrowLeft size={16} />
-            Volver a la sala
-          </Button>
+    <main className="min-h-screen bg-neutral-950 text-white p-4 md:p-8">
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-6 flex flex-col gap-4 rounded-3xl border border-white/10 bg-white/5 p-5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm uppercase tracking-[0.2em] text-white/60">La Mesa Familiar</p>
+            <h1 className="text-3xl font-bold">Piedra, Papel o Tijera</h1>
+            <p className="mt-1 text-white/70">
+              Sala: <span className="font-semibold text-white">{code}</span>
+            </p>
+            <p className="text-white/70">
+              Estado room: <span className="font-semibold text-white">{roomStatus}</span>
+            </p>
+            <p className="text-white/70">
+              Jugador actual: <span className="font-semibold text-emerald-400">{currentPlayerName || "No detectado"}</span>
+            </p>
+          </div>
 
-          {isHost && (
-            <Button
-              variant="destructive"
-              className="flex gap-2"
-              onClick={endMatch}
-              disabled={endingMatch}
-            >
-              <LogOut size={16} />
-              Terminar partida
-            </Button>
-          )}
+          <div className="rounded-2xl bg-white/5 px-4 py-3 text-center">
+            <p className="text-sm text-white/60">Modo</p>
+            <p className="text-xl font-bold text-yellow-400">Mejor de 3</p>
+            <p className="text-sm text-white/60">Primero en ganar 2 rondas</p>
+          </div>
         </div>
 
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
-            <div>
-              <h1 className="text-3xl font-bold">Piedra, Papel o Tijera</h1>
-              <p className="text-zinc-300 mt-2">
-                Código de sala: <span className="font-bold text-white">{code}</span>
-              </p>
-              <p className="text-zinc-300">
-                Estado actual:{" "}
-                <span className="font-bold text-green-400">
-                  {gameState.state.phase}
-                </span>
-              </p>
-            </div>
-
-            <div className="bg-zinc-800 rounded-xl px-4 py-3">
-              <p className="text-sm text-zinc-400">Ronda actual</p>
-              <p className="text-2xl font-bold">{gameState.state.round}</p>
-            </div>
+        {!bothPlayersPresent && (
+          <div className="mb-6 rounded-3xl border border-yellow-500/20 bg-yellow-500/10 p-5">
+            <p className="text-lg font-semibold text-yellow-300">Esperando al segundo jugador...</p>
           </div>
+        )}
 
-          <div className="grid md:grid-cols-2 gap-4 mb-6">
-            {players.map((player) => {
-              const move = gameState.state.moves?.[player.id]
-              const score = gameState.state.scores?.[player.id] || 0
-              const isWinner = gameState.state.winnerId === player.id
+        <div className="mb-6 grid gap-4 md:grid-cols-2">
+          {sortedPlayers.map((player) => {
+            const score = gameState.scores?.[player.player_name] ?? 0;
+            const selected = gameState.playerChoices?.[player.player_name] ?? null;
+            const isCurrent = player.player_name === currentPlayerName;
 
-              return (
-                <div key={player.id} className="bg-zinc-800 rounded-xl p-5">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="font-bold text-lg">{player.player_name}</p>
-                    <div className="flex items-center gap-2 text-yellow-400">
-                      <Trophy size={16} />
-                      <span className="font-bold">{score}</span>
-                    </div>
+            return (
+              <div
+                key={player.id}
+                className={`rounded-3xl border p-5 ${
+                  isCurrent
+                    ? "border-emerald-400/40 bg-emerald-500/10"
+                    : "border-white/10 bg-white/5"
+                }`}
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-xl font-bold">
+                      {player.player_name} {player.is_host ? "👑" : ""}
+                    </p>
+                    <p className="text-sm text-white/60">{isCurrent ? "Tú" : "Rival"}</p>
                   </div>
 
-                  {!bothPlayed ? (
-                    <p className="text-zinc-400">
-                      {move ? "Ya eligió" : "Esperando jugada..."}
-                    </p>
-                  ) : (
-                    <p className="text-zinc-300 flex items-center gap-2">
-                      {move ? getMoveIcon(move) : null}
-                      <span className="font-semibold">{getMoveLabel(move)}</span>
-                    </p>
-                  )}
-
-                  {gameState.state.phase === "finished" && isWinner && (
-                    <p className="text-green-400 font-semibold mt-2">Ganó esta ronda</p>
-                  )}
+                  <div className="rounded-2xl bg-black/30 px-4 py-2 text-center">
+                    <p className="text-xs uppercase tracking-widest text-white/50">Marcador</p>
+                    <p className="text-2xl font-bold text-yellow-400">{score}</p>
+                  </div>
                 </div>
-              )
-            })}
+
+                <div className="rounded-2xl bg-black/20 px-4 py-3">
+                  <p className="text-sm text-white/60">Jugada actual</p>
+                  <p className="text-lg font-semibold capitalize">
+                    {selected ? selected : "Aún no elige"}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {!gameState.matchOver && (
+          <div className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-5">
+            <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm uppercase tracking-[0.2em] text-white/60">Ronda actual</p>
+                <h2 className="text-2xl font-bold">Ronda {gameState.round}</h2>
+              </div>
+
+              <div className="rounded-2xl bg-black/20 px-4 py-3">
+                <p className="text-sm text-white/60">
+                  {gameState.resultText
+                    ? gameState.resultText
+                    : myChoice
+                    ? "Esperando al otro jugador..."
+                    : "Haz tu elección"}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-3">
+              <button
+                onClick={() => handleChoice("piedra")}
+                disabled={!bothPlayersPresent || !!myChoice || !!gameState.roundWinner || gameState.canAdvanceRound}
+                className="rounded-2xl border border-white/10 bg-white/10 px-5 py-4 text-lg font-semibold transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                ✊ Piedra
+              </button>
+
+              <button
+                onClick={() => handleChoice("papel")}
+                disabled={!bothPlayersPresent || !!myChoice || !!gameState.roundWinner || gameState.canAdvanceRound}
+                className="rounded-2xl border border-white/10 bg-white/10 px-5 py-4 text-lg font-semibold transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                ✋ Papel
+              </button>
+
+              <button
+                onClick={() => handleChoice("tijera")}
+                disabled={!bothPlayersPresent || !!myChoice || !!gameState.roundWinner || gameState.canAdvanceRound}
+                className="rounded-2xl border border-white/10 bg-white/10 px-5 py-4 text-lg font-semibold transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                ✌️ Tijera
+              </button>
+            </div>
           </div>
+        )}
 
-          <div className="bg-zinc-800 rounded-xl p-6 mb-6">
-            <p className="text-xl font-semibold mb-4">Tu elección</p>
+        {gameState.matchOver && (
+          <div className="mb-6 rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6">
+            <div className="text-center">
+              <p className="mb-2 text-sm uppercase tracking-[0.3em] text-yellow-300">Campeón</p>
+              <h2 className="text-4xl font-extrabold text-yellow-400">
+                👑 {gameState.champion}
+              </h2>
+              <p className="mt-3 text-lg text-white/80">
+                La partida terminó. Ya tenemos campeón del mejor de 3.
+              </p>
+            </div>
 
-            <div className="flex flex-wrap gap-3 mb-4">
-              {OPTIONS.map((option) => (
-                <Button
-                  key={option}
-                  onClick={() => submitMove(option)}
-                  disabled={
-                    !!myMove ||
-                    gameState.state.phase === "finished" ||
-                    submittingMove
-                  }
-                  className="flex items-center gap-2"
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              {sortedPlayers.map((player) => (
+                <div
+                  key={player.id}
+                  className={`rounded-2xl border p-4 ${
+                    player.player_name === gameState.champion
+                      ? "border-yellow-400/40 bg-yellow-500/10"
+                      : "border-white/10 bg-white/5"
+                  }`}
                 >
-                  {getMoveIcon(option)}
-                  {option}
-                </Button>
+                  <p className="text-lg font-bold">{player.player_name}</p>
+                  <p className="text-white/70">
+                    Rondas ganadas:{" "}
+                    <span className="font-bold text-white">
+                      {gameState.scores?.[player.player_name] ?? 0}
+                    </span>
+                  </p>
+                </div>
               ))}
             </div>
 
-            <div className="text-zinc-400">
-              {myMove ? `Ya elegiste: ${getMoveLabel(myMove)}` : "Aún no has elegido"}
+            <div className="mt-6 flex flex-col gap-3 md:flex-row md:justify-center">
+              <button
+                onClick={handleRematch}
+                className="rounded-2xl bg-emerald-500 px-6 py-3 font-bold text-black transition hover:bg-emerald-400"
+              >
+                Revancha
+              </button>
+
+              <button
+                onClick={handleBackToRoom}
+                className="rounded-2xl border border-white/15 bg-white/10 px-6 py-3 font-bold transition hover:bg-white/15"
+              >
+                Volver a sala
+              </button>
             </div>
 
-            {!bothPlayed && myMove && (
-              <p className="text-yellow-400 mt-3">
-                Esperando a que el otro jugador elija...
-              </p>
-            )}
+            <p className="mt-4 text-center text-sm text-white/60">
+              Votos de revancha: {rematchVotesCount}/{Math.max(sortedPlayers.length, 2)}
+            </p>
           </div>
+        )}
 
-          {gameState.state.phase === "finished" && (
-            <div className="bg-zinc-800 rounded-xl p-6">
-              <p className="text-2xl font-bold mb-2">Resultado</p>
-              <p className="text-green-400 font-semibold text-lg mb-4">
-                {gameState.state.result}
-              </p>
-
-              <div className="flex flex-wrap gap-3">
-                <Button onClick={resetRound} disabled={resettingRound}>
-                  Jugar otra vez
-                </Button>
-
-                <Button variant="secondary" onClick={goBackToSala}>
-                  <Home size={16} className="mr-2" />
-                  Volver a sala
-                </Button>
-              </div>
-            </div>
-          )}
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+          <h3 className="mb-3 text-xl font-bold">Resumen en tiempo real</h3>
+          <div className="space-y-2 text-white/75">
+            <p>
+              Tu jugada:{" "}
+              <span className="font-semibold capitalize text-white">
+                {myChoice ?? "Aún no eliges"}
+              </span>
+            </p>
+            <p>
+              Jugada rival:{" "}
+              <span className="font-semibold capitalize text-white">
+                {opponentChoice ?? "Esperando..."}
+              </span>
+            </p>
+            <p>
+              Resultado:{" "}
+              <span className="font-semibold text-white">
+                {gameState.resultText ?? "Sin resultado todavía"}
+              </span>
+            </p>
+          </div>
         </div>
       </div>
-    </div>
-  )
+    </main>
+  );
 }
