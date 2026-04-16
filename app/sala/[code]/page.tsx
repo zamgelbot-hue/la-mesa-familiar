@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
 
 type Room = {
   id: string;
@@ -19,6 +20,8 @@ type RoomPlayer = {
   is_host: boolean;
   is_ready: boolean;
   created_at: string;
+  user_id: string | null;
+  is_guest: boolean;
 };
 
 type Game = {
@@ -31,6 +34,16 @@ type Game = {
   status: "available" | "coming_soon";
   sort_order: number;
 };
+
+type ProfileMap = Record<
+  string,
+  {
+    display_name: string | null;
+    avatar_key: string | null;
+    frame_key: string | null;
+    points: number | null;
+  }
+>;
 
 const getPlayerStorageKey = (roomCode: string) => `lmf:player:${roomCode}`;
 
@@ -122,6 +135,7 @@ export default function SalaPage() {
 
   const [room, setRoom] = useState<Room | null>(null);
   const [players, setPlayers] = useState<RoomPlayer[]>([]);
+  const [profilesMap, setProfilesMap] = useState<ProfileMap>({});
   const [game, setGame] = useState<Game | null>(null);
   const [currentPlayerName, setCurrentPlayerName] = useState("");
   const [loading, setLoading] = useState(true);
@@ -144,6 +158,42 @@ export default function SalaPage() {
     const me = sortedPlayers.find((p) => p.player_name === currentPlayerName);
     return !!me?.is_host;
   }, [sortedPlayers, currentPlayerName]);
+
+  const fetchProfilesForPlayers = useCallback(
+    async (playerList: RoomPlayer[]) => {
+      const userIds = Array.from(
+        new Set(playerList.map((p) => p.user_id).filter(Boolean))
+      ) as string[];
+
+      if (userIds.length === 0) {
+        setProfilesMap({});
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, display_name, avatar_key, frame_key, points")
+        .in("id", userIds);
+
+      if (error) {
+        console.error("Error cargando perfiles de jugadores:", error);
+        return;
+      }
+
+      const nextMap: ProfileMap = {};
+      for (const profile of data ?? []) {
+        nextMap[profile.id] = {
+          display_name: profile.display_name,
+          avatar_key: profile.avatar_key,
+          frame_key: profile.frame_key,
+          points: profile.points,
+        };
+      }
+
+      setProfilesMap(nextMap);
+    },
+    [supabase]
+  );
 
   const fetchRoom = useCallback(async () => {
     const { data, error } = await supabase
@@ -178,6 +228,7 @@ export default function SalaPage() {
 
     const list = (data ?? []) as RoomPlayer[];
     setPlayers(list);
+    await fetchProfilesForPlayers(list);
 
     const storedName = readStoredPlayerName(code);
     if (storedName && list.some((player) => player.player_name === storedName)) {
@@ -185,7 +236,7 @@ export default function SalaPage() {
     }
 
     return list;
-  }, [supabase, code]);
+  }, [supabase, code, fetchProfilesForPlayers]);
 
   const fetchGame = useCallback(
     async (gameSlug?: string | null) => {
@@ -432,9 +483,7 @@ export default function SalaPage() {
                   <p className="text-xs uppercase tracking-[0.3em] text-orange-200">
                     Juego seleccionado
                   </p>
-                  <p className="mt-2 text-4xl font-extrabold text-white">
-                    {game.name}
-                  </p>
+                  <p className="mt-2 text-4xl font-extrabold text-white">{game.name}</p>
                   <p className="mt-2 text-sm text-white/70">
                     {game.min_players}-{game.max_players} jugadores
                   </p>
@@ -462,9 +511,7 @@ export default function SalaPage() {
                     <p className="text-lg font-bold">
                       {player.player_name} {player.is_host ? "👑" : ""}
                     </p>
-                    <p className="text-sm text-white/60">
-                      Usar esta identidad en este navegador
-                    </p>
+                    <p className="text-sm text-white/60">Usar esta identidad en este navegador</p>
                   </button>
                 ))}
               </div>
@@ -474,6 +521,13 @@ export default function SalaPage() {
           <div className="mt-8 space-y-4">
             {sortedPlayers.map((player) => {
               const isMe = player.player_name === currentPlayerName;
+              const profile = player.user_id ? profilesMap[player.user_id] : null;
+              const avatar = getAvatarByKey(
+                player.is_guest ? "avatar_guest" : profile?.avatar_key ?? "avatar_sun"
+              );
+              const frame = getFrameByKey(
+                player.is_guest ? "frame_guest" : profile?.frame_key ?? "frame_orange"
+              );
 
               return (
                 <div
@@ -484,13 +538,21 @@ export default function SalaPage() {
                       : "border-white/10 bg-white/[0.03]"
                   }`}
                 >
-                  <div>
-                    <p className="text-3xl font-extrabold">
-                      {player.player_name} {player.is_host ? "👑" : ""}
-                    </p>
-                    <p className="mt-1 text-white/60">
-                      {isMe ? "Tú" : "Jugador en sala"}
-                    </p>
+                  <div className="flex items-center gap-4">
+                    <div
+                      className={`flex h-16 w-16 items-center justify-center rounded-full border-4 bg-black text-2xl ${frame.className}`}
+                    >
+                      <span>{avatar.emoji}</span>
+                    </div>
+
+                    <div>
+                      <p className="text-3xl font-extrabold">
+                        {player.player_name} {player.is_host ? "👑" : ""}
+                      </p>
+                      <p className="mt-1 text-white/60">
+                        {isMe ? "Tú" : player.is_guest ? "Invitado en sala" : "Jugador registrado"}
+                      </p>
+                    </div>
                   </div>
 
                   <span
