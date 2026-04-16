@@ -89,19 +89,7 @@ export default function JuegoPage() {
       if (value && value.trim()) return value.trim();
     }
 
-    const sessionKeys = [
-      `la-mesa-player-name-${roomCode}`,
-      `mesa-player-name-${roomCode}`,
-      `player_name_${roomCode}`,
-      `playerName_${roomCode}`,
-      `room_player_name_${roomCode}`,
-      `roomPlayerName_${roomCode}`,
-      "player_name",
-      "playerName",
-      "nombreJugador",
-    ];
-
-    for (const key of sessionKeys) {
+    for (const key of keys) {
       const value = sessionStorage.getItem(key);
       if (value && value.trim()) return value.trim();
     }
@@ -162,6 +150,21 @@ export default function JuegoPage() {
 
   const myChoice = gameState.playerChoices?.[currentPlayerName] ?? null;
   const opponentChoice = gameState.playerChoices?.[opponentName] ?? null;
+
+  const bothChoicesSubmitted = useMemo(() => {
+    if (sortedPlayers.length < 2) return false;
+
+    const p1 = sortedPlayers[0]?.player_name;
+    const p2 = sortedPlayers[1]?.player_name;
+
+    if (!p1 || !p2) return false;
+
+    return Boolean(
+      gameState.playerChoices?.[p1] && gameState.playerChoices?.[p2]
+    );
+  }, [sortedPlayers, gameState.playerChoices]);
+
+  const shouldRevealChoices = bothChoicesSubmitted || !!gameState.roundWinner || !!gameState.matchOver;
 
   const buildFreshState = useCallback((playerList: RoomPlayer[]): GameState => {
     const playerChoices: Record<string, Choice> = {};
@@ -540,6 +543,20 @@ export default function JuegoPage() {
     setCurrentPlayerName(playerName);
   };
 
+  const getVisibleChoiceLabel = (playerName: string, selected: Choice, isCurrent: boolean) => {
+    if (!selected) return "Aún no elige";
+
+    if (shouldRevealChoices) {
+      return selected;
+    }
+
+    if (isCurrent) {
+      return "Elección bloqueada";
+    }
+
+    return "Esperando...";
+  };
+
   useEffect(() => {
     let mounted = true;
 
@@ -775,6 +792,7 @@ export default function JuegoPage() {
             const score = gameState.scores?.[player.player_name] ?? 0;
             const selected = gameState.playerChoices?.[player.player_name] ?? null;
             const isCurrent = player.player_name === currentPlayerName;
+            const visibleChoice = getVisibleChoiceLabel(player.player_name, selected, isCurrent);
 
             return (
               <div
@@ -801,9 +819,7 @@ export default function JuegoPage() {
 
                 <div className="rounded-2xl bg-black/20 px-4 py-3">
                   <p className="text-sm text-white/60">Jugada actual</p>
-                  <p className="text-lg font-semibold capitalize">
-                    {selected ? selected : "Aún no elige"}
-                  </p>
+                  <p className="text-lg font-semibold capitalize">{visibleChoice}</p>
                 </div>
               </div>
             );
@@ -824,7 +840,7 @@ export default function JuegoPage() {
                     ? "Primero selecciona tu jugador"
                     : gameState.resultText
                     ? gameState.resultText
-                    : myChoice
+                    : myChoice && !shouldRevealChoices
                     ? "Esperando al otro jugador..."
                     : "Haz tu elección"}
                 </p>
@@ -938,13 +954,13 @@ export default function JuegoPage() {
             <p>
               Tu jugada:{" "}
               <span className="font-semibold capitalize text-white">
-                {myChoice ?? "Aún no eliges"}
+                {!myChoice ? "Aún no eliges" : shouldRevealChoices ? myChoice : "Elección bloqueada"}
               </span>
             </p>
             <p>
               Jugada rival:{" "}
               <span className="font-semibold capitalize text-white">
-                {opponentChoice ?? "Esperando..."}
+                {!opponentChoice ? "Esperando..." : shouldRevealChoices ? opponentChoice : "Esperando..."}
               </span>
             </p>
             <p>
