@@ -17,7 +17,7 @@ export default function AccesoPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
+  const [displayName, setDisplayName] = useState("");
   const [guestName, setGuestName] = useState("");
 
   const [loading, setLoading] = useState(false);
@@ -35,7 +35,7 @@ export default function AccesoPage() {
       return "Accede con tu cuenta para guardar progreso y preparar el sistema de puntos.";
     }
     if (mode === "register") {
-      return "Crea tu cuenta para tener identidad fija dentro de La Mesa Familiar.";
+      return "Crea tu cuenta con un nombre visible para tener identidad fija dentro de La Mesa Familiar.";
     }
     return "Entra rápido con un nombre temporal. Los invitados podrán jugar, pero no acumularán puntos permanentes.";
   }, [mode]);
@@ -79,7 +79,20 @@ export default function AccesoPage() {
     e.preventDefault();
     resetFeedback();
 
-    if (!email.trim() || !password.trim()) {
+    const normalizedEmail = email.trim();
+    const normalizedDisplayName = displayName.trim();
+
+    if (!normalizedDisplayName) {
+      setErrorMessage("Escribe un nombre visible.");
+      return;
+    }
+
+    if (normalizedDisplayName.length < 2) {
+      setErrorMessage("El nombre visible debe tener al menos 2 caracteres.");
+      return;
+    }
+
+    if (!normalizedEmail || !password.trim()) {
       setErrorMessage("Escribe tu correo y contraseña.");
       return;
     }
@@ -92,9 +105,14 @@ export default function AccesoPage() {
     try {
       setLoading(true);
 
-      const { error } = await supabase.auth.signUp({
-        email: email.trim(),
+      const { data, error } = await supabase.auth.signUp({
+        email: normalizedEmail,
         password,
+        options: {
+          data: {
+            display_name: normalizedDisplayName,
+          },
+        },
       });
 
       if (error) {
@@ -102,7 +120,26 @@ export default function AccesoPage() {
         return;
       }
 
-      setMessage("Cuenta creada correctamente. Ya puedes continuar.");
+      const userId = data.user?.id;
+
+      if (userId) {
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .update({
+            display_name: normalizedDisplayName,
+            avatar_key: "avatar_sun",
+            frame_key: "frame_orange",
+          })
+          .eq("id", userId);
+
+        if (profileError) {
+          console.error("Error actualizando perfil tras registro:", profileError);
+        }
+      }
+
+      setMessage(
+        "Cuenta creada correctamente. Revisa tu correo para verificarla si es necesario."
+      );
       router.push("/");
       router.refresh();
     } finally {
@@ -250,6 +287,20 @@ export default function AccesoPage() {
                 <form onSubmit={handleRegister} className="space-y-4">
                   <div>
                     <label className="mb-2 block text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
+                      Nombre visible
+                    </label>
+                    <input
+                      type="text"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      placeholder="Ejemplo: Angel"
+                      maxLength={20}
+                      className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
                       Correo
                     </label>
                     <input
@@ -343,9 +394,9 @@ export default function AccesoPage() {
               </div>
 
               <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                <p className="text-xl font-bold">Invitado rápido</p>
+                <p className="text-xl font-bold">Avatar y marco</p>
                 <p className="mt-2 text-white/65">
-                  Si solo quieres jugar ya, puedes entrar con un nombre temporal sin crear cuenta.
+                  Desde el perfil podrás elegir avatares y marcos predeterminados para personalizarte.
                 </p>
               </div>
             </div>
@@ -355,8 +406,8 @@ export default function AccesoPage() {
                 Estado actual
               </p>
               <p className="mt-3 text-white/75">
-                En este paso dejamos listo el acceso. En el siguiente amarramos esta identidad
-                a la Home, Sala y Juego para que ya no dependa del nombre fijo “Anfitrión / Jugador 1”.
+                En este paso dejamos listo el registro con nombre visible. En el siguiente,
+                el perfil ya permitirá elegir avatar y marco predeterminados.
               </p>
             </div>
           </aside>
