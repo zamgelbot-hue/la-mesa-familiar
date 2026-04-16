@@ -69,10 +69,57 @@ export default function JuegoPage() {
     return sortedPlayers.find((p) => p.is_host) ?? null;
   }, [sortedPlayers]);
 
-  const isHost = hostPlayer?.player_name === currentPlayerName;
+  const detectStoredPlayerName = useCallback((roomCode: string) => {
+    if (typeof window === "undefined") return "";
+
+    const keys = [
+      `la-mesa-player-name-${roomCode}`,
+      `mesa-player-name-${roomCode}`,
+      `player_name_${roomCode}`,
+      `playerName_${roomCode}`,
+      `room_player_name_${roomCode}`,
+      `roomPlayerName_${roomCode}`,
+      "player_name",
+      "playerName",
+      "nombreJugador",
+    ];
+
+    for (const key of keys) {
+      const value = localStorage.getItem(key);
+      if (value && value.trim()) return value.trim();
+    }
+
+    return "";
+  }, []);
+
+  const resolveCurrentPlayerName = useCallback(
+    (playerList: RoomPlayer[]) => {
+      const storedName = detectStoredPlayerName(code);
+
+      if (
+        storedName &&
+        playerList.some((player) => player.player_name === storedName)
+      ) {
+        return storedName;
+      }
+
+      if (playerList.length === 0) return "";
+
+      // Fallback temporal para no bloquear el juego
+      return playerList[0].player_name;
+    },
+    [code, detectStoredPlayerName]
+  );
+
+  const isHost = useMemo(() => {
+    return hostPlayer?.player_name === currentPlayerName;
+  }, [hostPlayer, currentPlayerName]);
 
   const opponentName = useMemo(() => {
-    return sortedPlayers.find((p) => p.player_name !== currentPlayerName)?.player_name ?? "";
+    return (
+      sortedPlayers.find((p) => p.player_name !== currentPlayerName)?.player_name ??
+      ""
+    );
   }, [sortedPlayers, currentPlayerName]);
 
   const myChoice = gameState.playerChoices?.[currentPlayerName] ?? null;
@@ -100,28 +147,6 @@ export default function JuegoPage() {
     };
   }, []);
 
-  const getStoredPlayerName = useCallback((roomCode: string) => {
-    if (typeof window === "undefined") return "";
-
-    const keys = [
-      `la-mesa-player-name-${roomCode}`,
-      `mesa-player-name-${roomCode}`,
-      `player_name_${roomCode}`,
-      `playerName_${roomCode}`,
-      `room_player_name_${roomCode}`,
-      "player_name",
-      "playerName",
-      "nombreJugador",
-    ];
-
-    for (const key of keys) {
-      const value = localStorage.getItem(key);
-      if (value && value.trim()) return value.trim();
-    }
-
-    return "";
-  }, []);
-
   const fetchPlayers = useCallback(async () => {
     const { data, error } = await supabase
       .from("room_players")
@@ -136,8 +161,12 @@ export default function JuegoPage() {
 
     const list = (data ?? []) as RoomPlayer[];
     setPlayers(list);
+
+    const resolvedName = resolveCurrentPlayerName(list);
+    setCurrentPlayerName(resolvedName);
+
     return list;
-  }, [supabase, code]);
+  }, [supabase, code, resolveCurrentPlayerName]);
 
   const fetchRoom = useCallback(async () => {
     const { data, error } = await supabase
@@ -166,34 +195,54 @@ export default function JuegoPage() {
 
       if (error) {
         console.error("Error consultando game_state:", error);
-        const fresh = buildFreshState(playerList);
-        setGameState(fresh);
         return;
       }
 
-      if (!data) {
-        const fresh = buildFreshState(playerList);
+      if (data) {
+        const merged: GameState = {
+          ...DEFAULT_STATE,
+          ...(data.state as Partial<GameState>),
+        };
+        setGameState(merged);
+        return;
+      }
 
-        const { error: insertError } = await supabase.from("game_state").insert({
-          room_code: code,
-          state: fresh,
-          updated_at: new Date().toISOString(),
-        });
+      const fresh = buildFreshState(playerList);
 
-        if (insertError) {
-          console.error("Error creando game_state:", insertError);
+      const { error: insertError } = await supabase.from("game_state").insert({
+        room_code: code,
+        state: fresh,
+        updated_at: new Date().toISOString(),
+      });
+
+      if (insertError) {
+        console.error("Error creando game_state:", insertError);
+
+        // Si otro cliente la creó justo al mismo tiempo, solo volvemos a leer
+        const { data: retryData, error: retryError } = await supabase
+          .from("game_state")
+          .select("id, state")
+          .eq("room_code", code)
+          .maybeSingle();
+
+        if (retryError) {
+          console.error("Error releyendo game_state tras conflicto:", retryError);
+          return;
         }
 
-        setGameState(fresh);
+        if (retryData?.state) {
+          const mergedRetry: GameState = {
+            ...DEFAULT_STATE,
+            ...(retryData.state as Partial<GameState>),
+          };
+          setGameState(mergedRetry);
+          return;
+        }
+
         return;
       }
 
-      const merged: GameState = {
-        ...DEFAULT_STATE,
-        ...(data.state as Partial<GameState>),
-      };
-
-      setGameState(merged);
+      setGameState(fresh);
     },
     [supabase, code, buildFreshState]
   );
@@ -219,27 +268,6 @@ export default function JuegoPage() {
 
     setGameState(merged);
   }, [supabase, code]);
-
-  const writeGameState = useCallback(
-    async (nextState: GameState) => {
-      const { error } = await supabase
-        .from("game_state")
-        .update({
-          state: nextState,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("room_code", code);
-
-      if (error) {
-        console.error("Error guardando game_state:", error);
-        return false;
-      }
-
-      setGameState(nextState);
-      return true;
-    },
-    [supabase, code]
-  );
 
   const updateGameState = useCallback(
     async (updater: (prev: GameState) => GameState) => {
@@ -275,6 +303,27 @@ export default function JuegoPage() {
       }
 
       setGameState(next);
+    },
+    [supabase, code]
+  );
+
+  const writeGameState = useCallback(
+    async (nextState: GameState) => {
+      const { error } = await supabase
+        .from("game_state")
+        .update({
+          state: nextState,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("room_code", code);
+
+      if (error) {
+        console.error("Error guardando game_state:", error);
+        return false;
+      }
+
+      setGameState(nextState);
+      return true;
     },
     [supabase, code]
   );
@@ -393,28 +442,7 @@ export default function JuegoPage() {
     });
   };
 
-  const handleRematch = async () => {
-    if (!currentPlayerName) return;
-
-    await updateGameState((prev) => {
-      const votes = Array.from(new Set([...(prev.rematchVotes ?? []), currentPlayerName]));
-
-      const allAccepted =
-        sortedPlayers.length >= 2 &&
-        sortedPlayers.every((player) => votes.includes(player.player_name));
-
-      if (allAccepted) {
-        return buildFreshState(sortedPlayers);
-      }
-
-      return {
-        ...prev,
-        rematchVotes: votes,
-      };
-    });
-  };
-
-  const handleBackToRoom = async () => {
+  const goBackToRoom = useCallback(async () => {
     const fresh = buildFreshState(sortedPlayers);
 
     const { error: roomError } = await supabase
@@ -443,6 +471,31 @@ export default function JuegoPage() {
     await writeGameState(fresh);
 
     router.push(`/sala/${code}`);
+  }, [buildFreshState, sortedPlayers, supabase, code, writeGameState, router]);
+
+  const handleRematch = async () => {
+    if (!currentPlayerName) return;
+
+    await updateGameState((prev) => {
+      const votes = Array.from(new Set([...(prev.rematchVotes ?? []), currentPlayerName]));
+
+      const allAccepted =
+        sortedPlayers.length >= 2 &&
+        sortedPlayers.every((player) => votes.includes(player.player_name));
+
+      if (allAccepted) {
+        return buildFreshState(sortedPlayers);
+      }
+
+      return {
+        ...prev,
+        rematchVotes: votes,
+      };
+    });
+  };
+
+  const handleTerminateMatch = async () => {
+    await goBackToRoom();
   };
 
   useEffect(() => {
@@ -452,9 +505,6 @@ export default function JuegoPage() {
       setLoading(true);
 
       try {
-        const storedName = getStoredPlayerName(code);
-        if (mounted) setCurrentPlayerName(storedName);
-
         const playerList = await fetchPlayers();
         await fetchRoom();
         await ensureGameStateRow(playerList);
@@ -472,7 +522,7 @@ export default function JuegoPage() {
     return () => {
       mounted = false;
     };
-  }, [code, getStoredPlayerName, fetchPlayers, fetchRoom, ensureGameStateRow]);
+  }, [code, fetchPlayers, fetchRoom, ensureGameStateRow]);
 
   useEffect(() => {
     if (!code) return;
@@ -573,6 +623,14 @@ export default function JuegoPage() {
     };
   }, [isHost, gameState.canAdvanceRound, gameState.matchOver, updateGameState]);
 
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceRef.current) {
+        clearTimeout(autoAdvanceRef.current);
+      }
+    };
+  }, []);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center p-6">
@@ -583,6 +641,8 @@ export default function JuegoPage() {
       </div>
     );
   }
+
+  const rematchVotesCount = gameState.rematchVotes?.length ?? 0;
 
   return (
     <main className="min-h-screen bg-neutral-950 text-white p-4 md:p-8">
@@ -605,10 +665,28 @@ export default function JuegoPage() {
             </p>
           </div>
 
-          <div className="rounded-2xl bg-white/5 px-4 py-3 text-center">
-            <p className="text-sm text-white/60">Modo</p>
-            <p className="text-xl font-bold text-yellow-400">Mejor de 3</p>
-            <p className="text-sm text-white/60">Gana quien llegue a 2 rondas</p>
+          <div className="flex flex-col gap-3 md:items-end">
+            <div className="rounded-2xl bg-white/5 px-4 py-3 text-center">
+              <p className="text-sm text-white/60">Modo</p>
+              <p className="text-xl font-bold text-yellow-400">Mejor de 3</p>
+              <p className="text-sm text-white/60">Gana quien llegue a 2 rondas</p>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                onClick={goBackToRoom}
+                className="rounded-2xl border border-white/15 bg-white/10 px-4 py-2 font-semibold transition hover:bg-white/15"
+              >
+                Volver a sala
+              </button>
+
+              <button
+                onClick={handleTerminateMatch}
+                className="rounded-2xl bg-red-500/90 px-4 py-2 font-semibold text-white transition hover:bg-red-500"
+              >
+                Terminar partida
+              </button>
+            </div>
           </div>
         </div>
 
@@ -680,7 +758,12 @@ export default function JuegoPage() {
             <div className="grid gap-3 md:grid-cols-3">
               <button
                 onClick={() => handleChoice("piedra")}
-                disabled={!bothPlayersPresent || !!myChoice || !!gameState.roundWinner}
+                disabled={
+                  !bothPlayersPresent ||
+                  !currentPlayerName ||
+                  !!myChoice ||
+                  !!gameState.roundWinner
+                }
                 className="rounded-2xl border border-white/10 bg-white/10 px-5 py-4 text-lg font-semibold transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 ✊ Piedra
@@ -688,7 +771,12 @@ export default function JuegoPage() {
 
               <button
                 onClick={() => handleChoice("papel")}
-                disabled={!bothPlayersPresent || !!myChoice || !!gameState.roundWinner}
+                disabled={
+                  !bothPlayersPresent ||
+                  !currentPlayerName ||
+                  !!myChoice ||
+                  !!gameState.roundWinner
+                }
                 className="rounded-2xl border border-white/10 bg-white/10 px-5 py-4 text-lg font-semibold transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 ✋ Papel
@@ -696,7 +784,12 @@ export default function JuegoPage() {
 
               <button
                 onClick={() => handleChoice("tijera")}
-                disabled={!bothPlayersPresent || !!myChoice || !!gameState.roundWinner}
+                disabled={
+                  !bothPlayersPresent ||
+                  !currentPlayerName ||
+                  !!myChoice ||
+                  !!gameState.roundWinner
+                }
                 className="rounded-2xl border border-white/10 bg-white/10 px-5 py-4 text-lg font-semibold transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 ✌️ Tijera
@@ -747,7 +840,7 @@ export default function JuegoPage() {
               </button>
 
               <button
-                onClick={handleBackToRoom}
+                onClick={goBackToRoom}
                 className="rounded-2xl border border-white/15 bg-white/10 px-6 py-3 font-bold transition hover:bg-white/15"
               >
                 Volver a sala
@@ -755,7 +848,7 @@ export default function JuegoPage() {
             </div>
 
             <p className="mt-4 text-center text-sm text-white/60">
-              Votos de revancha: {gameState.rematchVotes?.length ?? 0}/{Math.max(sortedPlayers.length, 2)}
+              Votos de revancha: {rematchVotesCount}/{Math.max(sortedPlayers.length, 2)}
             </p>
           </div>
         )}
