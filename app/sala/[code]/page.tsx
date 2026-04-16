@@ -126,6 +126,7 @@ export default function SalaPage() {
   const [currentPlayerName, setCurrentPlayerName] = useState("");
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const sortedPlayers = useMemo(() => {
     return [...players].sort((a, b) => {
@@ -352,6 +353,16 @@ export default function SalaPage() {
     }
   };
 
+  const handleCopyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch (error) {
+      console.error("Error copiando código:", error);
+    }
+  };
+
   const needsIdentitySelection =
     sortedPlayers.length > 0 &&
     (!currentPlayerName ||
@@ -360,8 +371,8 @@ export default function SalaPage() {
   if (loading) {
     return (
       <main className="min-h-screen bg-black px-6 py-8 text-white">
-        <div className="mx-auto max-w-5xl rounded-3xl border border-white/10 bg-zinc-950/80 p-8 text-center">
-          <p className="text-2xl font-bold">Cargando sala...</p>
+        <div className="mx-auto max-w-6xl rounded-[34px] border border-white/10 bg-zinc-950/90 p-10 text-center shadow-[0_0_40px_rgba(249,115,22,0.04)]">
+          <p className="text-3xl font-bold">Cargando sala...</p>
         </div>
       </main>
     );
@@ -370,11 +381,11 @@ export default function SalaPage() {
   if (!room) {
     return (
       <main className="min-h-screen bg-black px-6 py-8 text-white">
-        <div className="mx-auto max-w-5xl rounded-3xl border border-red-500/20 bg-red-500/10 p-8 text-center">
-          <p className="text-2xl font-bold text-red-300">No encontramos esta sala.</p>
+        <div className="mx-auto max-w-6xl rounded-[34px] border border-red-500/20 bg-red-500/10 p-10 text-center">
+          <p className="text-3xl font-bold text-red-300">No encontramos esta sala.</p>
           <button
             onClick={() => router.push("/")}
-            className="mt-4 rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black"
+            className="mt-5 rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black"
           >
             Volver al inicio
           </button>
@@ -385,7 +396,7 @@ export default function SalaPage() {
 
   return (
     <main className="min-h-screen bg-black px-6 py-8 text-white">
-      <div className="mx-auto max-w-5xl">
+      <div className="mx-auto max-w-6xl">
         <button
           onClick={() => router.push("/")}
           className="mb-6 rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black transition hover:bg-orange-400"
@@ -393,26 +404,38 @@ export default function SalaPage() {
           ← Volver
         </button>
 
-        <div className="rounded-3xl border border-white/10 bg-zinc-950/80 p-8">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+        <div className="rounded-[34px] border border-white/10 bg-zinc-950/90 p-8 shadow-[0_0_40px_rgba(249,115,22,0.05)] md:p-10">
+          <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
             <div>
-              <h1 className="text-5xl font-extrabold">Sala</h1>
-              <p className="mt-4 text-2xl font-semibold text-white/85">
-                Jugadores ({sortedPlayers.length}) —{" "}
-                {allReady ? "Todos listos" : "Esperando"}
+              <h1 className="text-5xl font-extrabold md:text-6xl">Sala</h1>
+              <p className="mt-5 text-2xl font-semibold text-white/90">
+                Jugadores ({sortedPlayers.length}) — {allReady ? "Todos listos" : "Esperando"}
               </p>
             </div>
 
-            <div className="flex flex-col gap-3 lg:items-end">
-              <div className="rounded-2xl bg-orange-500 px-5 py-3 text-xl font-extrabold text-black">
-                {room.code}
+            <div className="flex flex-col gap-4 xl:items-end">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="rounded-2xl bg-orange-500 px-5 py-3 text-2xl font-extrabold text-black shadow-[0_0_25px_rgba(249,115,22,0.18)]">
+                  {room.code}
+                </div>
+
+                <button
+                  onClick={handleCopyCode}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-bold text-white transition hover:bg-white/10"
+                >
+                  {copied ? "Copiado" : "Copiar código"}
+                </button>
               </div>
 
               {game && (
-                <div className="rounded-2xl border border-orange-500/15 bg-orange-500/10 px-5 py-4 text-right">
-                  <p className="text-sm uppercase tracking-[0.2em] text-orange-200">Juego seleccionado</p>
-                  <p className="mt-1 text-2xl font-bold text-white">{game.name}</p>
-                  <p className="mt-1 text-sm text-white/65">
+                <div className="rounded-[28px] border border-orange-500/20 bg-orange-500/10 px-6 py-5 text-right shadow-[0_0_30px_rgba(249,115,22,0.06)]">
+                  <p className="text-xs uppercase tracking-[0.3em] text-orange-200">
+                    Juego seleccionado
+                  </p>
+                  <p className="mt-2 text-4xl font-extrabold text-white">
+                    {game.name}
+                  </p>
+                  <p className="mt-2 text-sm text-white/70">
                     {game.min_players}-{game.max_players} jugadores
                   </p>
                 </div>
@@ -421,7 +444,7 @@ export default function SalaPage() {
           </div>
 
           {needsIdentitySelection && (
-            <div className="mt-6 rounded-3xl border border-cyan-400/25 bg-cyan-500/10 p-5">
+            <div className="mt-8 rounded-[28px] border border-cyan-400/25 bg-cyan-500/10 p-6">
               <p className="text-lg font-semibold text-cyan-300">
                 Este navegador todavía no sabe qué jugador eres
               </p>
@@ -455,30 +478,30 @@ export default function SalaPage() {
               return (
                 <div
                   key={player.id}
-                  className={`flex items-center justify-between rounded-2xl border px-5 py-4 ${
+                  className={`flex items-center justify-between rounded-[26px] border px-5 py-5 transition ${
                     isMe
-                      ? "border-emerald-400/30 bg-emerald-500/10"
-                      : "border-white/10 bg-white/5"
+                      ? "border-emerald-400/35 bg-emerald-500/10 shadow-[0_0_25px_rgba(16,185,129,0.08)]"
+                      : "border-white/10 bg-white/[0.03]"
                   }`}
                 >
                   <div>
-                    <p className="text-2xl font-bold">
+                    <p className="text-3xl font-extrabold">
                       {player.player_name} {player.is_host ? "👑" : ""}
                     </p>
-                    <p className="mt-1 text-white/60">{isMe ? "Tú" : "Jugador en sala"}</p>
+                    <p className="mt-1 text-white/60">
+                      {isMe ? "Tú" : "Jugador en sala"}
+                    </p>
                   </div>
 
-                  <div className="flex items-center gap-4">
-                    <span
-                      className={`rounded-full px-4 py-2 text-sm font-bold ${
-                        player.is_ready
-                          ? "bg-emerald-500/15 text-emerald-300"
-                          : "bg-white/10 text-white/60"
-                      }`}
-                    >
-                      {player.is_ready ? "Listo" : "No listo"}
-                    </span>
-                  </div>
+                  <span
+                    className={`rounded-full px-5 py-2 text-sm font-bold ${
+                      player.is_ready
+                        ? "bg-emerald-500/15 text-emerald-300"
+                        : "bg-white/10 text-white/60"
+                    }`}
+                  >
+                    {player.is_ready ? "Listo" : "No listo"}
+                  </span>
                 </div>
               );
             })}
@@ -488,7 +511,7 @@ export default function SalaPage() {
             <button
               onClick={handleToggleReady}
               disabled={needsIdentitySelection || !currentPlayerName}
-              className="rounded-2xl bg-orange-500 px-6 py-3 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-2xl bg-orange-500 px-6 py-3.5 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {players.find((p) => p.player_name === currentPlayerName)?.is_ready
                 ? "Quitar listo"
@@ -498,7 +521,7 @@ export default function SalaPage() {
             <button
               onClick={handleStartGame}
               disabled={!isHost || !allReady || sortedPlayers.length < 2 || starting}
-              className="rounded-2xl bg-orange-900/70 px-6 py-3 font-bold text-orange-100 transition hover:bg-orange-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-2xl bg-orange-900/70 px-6 py-3.5 font-bold text-orange-100 transition hover:bg-orange-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {starting ? "Iniciando..." : "Iniciar partida"}
             </button>
