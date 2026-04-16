@@ -1,12 +1,18 @@
-import { createClient } from "@/utils/supabase/client";
+import { createClient } from "@/lib/supabase/client";
+
+const GUEST_STORAGE_KEY = "lmf:guest-profile";
 
 export async function getPlayerIdentity() {
   const supabase = createClient();
 
-  // 1. Revisar sesión real
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser();
+
+  if (error) {
+    console.error("Error obteniendo usuario autenticado:", error);
+  }
 
   if (user) {
     return {
@@ -16,19 +22,27 @@ export async function getPlayerIdentity() {
     };
   }
 
-  // 2. Revisar invitado en localStorage
   if (typeof window !== "undefined") {
-    const guest = localStorage.getItem("guest_name");
+    const rawLocal = localStorage.getItem(GUEST_STORAGE_KEY);
+    const rawSession = sessionStorage.getItem(GUEST_STORAGE_KEY);
+    const raw = rawLocal || rawSession;
 
-    if (guest) {
-      return {
-        name: guest,
-        user_id: null,
-        is_guest: true,
-      };
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+
+        if (parsed?.guestName && typeof parsed.guestName === "string") {
+          return {
+            name: parsed.guestName,
+            user_id: null,
+            is_guest: true,
+          };
+        }
+      } catch (parseError) {
+        console.error("Error parseando perfil invitado:", parseError);
+      }
     }
   }
 
-  // 3. Si no hay nada
   return null;
 }
