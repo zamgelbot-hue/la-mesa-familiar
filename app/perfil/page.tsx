@@ -115,17 +115,24 @@ const PREMIUM_FRAMES = [
 
 type LeftTab = "preview" | "stats";
 type RightTab = "customization" | "shop";
+type StatsTab = "performance" | "progress" | "collection";
 
 type ProfileStats = {
   games_played: number;
   games_won: number;
   games_lost: number;
+  total_points_earned: number;
+  current_win_streak: number;
+  best_win_streak: number;
 };
 
 const DEFAULT_STATS: ProfileStats = {
   games_played: 0,
   games_won: 0,
   games_lost: 0,
+  total_points_earned: 0,
+  current_win_streak: 0,
+  best_win_streak: 0,
 };
 
 const DEFAULT_OWNED_AVATARS = [
@@ -165,6 +172,7 @@ export default function PerfilPage() {
 
   const [leftTab, setLeftTab] = useState<LeftTab>("preview");
   const [rightTab, setRightTab] = useState<RightTab>("customization");
+  const [statsTab, setStatsTab] = useState<StatsTab>("performance");
 
   const [stats, setStats] = useState<ProfileStats>(DEFAULT_STATS);
   const [points, setPoints] = useState<number>(0);
@@ -190,7 +198,9 @@ export default function PerfilPage() {
       if (identity.user_id) {
         const { data: profileData, error: profileError } = await supabase
           .from("profiles")
-          .select("games_played, games_won, games_lost, points, owned_avatars, owned_frames")
+          .select(
+            "games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak, points, owned_avatars, owned_frames"
+          )
           .eq("id", identity.user_id)
           .single();
 
@@ -201,6 +211,9 @@ export default function PerfilPage() {
             games_played: profileData.games_played ?? 0,
             games_won: profileData.games_won ?? 0,
             games_lost: profileData.games_lost ?? 0,
+            total_points_earned: profileData.total_points_earned ?? 0,
+            current_win_streak: profileData.current_win_streak ?? 0,
+            best_win_streak: profileData.best_win_streak ?? 0,
           });
 
           setPoints(profileData.points ?? 0);
@@ -250,11 +263,6 @@ export default function PerfilPage() {
     [frameKey]
   );
 
-  const winRate = useMemo(() => {
-    if (!stats.games_played) return "0.0";
-    return ((stats.games_won / stats.games_played) * 100).toFixed(1);
-  }, [stats.games_played, stats.games_won]);
-
   const ownedPremiumAvatars = useMemo(
     () => PREMIUM_AVATARS.filter((avatar) => ownedAvatars.includes(avatar.key)),
     [ownedAvatars]
@@ -264,6 +272,15 @@ export default function PerfilPage() {
     () => PREMIUM_FRAMES.filter((frame) => ownedFrames.includes(frame.key)),
     [ownedFrames]
   );
+
+  const winRate = useMemo(() => {
+    if (!stats.games_played) return "0.0";
+    return ((stats.games_won / stats.games_played) * 100).toFixed(1);
+  }, [stats.games_played, stats.games_won]);
+
+  const purchasedAvatarsCount = ownedPremiumAvatars.length;
+  const purchasedFramesCount = ownedPremiumFrames.length;
+  const totalCosmeticsCount = purchasedAvatarsCount + purchasedFramesCount;
 
   const handleSaveProfile = async () => {
     setMessage("");
@@ -570,45 +587,167 @@ export default function PerfilPage() {
                   </p>
                   <h2 className="mt-3 text-3xl font-extrabold">Tu rendimiento</h2>
                   <p className="mt-2 text-white/65">
-                    Aquí podrás ver tu progreso general en las partidas.
+                    Aquí podrás ver tu progreso general, colección y avance dentro del juego.
                   </p>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                    <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                      Partidas jugadas
-                    </p>
-                    <p className="mt-2 text-3xl font-extrabold">{stats.games_played}</p>
-                  </div>
+                <div className="mb-6 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setStatsTab("performance")}
+                    className={`rounded-full border px-4 py-2 text-sm transition ${
+                      statsTab === "performance"
+                        ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
+                        : "border-white/10 bg-white/[0.03] text-white/65 hover:bg-white/[0.06]"
+                    }`}
+                  >
+                    Rendimiento
+                  </button>
 
-                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                    <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                      Ganadas
-                    </p>
-                    <p className="mt-2 text-3xl font-extrabold text-emerald-400">
-                      {stats.games_won}
-                    </p>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStatsTab("progress")}
+                    className={`rounded-full border px-4 py-2 text-sm transition ${
+                      statsTab === "progress"
+                        ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
+                        : "border-white/10 bg-white/[0.03] text-white/65 hover:bg-white/[0.06]"
+                    }`}
+                  >
+                    Progreso
+                  </button>
 
-                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                    <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                      Perdidas
-                    </p>
-                    <p className="mt-2 text-3xl font-extrabold text-red-400">
-                      {stats.games_lost}
-                    </p>
-                  </div>
-
-                  <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 p-5">
-                    <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
-                      Win Rate
-                    </p>
-                    <p className="mt-2 text-3xl font-extrabold text-orange-200">
-                      {winRate}%
-                    </p>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStatsTab("collection")}
+                    className={`rounded-full border px-4 py-2 text-sm transition ${
+                      statsTab === "collection"
+                        ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
+                        : "border-white/10 bg-white/[0.03] text-white/65 hover:bg-white/[0.06]"
+                    }`}
+                  >
+                    Colección
+                  </button>
                 </div>
+
+                {statsTab === "performance" && (
+                  <div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
+                          Partidas jugadas
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold">{stats.games_played}</p>
+                      </div>
+
+                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
+                          Ganadas
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold text-emerald-400">
+                          {stats.games_won}
+                        </p>
+                      </div>
+
+                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
+                          Perdidas
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold text-red-400">
+                          {stats.games_lost}
+                        </p>
+                      </div>
+
+                      <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 p-5">
+                        <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
+                          Win Rate
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold text-orange-200">
+                          {winRate}%
+                        </p>
+                      </div>
+
+                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:col-span-2">
+                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
+                          Mejor racha de victorias
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold text-yellow-300">
+                          {stats.best_win_streak}
+                        </p>
+                        <p className="mt-2 text-sm text-white/60">
+                          Racha actual: {stats.current_win_streak}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {statsTab === "progress" && (
+                  <div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
+                          Puntos actuales
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold">{points}</p>
+                      </div>
+
+                      <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 p-5">
+                        <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
+                          Puntos acumulados
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold text-orange-200">
+                          {stats.total_points_earned}
+                        </p>
+                      </div>
+
+                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:col-span-2">
+                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
+                          Juego más jugado
+                        </p>
+                        <p className="mt-2 text-2xl font-extrabold">Piedra, Papel o Tijera</p>
+                        <p className="mt-2 text-sm text-white/60">
+                          Por ahora es el único modo disponible, así que domina tu historial.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {statsTab === "collection" && (
+                  <div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
+                          Avatares comprados
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold">
+                          {purchasedAvatarsCount}
+                        </p>
+                      </div>
+
+                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
+                          Marcos comprados
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold">
+                          {purchasedFramesCount}
+                        </p>
+                      </div>
+
+                      <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 p-5 sm:col-span-2">
+                        <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
+                          Total de cosméticos premium
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold text-orange-200">
+                          {totalCosmeticsCount}
+                        </p>
+                        <p className="mt-2 text-sm text-white/60">
+                          Tu colección premium entre avatares y marcos.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </section>
@@ -769,11 +908,13 @@ export default function PerfilPage() {
                             }`}
                           >
                             <div className="flex items-center gap-3">
-                              <img
-                                src={frame.image}
-                                alt={frame.label}
-                                className="h-10 w-10 object-contain"
-                              />
+                              <div className="flex h-10 w-10 items-center justify-center">
+                                <img
+                                  src={frame.image}
+                                  alt={frame.label}
+                                  className="max-h-10 max-w-10 object-contain"
+                                />
+                              </div>
 
                               <div>
                                 <p className="font-bold">{frame.label}</p>
@@ -909,11 +1050,13 @@ export default function PerfilPage() {
                           className="rounded-3xl border border-white/10 bg-white/[0.03] p-5"
                         >
                           <div className="flex items-center gap-4">
-                            <img
-                              src={frame.image}
-                              alt={frame.label}
-                              className="h-16 w-16 object-contain"
-                            />
+                            <div className="flex h-16 w-16 items-center justify-center">
+                              <img
+                                src={frame.image}
+                                alt={frame.label}
+                                className="max-h-16 max-w-16 object-contain"
+                              />
+                            </div>
 
                             <div>
                               <p className="text-lg font-bold">{frame.label}</p>
