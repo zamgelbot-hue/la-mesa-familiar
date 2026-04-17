@@ -17,13 +17,13 @@ const BASE_AVATARS = [
 const PREMIUM_AVATARS = [
   {
     key: "avatar_gato_naranja",
-    label: "Gato Naranja",
+    label: "Chopper",
     image: "/avatars/avatar_gato_naranja.png",
     price: 40,
   },
   {
     key: "avatar_pug",
-    label: "Pug",
+    label: "Nala",
     image: "/avatars/avatar_pug.png",
     price: 40,
   },
@@ -41,7 +41,7 @@ const PREMIUM_AVATARS = [
   },
   {
     key: "avatar_pajaro_rojo",
-    label: "Pájaro Rojo",
+    label: "Guacamaya",
     image: "/avatars/avatar_pajaro_rojo.png",
     price: 50,
   },
