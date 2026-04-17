@@ -811,7 +811,7 @@ const awardPoints = useCallback(
       init();
     }
 
-    return () => {
+    ) => {
       mounted = false;
     };
   }, [code, fetchPlayers, fetchRoom, ensureGameStateRow]);
@@ -869,7 +869,7 @@ const awardPoints = useCallback(
       )
       .subscribe();
 
-    return () => {
+    ) => {
       supabase.removeChannel(channel);
     };
   }, [supabase, code, fetchPlayers, refreshGameState, fetchRoom, router]);
@@ -939,7 +939,37 @@ const awardPoints = useCallback(
     sortedPlayers.length > 0 &&
     (!currentPlayerName ||
       !sortedPlayers.some((player) => player.player_name === currentPlayerName));
+const renderGameAvatar = (
+  avatar: { emoji?: string; image?: string; label?: string },
+  frame: { className?: string; image?: string; label?: string }
+) => {
+  return (
+    <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-black">
+      {frame.image ? (
+        <img
+          src={frame.image}
+          alt={frame.label ?? "Frame"}
+          className="absolute inset-0 h-full w-full object-contain"
+        />
+      ) : (
+        <div
+          className={`absolute inset-0 rounded-full border-4 ${frame.className ?? ""}`}
+        />
+      )}
 
+      {avatar.image ? (
+        <img
+          src={avatar.image}
+          alt={avatar.label ?? "Avatar"}
+          className="relative z-10 h-10 w-10 object-contain"
+        />
+      ) : (
+        <span className="relative z-10 text-2xl">{avatar.emoji}</span>
+      )}
+    </div>
+  );
+};
+  
   return (
     <main className="min-h-screen bg-neutral-950 text-white p-4 md:p-8">
       <div className="mx-auto max-w-6xl">
