@@ -528,18 +528,26 @@ const awardPoints = useCallback(
           console.error("Error dando puntos al ganador:", winnerPointsError);
         }
 
-        const winnerProfile = profilesMap[winner.user_id];
-
-        const { error: winnerStatsError } = await supabase
+        const { data: winnerProfile, error: winnerFetchError } = await supabase
           .from("profiles")
-          .update({
-            games_played: (winnerProfile?.games_played ?? 0) + 1,
-            games_won: (winnerProfile?.games_won ?? 0) + 1,
-          })
-          .eq("id", winner.user_id);
+          .select("games_played, games_won")
+          .eq("id", winner.user_id)
+          .single();
 
-        if (winnerStatsError) {
-          console.error("Error actualizando stats del ganador:", winnerStatsError);
+        if (winnerFetchError) {
+          console.error("Error leyendo stats del ganador:", winnerFetchError);
+        } else {
+          const { error: winnerStatsError } = await supabase
+            .from("profiles")
+            .update({
+              games_played: (winnerProfile?.games_played ?? 0) + 1,
+              games_won: (winnerProfile?.games_won ?? 0) + 1,
+            })
+            .eq("id", winner.user_id);
+
+          if (winnerStatsError) {
+            console.error("Error actualizando stats del ganador:", winnerStatsError);
+          }
         }
       }
 
@@ -553,18 +561,26 @@ const awardPoints = useCallback(
           console.error("Error dando puntos al perdedor:", loserPointsError);
         }
 
-        const loserProfile = profilesMap[loser.user_id];
-
-        const { error: loserStatsError } = await supabase
+        const { data: loserProfile, error: loserFetchError } = await supabase
           .from("profiles")
-          .update({
-            games_played: (loserProfile?.games_played ?? 0) + 1,
-            games_lost: (loserProfile?.games_lost ?? 0) + 1,
-          })
-          .eq("id", loser.user_id);
+          .select("games_played, games_lost")
+          .eq("id", loser.user_id)
+          .single();
 
-        if (loserStatsError) {
-          console.error("Error actualizando stats del perdedor:", loserStatsError);
+        if (loserFetchError) {
+          console.error("Error leyendo stats del perdedor:", loserFetchError);
+        } else {
+          const { error: loserStatsError } = await supabase
+            .from("profiles")
+            .update({
+              games_played: (loserProfile?.games_played ?? 0) + 1,
+              games_lost: (loserProfile?.games_lost ?? 0) + 1,
+            })
+            .eq("id", loser.user_id);
+
+          if (loserStatsError) {
+            console.error("Error actualizando stats del perdedor:", loserStatsError);
+          }
         }
       }
 
@@ -573,7 +589,7 @@ const awardPoints = useCallback(
       console.error("Error general dando puntos/stats:", error);
     }
   },
-  [sortedPlayers, supabase, profilesMap, fetchProfilesForPlayers]
+  [sortedPlayers, supabase, fetchProfilesForPlayers]
 );
 
   const getWinnerChoice = (a: Exclude<Choice, null>, b: Exclude<Choice, null>) => {
