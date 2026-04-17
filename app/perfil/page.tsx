@@ -233,6 +233,7 @@ export default function PerfilPage() {
       }
     }
   };
+}
 
   useEffect(() => {
     const load = async () => {
