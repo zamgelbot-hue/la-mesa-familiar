@@ -519,67 +519,66 @@ const awardPoints = useCallback(
       );
 
       if (winner?.user_id) {
-        const { error: winnerPointsError } = await supabase.rpc("add_points", {
-          user_id_input: winner.user_id,
-          points_input: 5,
-        });
-
-        if (winnerPointsError) {
-          console.error("Error dando puntos al ganador:", winnerPointsError);
-        }
-
         const { data: winnerProfile, error: winnerFetchError } = await supabase
           .from("profiles")
-          .select("games_played, games_won")
+          .select(
+            "points, games_played, games_won, total_points_earned, current_win_streak, best_win_streak"
+          )
           .eq("id", winner.user_id)
           .single();
 
-        if (winnerFetchError) {
-          console.error("Error leyendo stats del ganador:", winnerFetchError);
+        if (winnerFetchError || !winnerProfile) {
+          console.error("Error leyendo perfil del ganador:", winnerFetchError);
         } else {
-          const { error: winnerStatsError } = await supabase
+          const newCurrentStreak = (winnerProfile.current_win_streak ?? 0) + 1;
+          const newBestStreak = Math.max(
+            winnerProfile.best_win_streak ?? 0,
+            newCurrentStreak
+          );
+
+          const { error: winnerUpdateError } = await supabase
             .from("profiles")
             .update({
-              games_played: (winnerProfile?.games_played ?? 0) + 1,
-              games_won: (winnerProfile?.games_won ?? 0) + 1,
+              points: (winnerProfile.points ?? 0) + 5,
+              games_played: (winnerProfile.games_played ?? 0) + 1,
+              games_won: (winnerProfile.games_won ?? 0) + 1,
+              total_points_earned: (winnerProfile.total_points_earned ?? 0) + 5,
+              current_win_streak: newCurrentStreak,
+              best_win_streak: newBestStreak,
             })
             .eq("id", winner.user_id);
 
-          if (winnerStatsError) {
-            console.error("Error actualizando stats del ganador:", winnerStatsError);
+          if (winnerUpdateError) {
+            console.error("Error actualizando ganador:", winnerUpdateError);
           }
         }
       }
 
       if (loser?.user_id) {
-        const { error: loserPointsError } = await supabase.rpc("add_points", {
-          user_id_input: loser.user_id,
-          points_input: 2,
-        });
-
-        if (loserPointsError) {
-          console.error("Error dando puntos al perdedor:", loserPointsError);
-        }
-
         const { data: loserProfile, error: loserFetchError } = await supabase
           .from("profiles")
-          .select("games_played, games_lost")
+          .select(
+            "points, games_played, games_lost, total_points_earned, current_win_streak"
+          )
           .eq("id", loser.user_id)
           .single();
 
-        if (loserFetchError) {
-          console.error("Error leyendo stats del perdedor:", loserFetchError);
+        if (loserFetchError || !loserProfile) {
+          console.error("Error leyendo perfil del perdedor:", loserFetchError);
         } else {
-          const { error: loserStatsError } = await supabase
+          const { error: loserUpdateError } = await supabase
             .from("profiles")
             .update({
-              games_played: (loserProfile?.games_played ?? 0) + 1,
-              games_lost: (loserProfile?.games_lost ?? 0) + 1,
+              points: (loserProfile.points ?? 0) + 2,
+              games_played: (loserProfile.games_played ?? 0) + 1,
+              games_lost: (loserProfile.games_lost ?? 0) + 1,
+              total_points_earned: (loserProfile.total_points_earned ?? 0) + 2,
+              current_win_streak: 0,
             })
             .eq("id", loser.user_id);
 
-          if (loserStatsError) {
-            console.error("Error actualizando stats del perdedor:", loserStatsError);
+          if (loserUpdateError) {
+            console.error("Error actualizando perdedor:", loserUpdateError);
           }
         }
       }
