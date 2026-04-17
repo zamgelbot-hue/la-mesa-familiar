@@ -233,7 +233,6 @@ export default function PerfilPage() {
       }
     }
   };
-}
 
   useEffect(() => {
     const load = async () => {
@@ -331,12 +330,13 @@ export default function PerfilPage() {
         console.error("Error actualizando metadata de usuario:", authError);
       }
 
-setMessage("Perfil actualizado correctamente.");
-await loadProfileData();
-window.location.href = "/";
-} finally {
-  setSaving(false);
-}
+      setMessage("Perfil actualizado correctamente.");
+      await loadProfileData();
+      window.location.href = "/";
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleBuyAvatar = async (avatar: (typeof PREMIUM_AVATARS)[number]) => {
     setMessage("");
