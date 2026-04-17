@@ -1046,11 +1046,7 @@ const awardPoints = useCallback(
               >
                 <div className="mb-3 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
-                    <div
-                      className={`flex h-16 w-16 items-center justify-center rounded-full border-4 bg-black text-2xl ${frame.className}`}
-                    >
-                      <span>{avatar.emoji}</span>
-                    </div>
+                  {renderGameAvatar(avatar, frame)}
 
                     <div>
                       <p className="text-xl font-bold">
