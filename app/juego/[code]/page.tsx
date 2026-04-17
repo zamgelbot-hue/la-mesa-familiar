@@ -807,13 +807,13 @@ const awardPoints = useCallback(
       }
     };
 
-    if (code) {
-      init();
-    }
+if (code) {
+  init();
+}
 
-    ) => {
-      mounted = false;
-    };
+return () => {
+  mounted = false;
+};
   }, [code, fetchPlayers, fetchRoom, ensureGameStateRow]);
 
   useEffect(() => {
@@ -867,11 +867,11 @@ const awardPoints = useCallback(
           }
         }
       )
-      .subscribe();
+.subscribe();
 
-    ) => {
-      supabase.removeChannel(channel);
-    };
+return () => {
+  supabase.removeChannel(channel);
+};
   }, [supabase, code, fetchPlayers, refreshGameState, fetchRoom, router]);
 
   useEffect(() => {
