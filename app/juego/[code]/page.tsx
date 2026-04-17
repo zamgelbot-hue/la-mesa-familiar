@@ -38,6 +38,9 @@ type ProfileMap = Record<
     avatar_key: string | null;
     frame_key: string | null;
     points: number | null;
+    games_played: number | null;
+    games_won: number | null;
+    games_lost: number | null;
   }
 >;
 
@@ -266,7 +269,7 @@ export default function JuegoPage() {
 
         const { data, error } = await supabase
           .from("profiles")
-          .select("id, display_name, avatar_key, frame_key, points")
+          .select("id, display_name, avatar_key, frame_key, points, games_played, games_won, games_lost")
           .in("id", userIds);
 
         if (error) {
@@ -278,11 +281,14 @@ export default function JuegoPage() {
         const nextMap: ProfileMap = {};
         for (const profile of data ?? []) {
           nextMap[profile.id] = {
-            display_name: profile.display_name,
-            avatar_key: profile.avatar_key,
-            frame_key: profile.frame_key,
-            points: profile.points,
-          };
+          display_name: profile.display_name,
+          avatar_key: profile.avatar_key,
+          frame_key: profile.frame_key,
+          points: profile.points,
+          games_played: profile.games_played,
+          games_won: profile.games_won,
+          games_lost: profile.games_lost,
+        };
         }
 
         setProfilesMap(nextMap);
@@ -499,46 +505,76 @@ export default function JuegoPage() {
     [supabase, code]
   );
 
-  const awardPoints = useCallback(
-    async (championName: string | null) => {
-      try {
-        if (!championName) return;
-        if (sortedPlayers.length < 2) return;
+const awardPoints = useCallback(
+  async (championName: string | null) => {
+    try {
+      if (!championName) return;
+      if (sortedPlayers.length < 2) return;
 
-        const winner = sortedPlayers.find(
-          (player) => player.player_name === championName
-        );
-        const loser = sortedPlayers.find(
-          (player) => player.player_name !== championName
-        );
+      const winner = sortedPlayers.find(
+        (player) => player.player_name === championName
+      );
+      const loser = sortedPlayers.find(
+        (player) => player.player_name !== championName
+      );
 
-        if (winner?.user_id) {
-          const { error } = await supabase.rpc("add_points", {
-            user_id_input: winner.user_id,
-            points_input: 10,
-          });
+      if (winner?.user_id) {
+        const { error: winnerPointsError } = await supabase.rpc("add_points", {
+          user_id_input: winner.user_id,
+          points_input: 10,
+        });
 
-          if (error) {
-            console.error("Error dando puntos al ganador:", error);
-          }
+        if (winnerPointsError) {
+          console.error("Error dando puntos al ganador:", winnerPointsError);
         }
 
-        if (loser?.user_id) {
-          const { error } = await supabase.rpc("add_points", {
-            user_id_input: loser.user_id,
-            points_input: 3,
-          });
+        const winnerProfile = profilesMap[winner.user_id];
 
-          if (error) {
-            console.error("Error dando puntos al perdedor:", error);
-          }
+        const { error: winnerStatsError } = await supabase
+          .from("profiles")
+          .update({
+            games_played: (winnerProfile?.games_played ?? 0) + 1,
+            games_won: (winnerProfile?.games_won ?? 0) + 1,
+          })
+          .eq("id", winner.user_id);
+
+        if (winnerStatsError) {
+          console.error("Error actualizando stats del ganador:", winnerStatsError);
         }
-      } catch (error) {
-        console.error("Error general dando puntos:", error);
       }
-    },
-    [sortedPlayers, supabase]
-  );
+
+      if (loser?.user_id) {
+        const { error: loserPointsError } = await supabase.rpc("add_points", {
+          user_id_input: loser.user_id,
+          points_input: 3,
+        });
+
+        if (loserPointsError) {
+          console.error("Error dando puntos al perdedor:", loserPointsError);
+        }
+
+        const loserProfile = profilesMap[loser.user_id];
+
+        const { error: loserStatsError } = await supabase
+          .from("profiles")
+          .update({
+            games_played: (loserProfile?.games_played ?? 0) + 1,
+            games_lost: (loserProfile?.games_lost ?? 0) + 1,
+          })
+          .eq("id", loser.user_id);
+
+        if (loserStatsError) {
+          console.error("Error actualizando stats del perdedor:", loserStatsError);
+        }
+      }
+
+      await fetchProfilesForPlayers(sortedPlayers);
+    } catch (error) {
+      console.error("Error general dando puntos/stats:", error);
+    }
+  },
+  [sortedPlayers, supabase, profilesMap, fetchProfilesForPlayers]
+);
 
   const getWinnerChoice = (a: Exclude<Choice, null>, b: Exclude<Choice, null>) => {
     if (a === b) return "empate";
