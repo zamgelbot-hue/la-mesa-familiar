@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
 
-const AVATARS = [
+const BASE_AVATARS = [
   { key: "avatar_sun", emoji: "🌞", label: "Sol" },
   { key: "avatar_moon", emoji: "🌙", label: "Luna" },
   { key: "avatar_star", emoji: "⭐", label: "Estrella" },
@@ -95,6 +95,14 @@ const DEFAULT_STATS: ProfileStats = {
   games_lost: 0,
 };
 
+const DEFAULT_OWNED_AVATARS = [
+  "avatar_sun",
+  "avatar_moon",
+  "avatar_star",
+  "avatar_rocket",
+  "avatar_game",
+];
+
 export default function PerfilPage() {
   const supabase = createClient();
 
@@ -102,6 +110,7 @@ export default function PerfilPage() {
   const [email, setEmail] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [buyingAvatarKey, setBuyingAvatarKey] = useState<string | null>(null);
 
   const [displayName, setDisplayName] = useState("");
   const [avatarKey, setAvatarKey] = useState("avatar_sun");
@@ -113,50 +122,69 @@ export default function PerfilPage() {
   const [leftTab, setLeftTab] = useState<LeftTab>("preview");
   const [rightTab, setRightTab] = useState<RightTab>("customization");
   const [stats, setStats] = useState<ProfileStats>(DEFAULT_STATS);
+  const [points, setPoints] = useState<number>(0);
+  const [ownedAvatars, setOwnedAvatars] = useState<string[]>(DEFAULT_OWNED_AVATARS);
+
+  const loadProfileData = async () => {
+    const identity = await getPlayerIdentity();
+    setPlayerIdentity(identity);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    setEmail(user?.email ?? "");
+
+    if (identity) {
+      setDisplayName(identity.name);
+      setAvatarKey(identity.avatar_key ?? "avatar_sun");
+      setFrameKey(identity.frame_key ?? "frame_orange");
+      setPoints(identity.points ?? 0);
+
+      if (identity.user_id) {
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("games_played, games_won, games_lost, points, owned_avatars")
+          .eq("id", identity.user_id)
+          .single();
+
+        if (profileError) {
+          console.error("Error cargando datos del perfil:", profileError);
+        } else if (profileData) {
+          setStats({
+            games_played: profileData.games_played ?? 0,
+            games_won: profileData.games_won ?? 0,
+            games_lost: profileData.games_lost ?? 0,
+          });
+
+          setPoints(profileData.points ?? 0);
+
+          const dbOwned = profileData.owned_avatars ?? [];
+          const mergedOwned = Array.from(
+            new Set([...DEFAULT_OWNED_AVATARS, ...dbOwned])
+          );
+          setOwnedAvatars(mergedOwned);
+        }
+      }
+    }
+  };
 
   useEffect(() => {
     const load = async () => {
-      const identity = await getPlayerIdentity();
-      setPlayerIdentity(identity);
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      setEmail(user?.email ?? "");
-
-      if (identity) {
-        setDisplayName(identity.name);
-        setAvatarKey(identity.avatar_key ?? "avatar_sun");
-        setFrameKey(identity.frame_key ?? "frame_orange");
-
-        if (identity.user_id) {
-          const { data: profileStats, error: statsError } = await supabase
-            .from("profiles")
-            .select("games_played, games_won, games_lost")
-            .eq("id", identity.user_id)
-            .single();
-
-          if (statsError) {
-            console.error("Error cargando estadísticas del perfil:", statsError);
-          } else if (profileStats) {
-            setStats({
-              games_played: profileStats.games_played ?? 0,
-              games_won: profileStats.games_won ?? 0,
-              games_lost: profileStats.games_lost ?? 0,
-            });
-          }
-        }
-      }
-
+      await loadProfileData();
       setLoading(false);
     };
 
     load();
-  }, [supabase]);
+  }, []);
 
-  const selectedAvatar = useMemo(
-    () => AVATARS.find((avatar) => avatar.key === avatarKey) ?? AVATARS[0],
+  const selectedBaseAvatar = useMemo(
+    () => BASE_AVATARS.find((avatar) => avatar.key === avatarKey) ?? null,
+    [avatarKey]
+  );
+
+  const selectedPremiumAvatar = useMemo(
+    () => PREMIUM_AVATARS.find((avatar) => avatar.key === avatarKey) ?? null,
     [avatarKey]
   );
 
@@ -164,6 +192,17 @@ export default function PerfilPage() {
     () => FRAMES.find((frame) => frame.key === frameKey) ?? FRAMES[0],
     [frameKey]
   );
+
+  const availableCustomizationAvatars = useMemo(() => {
+    const premiumOwned = PREMIUM_AVATARS.filter((avatar) =>
+      ownedAvatars.includes(avatar.key)
+    );
+
+    return {
+      base: BASE_AVATARS,
+      premium: premiumOwned,
+    };
+  }, [ownedAvatars]);
 
   const winRate = useMemo(() => {
     if (!stats.games_played) return "0.0";
@@ -219,11 +258,77 @@ export default function PerfilPage() {
       }
 
       setMessage("Perfil actualizado correctamente.");
-
-      const refreshedIdentity = await getPlayerIdentity();
-      setPlayerIdentity(refreshedIdentity);
+      await loadProfileData();
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleBuyAvatar = async (avatar: (typeof PREMIUM_AVATARS)[number]) => {
+    setMessage("");
+    setErrorMessage("");
+
+    if (!playerIdentity?.user_id) {
+      setErrorMessage("Necesitas una cuenta registrada para comprar cosméticos.");
+      return;
+    }
+
+    if (ownedAvatars.includes(avatar.key)) {
+      setErrorMessage("Ya tienes este avatar.");
+      return;
+    }
+
+    if (points < avatar.price) {
+      setErrorMessage("No tienes puntos suficientes.");
+      return;
+    }
+
+    try {
+      setBuyingAvatarKey(avatar.key);
+
+      const { data: profile, error: fetchError } = await supabase
+        .from("profiles")
+        .select("points, owned_avatars")
+        .eq("id", playerIdentity.user_id)
+        .single();
+
+      if (fetchError || !profile) {
+        setErrorMessage("No se pudo cargar tu perfil.");
+        return;
+      }
+
+      const currentPoints = profile.points ?? 0;
+      const currentOwned = profile.owned_avatars ?? [];
+
+      if (currentOwned.includes(avatar.key)) {
+        setErrorMessage("Ya tienes este avatar.");
+        return;
+      }
+
+      if (currentPoints < avatar.price) {
+        setErrorMessage("No tienes puntos suficientes.");
+        return;
+      }
+
+      const updatedOwned = [...currentOwned, avatar.key];
+
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({
+          points: currentPoints - avatar.price,
+          owned_avatars: updatedOwned,
+        })
+        .eq("id", playerIdentity.user_id);
+
+      if (updateError) {
+        setErrorMessage(updateError.message);
+        return;
+      }
+
+      setMessage(`Compraste ${avatar.label} correctamente.`);
+      await loadProfileData();
+    } finally {
+      setBuyingAvatarKey(null);
     }
   };
 
@@ -280,7 +385,15 @@ export default function PerfilPage() {
                 <div
                   className={`flex h-40 w-40 items-center justify-center rounded-full border-4 bg-black text-6xl ${selectedFrame.className}`}
                 >
-                  <span>{selectedAvatar.emoji}</span>
+                  {selectedPremiumAvatar ? (
+                    <img
+                      src={selectedPremiumAvatar.image}
+                      alt={selectedPremiumAvatar.label}
+                      className="h-28 w-28 object-contain"
+                    />
+                  ) : (
+                    <span>{selectedBaseAvatar?.emoji ?? "🙂"}</span>
+                  )}
                 </div>
 
                 <h1 className="mt-6 text-4xl font-extrabold">{displayName || "Jugador"}</h1>
@@ -291,9 +404,7 @@ export default function PerfilPage() {
                 <div className="mt-6 grid w-full gap-4 sm:grid-cols-2">
                   <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
                     <p className="text-sm uppercase tracking-[0.18em] text-white/50">Puntos</p>
-                    <p className="mt-2 text-3xl font-extrabold">
-                      {playerIdentity?.points ?? 0}
-                    </p>
+                    <p className="mt-2 text-3xl font-extrabold">{points}</p>
                   </div>
 
                   <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
@@ -362,17 +473,6 @@ export default function PerfilPage() {
                     </p>
                   </div>
                 </div>
-
-                <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                  <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                    Resumen
-                  </p>
-                  <p className="mt-2 text-white/70">
-                    Has jugado <span className="font-bold text-white">{stats.games_played}</span> partidas,
-                    con <span className="font-bold text-emerald-400"> {stats.games_won} victorias </span>
-                    y <span className="font-bold text-red-400">{stats.games_lost} derrotas</span>.
-                  </p>
-                </div>
               </div>
             )}
           </section>
@@ -428,11 +528,11 @@ export default function PerfilPage() {
 
                   <div>
                     <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
-                      Elige un avatar básico
+                      Avatares básicos
                     </p>
 
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      {AVATARS.map((avatar) => (
+                      {availableCustomizationAvatars.base.map((avatar) => (
                         <button
                           key={avatar.key}
                           type="button"
@@ -449,6 +549,36 @@ export default function PerfilPage() {
                       ))}
                     </div>
                   </div>
+
+                  {availableCustomizationAvatars.premium.length > 0 && (
+                    <div>
+                      <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
+                        Avatares premium desbloqueados
+                      </p>
+
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                        {availableCustomizationAvatars.premium.map((avatar) => (
+                          <button
+                            key={avatar.key}
+                            type="button"
+                            onClick={() => setAvatarKey(avatar.key)}
+                            className={`rounded-2xl border p-4 text-center transition ${
+                              avatarKey === avatar.key
+                                ? "border-orange-500 bg-orange-500/10"
+                                : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
+                            }`}
+                          >
+                            <img
+                              src={avatar.image}
+                              alt={avatar.label}
+                              className="mx-auto h-14 w-14 object-contain"
+                            />
+                            <p className="mt-2 text-sm font-bold">{avatar.label}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div>
                     <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
@@ -505,62 +635,93 @@ export default function PerfilPage() {
                   <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
                     Tienda básica
                   </p>
-                  <h2 className="mt-3 text-3xl font-extrabold">Cosméticos por puntos</h2>
+                  <h2 className="mt-3 text-3xl font-extrabold">Avatares premium</h2>
                   <p className="mt-2 text-white/70">
-                    Aquí se mostrarán los avatares premium que podrán comprarse con puntos.
+                    Compra nuevos avatares usando tus puntos actuales.
                   </p>
 
                   <div className="mt-5 rounded-2xl border border-white/10 bg-black/30 p-4">
                     <p className="text-sm uppercase tracking-[0.18em] text-white/50">
                       Tus puntos actuales
                     </p>
-                    <p className="mt-2 text-3xl font-extrabold text-orange-200">
-                      {playerIdentity?.points ?? 0}
-                    </p>
+                    <p className="mt-2 text-3xl font-extrabold text-orange-200">{points}</p>
                   </div>
                 </div>
 
                 <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                  {PREMIUM_AVATARS.map((avatar) => (
-                    <div
-                      key={avatar.key}
-                      className="rounded-3xl border border-white/10 bg-white/[0.03] p-5"
-                    >
-                      <div className="flex items-center gap-4">
-                        <img
-                          src={avatar.image}
-                          alt={avatar.label}
-                          className="h-16 w-16 object-contain"
-                        />
+                  {PREMIUM_AVATARS.map((avatar) => {
+                    const isOwned = ownedAvatars.includes(avatar.key);
+                    const isEquipped = avatarKey === avatar.key;
 
-                        <div>
-                          <p className="text-lg font-bold">{avatar.label}</p>
-                          <p className="text-white/60">Avatar premium de tienda</p>
+                    return (
+                      <div
+                        key={avatar.key}
+                        className="rounded-3xl border border-white/10 bg-white/[0.03] p-5"
+                      >
+                        <div className="flex items-center gap-4">
+                          <img
+                            src={avatar.image}
+                            alt={avatar.label}
+                            className="h-16 w-16 object-contain"
+                          />
+
+                          <div>
+                            <p className="text-lg font-bold">{avatar.label}</p>
+                            <p className="text-white/60">Avatar premium de tienda</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex items-center justify-between gap-3">
+                          <div className="inline-flex rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-sm text-white/70">
+                            {avatar.price} puntos
+                          </div>
+
+                          {isEquipped ? (
+                            <button
+                              type="button"
+                              disabled
+                              className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-bold text-emerald-300 opacity-80"
+                            >
+                              Equipado
+                            </button>
+                          ) : isOwned ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAvatarKey(avatar.key);
+                                setRightTab("customization");
+                              }}
+                              className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-500/20"
+                            >
+                              Equipar
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleBuyAvatar(avatar)}
+                              disabled={buyingAvatarKey === avatar.key || !!playerIdentity?.is_guest}
+                              className="rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm font-bold text-orange-200 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {buyingAvatarKey === avatar.key ? "Comprando..." : "Comprar"}
+                            </button>
+                          )}
                         </div>
                       </div>
-
-                      <div className="mt-4 flex items-center justify-between">
-                        <div className="inline-flex rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-sm text-white/70">
-                          {avatar.price} puntos
-                        </div>
-
-                        <button
-                          type="button"
-                          className="rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm font-bold text-orange-200 transition hover:bg-orange-500/20"
-                        >
-                          Próximamente
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-
-                  <div className="rounded-3xl border border-dashed border-orange-500/25 bg-orange-500/[0.04] p-5">
-                    <p className="text-lg font-bold text-orange-200">Siguiente fase</p>
-                    <p className="mt-2 text-white/70">
-                      Aquí conectaremos compra, desbloqueo y equipamiento de avatares premium.
-                    </p>
-                  </div>
+                    );
+                  })}
                 </div>
+
+                {message && (
+                  <div className="mt-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-emerald-300">
+                    {message}
+                  </div>
+                )}
+
+                {errorMessage && (
+                  <div className="mt-6 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
+                    {errorMessage}
+                  </div>
+                )}
               </div>
             )}
           </section>
