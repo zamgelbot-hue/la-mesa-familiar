@@ -14,6 +14,39 @@ const AVATARS = [
   { key: "avatar_guest", emoji: "🙂", label: "Invitado" },
 ];
 
+const PREMIUM_AVATARS = [
+  {
+    key: "avatar_gato_naranja",
+    label: "Gato Naranja",
+    image: "/avatars/avatar_gato_naranja.png",
+    price: 40,
+  },
+  {
+    key: "avatar_pug",
+    label: "Pug",
+    image: "/avatars/avatar_pug.png",
+    price: 40,
+  },
+  {
+    key: "avatar_delfin",
+    label: "Delfín",
+    image: "/avatars/avatar_delfin.png",
+    price: 40,
+  },
+  {
+    key: "avatar_panda",
+    label: "Panda",
+    image: "/avatars/avatar_panda.png",
+    price: 50,
+  },
+  {
+    key: "avatar_pajaro_rojo",
+    label: "Pájaro Rojo",
+    image: "/avatars/avatar_pajaro_rojo.png",
+    price: 50,
+  },
+];
+
 const FRAMES = [
   {
     key: "frame_orange",
@@ -395,7 +428,7 @@ export default function PerfilPage() {
 
                   <div>
                     <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
-                      Elige un avatar
+                      Elige un avatar básico
                     </p>
 
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -474,7 +507,7 @@ export default function PerfilPage() {
                   </p>
                   <h2 className="mt-3 text-3xl font-extrabold">Cosméticos por puntos</h2>
                   <p className="mt-2 text-white/70">
-                    Esta pestaña ya queda lista para conectar la tienda real.
+                    Aquí se mostrarán los avatares premium que podrán comprarse con puntos.
                   </p>
 
                   <div className="mt-5 rounded-2xl border border-white/10 bg-black/30 p-4">
@@ -488,34 +521,43 @@ export default function PerfilPage() {
                 </div>
 
                 <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                    <p className="text-lg font-bold">Avatar Panda</p>
-                    <p className="mt-2 text-white/60">Próximamente disponible en tienda.</p>
-                    <div className="mt-4 inline-flex rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-sm text-white/70">
-                      40 puntos
-                    </div>
-                  </div>
+                  {PREMIUM_AVATARS.map((avatar) => (
+                    <div
+                      key={avatar.key}
+                      className="rounded-3xl border border-white/10 bg-white/[0.03] p-5"
+                    >
+                      <div className="flex items-center gap-4">
+                        <img
+                          src={avatar.image}
+                          alt={avatar.label}
+                          className="h-16 w-16 object-contain"
+                        />
 
-                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                    <p className="text-lg font-bold">Marco Agua</p>
-                    <p className="mt-2 text-white/60">Próximamente disponible en tienda.</p>
-                    <div className="mt-4 inline-flex rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-sm text-white/70">
-                      50 puntos
-                    </div>
-                  </div>
+                        <div>
+                          <p className="text-lg font-bold">{avatar.label}</p>
+                          <p className="text-white/60">Avatar premium de tienda</p>
+                        </div>
+                      </div>
 
-                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                    <p className="text-lg font-bold">Marco Selva</p>
-                    <p className="mt-2 text-white/60">Próximamente disponible en tienda.</p>
-                    <div className="mt-4 inline-flex rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-sm text-white/70">
-                      60 puntos
+                      <div className="mt-4 flex items-center justify-between">
+                        <div className="inline-flex rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-sm text-white/70">
+                          {avatar.price} puntos
+                        </div>
+
+                        <button
+                          type="button"
+                          className="rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm font-bold text-orange-200 transition hover:bg-orange-500/20"
+                        >
+                          Próximamente
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  ))}
 
                   <div className="rounded-3xl border border-dashed border-orange-500/25 bg-orange-500/[0.04] p-5">
                     <p className="text-lg font-bold text-orange-200">Siguiente fase</p>
                     <p className="mt-2 text-white/70">
-                      Aquí conectaremos compra, desbloqueo y equipamiento de avatares y marcos.
+                      Aquí conectaremos compra, desbloqueo y equipamiento de avatares premium.
                     </p>
                   </div>
                 </div>
