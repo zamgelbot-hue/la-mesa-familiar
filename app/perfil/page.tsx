@@ -47,36 +47,69 @@ const PREMIUM_AVATARS = [
   },
 ];
 
-const FRAMES = [
+const BASE_FRAMES = [
   {
     key: "frame_orange",
     label: "Naranja",
-    className: "border-orange-500 shadow-[0_0_30px_rgba(249,115,22,0.25)]",
+    ringClass: "border-orange-500 shadow-[0_0_18px_rgba(249,115,22,0.35)]",
+    dotClass: "bg-orange-400",
   },
   {
     key: "frame_emerald",
     label: "Esmeralda",
-    className: "border-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.25)]",
+    ringClass: "border-emerald-500 shadow-[0_0_18px_rgba(16,185,129,0.35)]",
+    dotClass: "bg-emerald-400",
   },
   {
     key: "frame_blue",
     label: "Azul",
-    className: "border-sky-500 shadow-[0_0_30px_rgba(14,165,233,0.25)]",
+    ringClass: "border-sky-500 shadow-[0_0_18px_rgba(14,165,233,0.35)]",
+    dotClass: "bg-sky-400",
   },
   {
     key: "frame_purple",
     label: "Morado",
-    className: "border-violet-500 shadow-[0_0_30px_rgba(139,92,246,0.25)]",
+    ringClass: "border-violet-500 shadow-[0_0_18px_rgba(139,92,246,0.35)]",
+    dotClass: "bg-violet-400",
   },
   {
     key: "frame_gold",
     label: "Dorado",
-    className: "border-yellow-400 shadow-[0_0_30px_rgba(250,204,21,0.25)]",
+    ringClass: "border-yellow-400 shadow-[0_0_18px_rgba(250,204,21,0.35)]",
+    dotClass: "bg-yellow-300",
   },
   {
     key: "frame_guest",
     label: "Invitado",
-    className: "border-white/30 shadow-[0_0_30px_rgba(255,255,255,0.12)]",
+    ringClass: "border-white/40 shadow-[0_0_18px_rgba(255,255,255,0.18)]",
+    dotClass: "bg-white/70",
+  },
+];
+
+const PREMIUM_FRAMES = [
+  {
+    key: "marco_perro",
+    label: "Marco Canino",
+    image: "/frames/marco_perro.png",
+    price: 60,
+  },
+  {
+    key: "marco_gato",
+    label: "Marco Felino",
+    image: "/frames/marco_gato.png",
+    price: 60,
+  },
+  {
+    key: "marco_oceano",
+    label: "Marco Océano",
+    image: "/frames/marco_oceano.png",
+    price: 70,
+  },
+  {
+    key: "marco_selva",
+    label: "Marco Selva",
+    image: "/frames/marco_selva.png",
+    price: 70,
   },
 ];
 
@@ -103,6 +136,15 @@ const DEFAULT_OWNED_AVATARS = [
   "avatar_game",
 ];
 
+const DEFAULT_OWNED_FRAMES = [
+  "frame_orange",
+  "frame_emerald",
+  "frame_blue",
+  "frame_purple",
+  "frame_gold",
+  "frame_guest",
+];
+
 export default function PerfilPage() {
   const supabase = createClient();
 
@@ -110,7 +152,9 @@ export default function PerfilPage() {
   const [email, setEmail] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
   const [buyingAvatarKey, setBuyingAvatarKey] = useState<string | null>(null);
+  const [buyingFrameKey, setBuyingFrameKey] = useState<string | null>(null);
 
   const [displayName, setDisplayName] = useState("");
   const [avatarKey, setAvatarKey] = useState("avatar_sun");
@@ -121,9 +165,11 @@ export default function PerfilPage() {
 
   const [leftTab, setLeftTab] = useState<LeftTab>("preview");
   const [rightTab, setRightTab] = useState<RightTab>("customization");
+
   const [stats, setStats] = useState<ProfileStats>(DEFAULT_STATS);
   const [points, setPoints] = useState<number>(0);
   const [ownedAvatars, setOwnedAvatars] = useState<string[]>(DEFAULT_OWNED_AVATARS);
+  const [ownedFrames, setOwnedFrames] = useState<string[]>(DEFAULT_OWNED_FRAMES);
 
   const loadProfileData = async () => {
     const identity = await getPlayerIdentity();
@@ -144,7 +190,7 @@ export default function PerfilPage() {
       if (identity.user_id) {
         const { data: profileData, error: profileError } = await supabase
           .from("profiles")
-          .select("games_played, games_won, games_lost, points, owned_avatars")
+          .select("games_played, games_won, games_lost, points, owned_avatars, owned_frames")
           .eq("id", identity.user_id)
           .single();
 
@@ -159,11 +205,17 @@ export default function PerfilPage() {
 
           setPoints(profileData.points ?? 0);
 
-          const dbOwned = profileData.owned_avatars ?? [];
-          const mergedOwned = Array.from(
-            new Set([...DEFAULT_OWNED_AVATARS, ...dbOwned])
+          const dbOwnedAvatars = profileData.owned_avatars ?? [];
+          const mergedOwnedAvatars = Array.from(
+            new Set([...DEFAULT_OWNED_AVATARS, ...dbOwnedAvatars])
           );
-          setOwnedAvatars(mergedOwned);
+          setOwnedAvatars(mergedOwnedAvatars);
+
+          const dbOwnedFrames = profileData.owned_frames ?? [];
+          const mergedOwnedFrames = Array.from(
+            new Set([...DEFAULT_OWNED_FRAMES, ...dbOwnedFrames])
+          );
+          setOwnedFrames(mergedOwnedFrames);
         }
       }
     }
@@ -188,26 +240,30 @@ export default function PerfilPage() {
     [avatarKey]
   );
 
-  const selectedFrame = useMemo(
-    () => FRAMES.find((frame) => frame.key === frameKey) ?? FRAMES[0],
+  const selectedBaseFrame = useMemo(
+    () => BASE_FRAMES.find((frame) => frame.key === frameKey) ?? null,
     [frameKey]
   );
 
-  const availableCustomizationAvatars = useMemo(() => {
-    const premiumOwned = PREMIUM_AVATARS.filter((avatar) =>
-      ownedAvatars.includes(avatar.key)
-    );
-
-    return {
-      base: BASE_AVATARS,
-      premium: premiumOwned,
-    };
-  }, [ownedAvatars]);
+  const selectedPremiumFrame = useMemo(
+    () => PREMIUM_FRAMES.find((frame) => frame.key === frameKey) ?? null,
+    [frameKey]
+  );
 
   const winRate = useMemo(() => {
     if (!stats.games_played) return "0.0";
     return ((stats.games_won / stats.games_played) * 100).toFixed(1);
   }, [stats.games_played, stats.games_won]);
+
+  const ownedPremiumAvatars = useMemo(
+    () => PREMIUM_AVATARS.filter((avatar) => ownedAvatars.includes(avatar.key)),
+    [ownedAvatars]
+  );
+
+  const ownedPremiumFrames = useMemo(
+    () => PREMIUM_FRAMES.filter((frame) => ownedFrames.includes(frame.key)),
+    [ownedFrames]
+  );
 
   const handleSaveProfile = async () => {
     setMessage("");
@@ -332,6 +388,74 @@ export default function PerfilPage() {
     }
   };
 
+  const handleBuyFrame = async (frame: (typeof PREMIUM_FRAMES)[number]) => {
+    setMessage("");
+    setErrorMessage("");
+
+    if (!playerIdentity?.user_id) {
+      setErrorMessage("Necesitas una cuenta registrada para comprar cosméticos.");
+      return;
+    }
+
+    if (ownedFrames.includes(frame.key)) {
+      setErrorMessage("Ya tienes este marco.");
+      return;
+    }
+
+    if (points < frame.price) {
+      setErrorMessage("No tienes puntos suficientes.");
+      return;
+    }
+
+    try {
+      setBuyingFrameKey(frame.key);
+
+      const { data: profile, error: fetchError } = await supabase
+        .from("profiles")
+        .select("points, owned_frames")
+        .eq("id", playerIdentity.user_id)
+        .single();
+
+      if (fetchError || !profile) {
+        setErrorMessage("No se pudo cargar tu perfil.");
+        return;
+      }
+
+      const currentPoints = profile.points ?? 0;
+      const currentOwned = profile.owned_frames ?? [];
+
+      if (currentOwned.includes(frame.key)) {
+        setErrorMessage("Ya tienes este marco.");
+        return;
+      }
+
+      if (currentPoints < frame.price) {
+        setErrorMessage("No tienes puntos suficientes.");
+        return;
+      }
+
+      const updatedOwned = [...currentOwned, frame.key];
+
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({
+          points: currentPoints - frame.price,
+          owned_frames: updatedOwned,
+        })
+        .eq("id", playerIdentity.user_id);
+
+      if (updateError) {
+        setErrorMessage(updateError.message);
+        return;
+      }
+
+      setMessage(`Compraste ${frame.label} correctamente.`);
+      await loadProfileData();
+    } finally {
+      setBuyingFrameKey(null);
+    }
+  };
+
   if (loading) {
     return (
       <main className="min-h-screen bg-black px-6 py-10 text-white">
@@ -382,17 +506,29 @@ export default function PerfilPage() {
 
             {leftTab === "preview" && (
               <div className="flex flex-col items-center text-center">
-                <div
-                  className={`flex h-40 w-40 items-center justify-center rounded-full border-4 bg-black text-6xl ${selectedFrame.className}`}
-                >
+                <div className="relative flex h-40 w-40 items-center justify-center rounded-full bg-black">
+                  {selectedPremiumFrame ? (
+                    <img
+                      src={selectedPremiumFrame.image}
+                      alt={selectedPremiumFrame.label}
+                      className="absolute inset-0 h-full w-full object-contain"
+                    />
+                  ) : (
+                    <div
+                      className={`absolute inset-0 rounded-full border-4 ${selectedBaseFrame?.ringClass ?? ""}`}
+                    />
+                  )}
+
                   {selectedPremiumAvatar ? (
                     <img
                       src={selectedPremiumAvatar.image}
                       alt={selectedPremiumAvatar.label}
-                      className="h-28 w-28 object-contain"
+                      className="relative z-10 h-28 w-28 object-contain"
                     />
                   ) : (
-                    <span>{selectedBaseAvatar?.emoji ?? "🙂"}</span>
+                    <span className="relative z-10 text-6xl">
+                      {selectedBaseAvatar?.emoji ?? "🙂"}
+                    </span>
                   )}
                 </div>
 
@@ -532,7 +668,7 @@ export default function PerfilPage() {
                     </p>
 
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      {availableCustomizationAvatars.base.map((avatar) => (
+                      {BASE_AVATARS.map((avatar) => (
                         <button
                           key={avatar.key}
                           type="button"
@@ -550,14 +686,14 @@ export default function PerfilPage() {
                     </div>
                   </div>
 
-                  {availableCustomizationAvatars.premium.length > 0 && (
+                  {ownedPremiumAvatars.length > 0 && (
                     <div>
                       <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
                         Avatares premium desbloqueados
                       </p>
 
                       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                        {availableCustomizationAvatars.premium.map((avatar) => (
+                        {ownedPremiumAvatars.map((avatar) => (
                           <button
                             key={avatar.key}
                             type="button"
@@ -582,11 +718,11 @@ export default function PerfilPage() {
 
                   <div>
                     <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
-                      Elige un marco
+                      Marcos básicos
                     </p>
 
                     <div className="grid gap-3 sm:grid-cols-2">
-                      {FRAMES.map((frame) => (
+                      {BASE_FRAMES.map((frame) => (
                         <button
                           key={frame.key}
                           type="button"
@@ -597,14 +733,58 @@ export default function PerfilPage() {
                               : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
                           }`}
                         >
-                          <p className="font-bold">{frame.label}</p>
-                          <p className="mt-1 text-sm text-white/60">
-                            Marco decorativo para tu perfil
-                          </p>
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`flex h-10 w-10 items-center justify-center rounded-full border-4 bg-black ${frame.ringClass}`}
+                            >
+                              <div className={`h-3 w-3 rounded-full ${frame.dotClass}`} />
+                            </div>
+
+                            <div>
+                              <p className="font-bold">{frame.label}</p>
+                              <p className="text-xs text-white/60">Marco básico</p>
+                            </div>
+                          </div>
                         </button>
                       ))}
                     </div>
                   </div>
+
+                  {ownedPremiumFrames.length > 0 && (
+                    <div>
+                      <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
+                        Marcos premium desbloqueados
+                      </p>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {ownedPremiumFrames.map((frame) => (
+                          <button
+                            key={frame.key}
+                            type="button"
+                            onClick={() => setFrameKey(frame.key)}
+                            className={`rounded-2xl border p-4 text-left transition ${
+                              frameKey === frame.key
+                                ? "border-orange-500 bg-orange-500/10"
+                                : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <img
+                                src={frame.image}
+                                alt={frame.label}
+                                className="h-10 w-10 object-contain"
+                              />
+
+                              <div>
+                                <p className="font-bold">{frame.label}</p>
+                                <p className="text-xs text-white/60">Marco premium</p>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <button
                     onClick={handleSaveProfile}
@@ -630,14 +810,14 @@ export default function PerfilPage() {
             )}
 
             {rightTab === "shop" && (
-              <div>
+              <div className="space-y-8">
                 <div className="rounded-3xl border border-orange-500/15 bg-orange-500/5 p-5">
                   <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
                     Tienda básica
                   </p>
-                  <h2 className="mt-3 text-3xl font-extrabold">Avatares premium</h2>
+                  <h2 className="mt-3 text-3xl font-extrabold">Cosméticos premium</h2>
                   <p className="mt-2 text-white/70">
-                    Compra nuevos avatares usando tus puntos actuales.
+                    Compra nuevos avatares y marcos usando tus puntos actuales.
                   </p>
 
                   <div className="mt-5 rounded-2xl border border-white/10 bg-black/30 p-4">
@@ -648,77 +828,148 @@ export default function PerfilPage() {
                   </div>
                 </div>
 
-                <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                  {PREMIUM_AVATARS.map((avatar) => {
-                    const isOwned = ownedAvatars.includes(avatar.key);
-                    const isEquipped = avatarKey === avatar.key;
+                <div>
+                  <h3 className="text-xl font-bold">Avatares premium</h3>
 
-                    return (
-                      <div
-                        key={avatar.key}
-                        className="rounded-3xl border border-white/10 bg-white/[0.03] p-5"
-                      >
-                        <div className="flex items-center gap-4">
-                          <img
-                            src={avatar.image}
-                            alt={avatar.label}
-                            className="h-16 w-16 object-contain"
-                          />
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    {PREMIUM_AVATARS.map((avatar) => {
+                      const isOwned = ownedAvatars.includes(avatar.key);
+                      const isEquipped = avatarKey === avatar.key;
 
-                          <div>
-                            <p className="text-lg font-bold">{avatar.label}</p>
-                            <p className="text-white/60">Avatar premium de tienda</p>
-                          </div>
-                        </div>
+                      return (
+                        <div
+                          key={avatar.key}
+                          className="rounded-3xl border border-white/10 bg-white/[0.03] p-5"
+                        >
+                          <div className="flex items-center gap-4">
+                            <img
+                              src={avatar.image}
+                              alt={avatar.label}
+                              className="h-16 w-16 object-contain"
+                            />
 
-                        <div className="mt-4 flex items-center justify-between gap-3">
-                          <div className="inline-flex rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-sm text-white/70">
-                            {avatar.price} puntos
+                            <div>
+                              <p className="text-lg font-bold">{avatar.label}</p>
+                              <p className="text-white/60">Avatar premium</p>
+                            </div>
                           </div>
 
-                          {isEquipped ? (
-                            <button
-                              type="button"
-                              disabled
-                              className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-bold text-emerald-300 opacity-80"
-                            >
-                              Equipado
-                            </button>
-                          ) : isOwned ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setAvatarKey(avatar.key);
-                                setRightTab("customization");
-                              }}
-                              className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-500/20"
-                            >
-                              Equipar
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleBuyAvatar(avatar)}
-                              disabled={buyingAvatarKey === avatar.key || !!playerIdentity?.is_guest}
-                              className="rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm font-bold text-orange-200 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {buyingAvatarKey === avatar.key ? "Comprando..." : "Comprar"}
-                            </button>
-                          )}
+                          <div className="mt-4 flex items-center justify-between gap-3">
+                            <div className="inline-flex rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-sm text-white/70">
+                              {avatar.price} puntos
+                            </div>
+
+                            {isEquipped ? (
+                              <button
+                                type="button"
+                                disabled
+                                className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-bold text-emerald-300 opacity-80"
+                              >
+                                Equipado
+                              </button>
+                            ) : isOwned ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAvatarKey(avatar.key);
+                                  setRightTab("customization");
+                                }}
+                                className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-500/20"
+                              >
+                                Equipar
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleBuyAvatar(avatar)}
+                                disabled={buyingAvatarKey === avatar.key || !!playerIdentity?.is_guest}
+                                className="rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm font-bold text-orange-200 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {buyingAvatarKey === avatar.key ? "Comprando..." : "Comprar"}
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-xl font-bold">Marcos premium</h3>
+
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    {PREMIUM_FRAMES.map((frame) => {
+                      const isOwned = ownedFrames.includes(frame.key);
+                      const isEquipped = frameKey === frame.key;
+
+                      return (
+                        <div
+                          key={frame.key}
+                          className="rounded-3xl border border-white/10 bg-white/[0.03] p-5"
+                        >
+                          <div className="flex items-center gap-4">
+                            <img
+                              src={frame.image}
+                              alt={frame.label}
+                              className="h-16 w-16 object-contain"
+                            />
+
+                            <div>
+                              <p className="text-lg font-bold">{frame.label}</p>
+                              <p className="text-white/60">Marco premium</p>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex items-center justify-between gap-3">
+                            <div className="inline-flex rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-sm text-white/70">
+                              {frame.price} puntos
+                            </div>
+
+                            {isEquipped ? (
+                              <button
+                                type="button"
+                                disabled
+                                className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-bold text-emerald-300 opacity-80"
+                              >
+                                Equipado
+                              </button>
+                            ) : isOwned ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFrameKey(frame.key);
+                                  setRightTab("customization");
+                                }}
+                                className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-500/20"
+                              >
+                                Equipar
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleBuyFrame(frame)}
+                                disabled={buyingFrameKey === frame.key || !!playerIdentity?.is_guest}
+                                className="rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm font-bold text-orange-200 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {buyingFrameKey === frame.key ? "Comprando..." : "Comprar"}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {message && (
-                  <div className="mt-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-emerald-300">
+                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-emerald-300">
                     {message}
                   </div>
                 )}
 
                 {errorMessage && (
-                  <div className="mt-6 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
+                  <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
                     {errorMessage}
                   </div>
                 )}
