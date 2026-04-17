@@ -91,25 +91,25 @@ const PREMIUM_FRAMES = [
     key: "marco_perro",
     label: "Marco Canino",
     image: "/frames/marco_perro.png",
-    price: 80,
+    price: 85,
   },
   {
     key: "marco_gato",
     label: "Marco Felino",
     image: "/frames/marco_gato.png",
-    price: 80,
+    price: 85,
   },
   {
     key: "marco_oceano",
     label: "Marco Océano",
     image: "/frames/marco_oceano.png",
-    price: 100,
+    price: 110,
   },
   {
     key: "marco_selva",
     label: "Marco Selva",
     image: "/frames/marco_selva.png",
-    price: 100,
+    price: 110,
   },
 ];
 
