@@ -521,7 +521,7 @@ const awardPoints = useCallback(
       if (winner?.user_id) {
         const { error: winnerPointsError } = await supabase.rpc("add_points", {
           user_id_input: winner.user_id,
-          points_input: 10,
+          points_input: 5,
         });
 
         if (winnerPointsError) {
@@ -554,7 +554,7 @@ const awardPoints = useCallback(
       if (loser?.user_id) {
         const { error: loserPointsError } = await supabase.rpc("add_points", {
           user_id_input: loser.user_id,
-          points_input: 3,
+          points_input: 2,
         });
 
         if (loserPointsError) {
