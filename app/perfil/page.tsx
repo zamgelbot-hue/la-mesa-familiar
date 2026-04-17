@@ -19,31 +19,31 @@ const PREMIUM_AVATARS = [
     key: "avatar_gato_naranja",
     label: "Chopper",
     image: "/avatars/avatar_gato_naranja.png",
-    price: 40,
+    price: 65,
   },
   {
     key: "avatar_pug",
     label: "Nala",
     image: "/avatars/avatar_pug.png",
-    price: 40,
+    price: 65,
   },
   {
     key: "avatar_delfin",
     label: "Delfín",
     image: "/avatars/avatar_delfin.png",
-    price: 40,
+    price: 65,
   },
   {
     key: "avatar_panda",
     label: "Panda",
     image: "/avatars/avatar_panda.png",
-    price: 50,
+    price: 85,
   },
   {
     key: "avatar_pajaro_rojo",
     label: "Guacamaya",
     image: "/avatars/avatar_pajaro_rojo.png",
-    price: 50,
+    price: 85,
   },
 ];
 
@@ -91,25 +91,25 @@ const PREMIUM_FRAMES = [
     key: "marco_perro",
     label: "Marco Canino",
     image: "/frames/marco_perro.png",
-    price: 60,
+    price: 80,
   },
   {
     key: "marco_gato",
     label: "Marco Felino",
     image: "/frames/marco_gato.png",
-    price: 60,
+    price: 80,
   },
   {
     key: "marco_oceano",
     label: "Marco Océano",
     image: "/frames/marco_oceano.png",
-    price: 70,
+    price: 100,
   },
   {
     key: "marco_selva",
     label: "Marco Selva",
     image: "/frames/marco_selva.png",
-    price: 70,
+    price: 100,
   },
 ];
 
