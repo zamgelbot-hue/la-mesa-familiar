@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
 import RoomChat from "@/components/RoomChat";
+import PlayerAvatar from "@/components/PlayerAvatar";
 
 type Room = {
   id: string;
@@ -545,11 +546,7 @@ export default function SalaPage() {
                   }`}
                 >
                   <div className="flex items-center gap-4">
-                    <div
-                      className={`flex h-16 w-16 items-center justify-center rounded-full border-4 bg-black text-2xl ${frame.className}`}
-                    >
-                      <span>{avatar.emoji}</span>
-                    </div>
+                    <PlayerAvatar avatar={avatar} frame={frame} size="md" />
 
                     <div>
                       <p className="text-3xl font-extrabold">
