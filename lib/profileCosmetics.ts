@@ -1,13 +1,42 @@
 export const AVATARS = [
+  // 🔹 Básicos (emoji)
   { key: "avatar_sun", emoji: "🌞", label: "Sol" },
   { key: "avatar_moon", emoji: "🌙", label: "Luna" },
   { key: "avatar_star", emoji: "⭐", label: "Estrella" },
   { key: "avatar_rocket", emoji: "🚀", label: "Cohete" },
   { key: "avatar_game", emoji: "🎮", label: "Gamer" },
   { key: "avatar_guest", emoji: "🙂", label: "Invitado" },
+
+  // 🔥 Premium (imagen)
+  {
+    key: "avatar_gato_naranja",
+    label: "Chopper",
+    image: "/avatars/avatar_gato_naranja.png",
+  },
+  {
+    key: "avatar_pug",
+    label: "Nala",
+    image: "/avatars/avatar_pug.png",
+  },
+  {
+    key: "avatar_delfin",
+    label: "Delfín",
+    image: "/avatars/avatar_delfin.png",
+  },
+  {
+    key: "avatar_panda",
+    label: "Panda",
+    image: "/avatars/avatar_panda.png",
+  },
+  {
+    key: "avatar_pajaro_rojo",
+    label: "Guacamaya",
+    image: "/avatars/avatar_pajaro_rojo.png",
+  },
 ];
 
 export const FRAMES = [
+  // 🔹 Básicos (CSS)
   {
     key: "frame_orange",
     label: "Naranja",
@@ -37,6 +66,28 @@ export const FRAMES = [
     key: "frame_guest",
     label: "Invitado",
     className: "border-white/30 shadow-[0_0_30px_rgba(255,255,255,0.12)]",
+  },
+
+  // 🔥 Premium (imagen)
+  {
+    key: "marco_perro",
+    label: "Marco Canino",
+    image: "/frames/marco_perro.png",
+  },
+  {
+    key: "marco_gato",
+    label: "Marco Felino",
+    image: "/frames/marco_gato.png",
+  },
+  {
+    key: "marco_oceano",
+    label: "Marco Océano",
+    image: "/frames/marco_oceano.png",
+  },
+  {
+    key: "marco_selva",
+    label: "Marco Selva",
+    image: "/frames/marco_selva.png",
   },
 ];
 
