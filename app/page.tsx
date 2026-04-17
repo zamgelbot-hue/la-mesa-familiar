@@ -97,6 +97,43 @@ export default function HomePage() {
   const selectedAvatar = getAvatarByKey(playerIdentity?.avatar_key);
   const selectedFrame = getFrameByKey(playerIdentity?.frame_key);
 
+  const renderProfileAvatar = (
+  avatar: { emoji?: string; image?: string; label?: string },
+  frame: { className?: string; image?: string; label?: string },
+  size: "sm" | "md" = "sm"
+) => {
+  const wrapperSize = size === "sm" ? "h-10 w-10" : "h-16 w-16";
+  const avatarSize = size === "sm" ? "h-7 w-7" : "h-10 w-10";
+  const textSize = size === "sm" ? "text-lg" : "text-2xl";
+  const borderSize = size === "sm" ? "border-2" : "border-4";
+
+  return (
+    <div className={`relative flex ${wrapperSize} items-center justify-center rounded-full bg-black`}>
+      {frame.image ? (
+        <img
+          src={frame.image}
+          alt={frame.label ?? "Frame"}
+          className="absolute inset-0 h-full w-full object-contain"
+        />
+      ) : (
+        <div
+          className={`absolute inset-0 rounded-full ${borderSize} ${frame.className ?? ""}`}
+        />
+      )}
+
+      {avatar.image ? (
+        <img
+          src={avatar.image}
+          alt={avatar.label ?? "Avatar"}
+          className={`relative z-10 ${avatarSize} object-contain`}
+        />
+      ) : (
+        <span className={`relative z-10 ${textSize}`}>{avatar.emoji}</span>
+      )}
+    </div>
+  );
+};
+
   const loadPlayerIdentity = useCallback(async () => {
     const identity = await getPlayerIdentity();
     setPlayerIdentity(identity);
@@ -405,11 +442,7 @@ export default function HomePage() {
                   onClick={() => router.push("/perfil")}
                   className="hidden items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10 md:flex"
                 >
-                  <div
-                    className={`flex h-10 w-10 items-center justify-center rounded-full border-2 bg-black text-lg ${selectedFrame.className}`}
-                  >
-                    <span>{selectedAvatar.emoji}</span>
-                  </div>
+                  {renderProfileAvatar(selectedAvatar, selectedFrame, "sm")}
                   <span>
                     {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
                   </span>
@@ -454,11 +487,7 @@ export default function HomePage() {
 
             {playerIdentity && (
               <div className="mx-auto mt-6 inline-flex items-center gap-3 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-                <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-full border-2 bg-black text-lg ${selectedFrame.className}`}
-                >
-                  <span>{selectedAvatar.emoji}</span>
-                </div>
+                {renderProfileAvatar(selectedAvatar, selectedFrame, "sm")}
                 <span>
                   Jugando como: {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
                 </span>
