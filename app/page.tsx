@@ -23,6 +23,19 @@ type HomeStats = {
   gamesPlayed: number;
 };
 
+type TopPlayer = {
+  id: string;
+  display_name: string | null;
+  points: number | null;
+  games_played: number | null;
+  games_won: number | null;
+  games_lost: number | null;
+  total_points_earned: number | null;
+  best_win_streak: number | null;
+  avatar_key: string | null;
+  frame_key: string | null;
+};
+
 const DEFAULT_STATS: HomeStats = {
   activePlayers: 0,
   classicGames: 0,
@@ -88,6 +101,8 @@ export default function HomePage() {
   const [signingOut, setSigningOut] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(null);
+  const [topPlayers, setTopPlayers] = useState<TopPlayer[]>([]);
+  const [loadingTopPlayers, setLoadingTopPlayers] = useState(true);
 
   const selectedGame = useMemo(
     () => games.find((game) => game.slug === selectedGameSlug) ?? null,
@@ -98,41 +113,59 @@ export default function HomePage() {
   const selectedFrame = getFrameByKey(playerIdentity?.frame_key);
 
   const renderProfileAvatar = (
-  avatar: { emoji?: string; image?: string; label?: string },
-  frame: { className?: string; image?: string; label?: string },
-  size: "sm" | "md" = "sm"
-) => {
-  const wrapperSize = size === "sm" ? "h-10 w-10" : "h-16 w-16";
-  const avatarSize = size === "sm" ? "h-7 w-7" : "h-10 w-10";
-  const textSize = size === "sm" ? "text-lg" : "text-2xl";
-  const borderSize = size === "sm" ? "border-2" : "border-4";
+    avatar: { emoji?: string; image?: string; label?: string },
+    frame: { className?: string; image?: string; label?: string },
+    size: "sm" | "md" = "sm"
+  ) => {
+    const wrapperSize = size === "sm" ? "h-10 w-10" : "h-16 w-16";
+    const avatarSize = size === "sm" ? "h-7 w-7" : "h-10 w-10";
+    const textSize = size === "sm" ? "text-lg" : "text-2xl";
+    const borderSize = size === "sm" ? "border-2" : "border-4";
 
-  return (
-    <div className={`relative flex ${wrapperSize} items-center justify-center rounded-full bg-black`}>
-      {frame.image ? (
-        <img
-          src={frame.image}
-          alt={frame.label ?? "Frame"}
-          className="absolute inset-0 h-full w-full object-contain"
-        />
-      ) : (
-        <div
-          className={`absolute inset-0 rounded-full ${borderSize} ${frame.className ?? ""}`}
-        />
-      )}
+    return (
+      <div className={`relative flex ${wrapperSize} items-center justify-center rounded-full bg-black`}>
+        {frame.image ? (
+          <img
+            src={frame.image}
+            alt={frame.label ?? "Frame"}
+            className="absolute inset-0 h-full w-full object-contain"
+          />
+        ) : (
+          <div
+            className={`absolute inset-0 rounded-full ${borderSize} ${frame.className ?? ""}`}
+          />
+        )}
 
-      {avatar.image ? (
-        <img
-          src={avatar.image}
-          alt={avatar.label ?? "Avatar"}
-          className={`relative z-10 ${avatarSize} object-contain`}
-        />
-      ) : (
-        <span className={`relative z-10 ${textSize}`}>{avatar.emoji}</span>
-      )}
-    </div>
-  );
-};
+        {avatar.image ? (
+          <img
+            src={avatar.image}
+            alt={avatar.label ?? "Avatar"}
+            className={`relative z-10 ${avatarSize} object-contain`}
+          />
+        ) : (
+          <span className={`relative z-10 ${textSize}`}>{avatar.emoji}</span>
+        )}
+      </div>
+    );
+  };
+
+  const getTopPositionBadge = (position: number) => {
+    if (position === 1) return "👑";
+    if (position === 2) return "🥈";
+    return "🥉";
+  };
+
+  const getTopPositionStyles = (position: number) => {
+    if (position === 1) {
+      return "border-yellow-400/30 bg-yellow-500/10 shadow-[0_0_25px_rgba(250,204,21,0.10)]";
+    }
+
+    if (position === 2) {
+      return "border-slate-300/20 bg-slate-200/5 shadow-[0_0_20px_rgba(226,232,240,0.06)]";
+    }
+
+    return "border-orange-400/25 bg-orange-500/10 shadow-[0_0_20px_rgba(251,146,60,0.06)]";
+  };
 
   const loadPlayerIdentity = useCallback(async () => {
     const identity = await getPlayerIdentity();
@@ -204,23 +237,52 @@ export default function HomePage() {
     });
   }, [supabase]);
 
+  const loadTopPlayers = useCallback(async () => {
+    try {
+      setLoadingTopPlayers(true);
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select(
+          "id, display_name, points, games_played, games_won, games_lost, total_points_earned, best_win_streak, avatar_key, frame_key"
+        )
+        .not("display_name", "is", null)
+        .order("points", { ascending: false })
+        .order("games_won", { ascending: false })
+        .order("best_win_streak", { ascending: false })
+        .limit(3);
+
+      if (error) {
+        console.error("Error cargando top players:", error);
+        setTopPlayers([]);
+        return;
+      }
+
+      setTopPlayers((data ?? []) as TopPlayer[]);
+    } finally {
+      setLoadingTopPlayers(false);
+    }
+  }, [supabase]);
+
   useEffect(() => {
     loadGames();
     loadStats();
     loadPlayerIdentity();
-  }, [loadGames, loadStats, loadPlayerIdentity]);
+    loadTopPlayers();
+  }, [loadGames, loadStats, loadPlayerIdentity, loadTopPlayers]);
 
   useEffect(() => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(() => {
       loadPlayerIdentity();
+      loadTopPlayers();
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [supabase, loadPlayerIdentity]);
+  }, [supabase, loadPlayerIdentity, loadTopPlayers]);
 
   const handleCreateRoom = async () => {
     if (!selectedGame) {
@@ -437,32 +499,32 @@ export default function HomePage() {
                 </button>
               </>
             ) : (
-<div className="flex items-center gap-3">
-  <button
-    onClick={() => router.push("/ranking")}
-    className="hidden rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10 md:block"
-  >
-    Ranking
-  </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => router.push("/ranking")}
+                  className="hidden rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10 md:block"
+                >
+                  Ranking
+                </button>
 
-  <button
-    onClick={() => router.push("/perfil")}
-    className="hidden items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10 md:flex"
-  >
-    {renderProfileAvatar(selectedAvatar, selectedFrame, "sm")}
-    <span>
-      {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
-    </span>
-  </button>
+                <button
+                  onClick={() => router.push("/perfil")}
+                  className="hidden items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10 md:flex"
+                >
+                  {renderProfileAvatar(selectedAvatar, selectedFrame, "sm")}
+                  <span>
+                    {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
+                  </span>
+                </button>
 
-  <button
-    onClick={handleSignOut}
-    disabled={signingOut}
-    className="rounded-2xl bg-orange-500 px-5 py-2.5 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
-  >
-    {signingOut ? "Saliendo..." : "Cerrar sesión"}
-  </button>
-</div>
+                <button
+                  onClick={handleSignOut}
+                  disabled={signingOut}
+                  className="rounded-2xl bg-orange-500 px-5 py-2.5 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {signingOut ? "Saliendo..." : "Cerrar sesión"}
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -492,26 +554,115 @@ export default function HomePage() {
               invita a tu familia y hagan recuerdos juntos sin importar la distancia.
             </p>
 
-{playerIdentity && (
-  <div className="mt-6 flex flex-col items-center gap-4">
-    <div className="inline-flex items-center gap-3 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-      {renderProfileAvatar(selectedAvatar, selectedFrame, "sm")}
-      <span>
-        Jugando como: {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
-      </span>
-    </div>
+            {playerIdentity && (
+              <div className="mt-6 flex flex-col items-center gap-4">
+                <div className="inline-flex items-center gap-3 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+                  {renderProfileAvatar(selectedAvatar, selectedFrame, "sm")}
+                  <span>
+                    Jugando como: {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
+                  </span>
+                </div>
 
-    {!playerIdentity.is_guest && (
-      <button
-        type="button"
-        onClick={() => router.push("/ranking")}
-        className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-5 py-3 font-bold text-orange-200 transition hover:bg-orange-500/15"
-      >
-        Ver ranking global
-      </button>
-    )}
-  </div>
-)}
+                {!playerIdentity.is_guest && (
+                  <button
+                    type="button"
+                    onClick={() => router.push("/ranking")}
+                    className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-5 py-3 font-bold text-orange-200 transition hover:bg-orange-500/15"
+                  >
+                    Ver ranking global
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="mx-auto mt-12 max-w-5xl rounded-[30px] border border-orange-500/15 bg-zinc-950/90 p-6 shadow-[0_0_40px_rgba(249,115,22,0.05)]">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-orange-300/80">
+                  Top jugadores
+                </p>
+                <h2 className="mt-2 text-2xl font-bold text-white">Los mejores de la mesa</h2>
+                <p className="mt-1 text-sm text-white/60">
+                  Los 3 jugadores con más puntos actuales.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => router.push("/ranking")}
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10"
+              >
+                Ver ranking
+              </button>
+            </div>
+
+            {loadingTopPlayers ? (
+              <div className="rounded-3xl border border-white/10 bg-white/[0.03] px-6 py-10 text-center text-white/70">
+                Cargando top jugadores...
+              </div>
+            ) : topPlayers.length === 0 ? (
+              <div className="rounded-3xl border border-white/10 bg-white/[0.03] px-6 py-10 text-center text-white/70">
+                Aún no hay jugadores suficientes para mostrar el Top 3.
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-3">
+                {topPlayers.map((player, index) => {
+                  const position = index + 1;
+                  const avatar = getAvatarByKey(player.avatar_key);
+                  const frame = getFrameByKey(player.frame_key);
+                  const gamesPlayed = player.games_played ?? 0;
+                  const gamesWon = player.games_won ?? 0;
+                  const winRate = gamesPlayed > 0 ? ((gamesWon / gamesPlayed) * 100).toFixed(1) : null;
+                  const isMe = !!playerIdentity?.user_id && player.id === playerIdentity.user_id;
+
+                  return (
+                    <div
+                      key={player.id}
+                      className={`rounded-[28px] border p-5 transition hover:border-orange-500/30 hover:bg-white/[0.05] ${getTopPositionStyles(position)} ${
+                        isMe ? "ring-2 ring-emerald-400/50 shadow-[0_0_25px_rgba(16,185,129,0.12)]" : ""
+                      }`}
+                    >
+                      <div className="mb-4 flex items-center justify-between">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-black/30 text-lg font-extrabold">
+                          {getTopPositionBadge(position)}
+                        </div>
+
+                        {isMe && (
+                          <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-emerald-300">
+                            Tú
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex justify-center">
+                        {renderProfileAvatar(avatar, frame, "md")}
+                      </div>
+
+                      <div className="mt-4 text-center">
+                        <p className="truncate text-lg font-bold text-white">
+                          {player.display_name || "Jugador"}
+                        </p>
+
+                        <p className="mt-2 text-3xl font-extrabold text-orange-400">
+                          {player.points ?? 0}
+                        </p>
+
+                        <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/45">
+                          pts
+                        </p>
+
+                        <p className="mt-3 text-sm text-white/65">
+                          {gamesPlayed === 0
+                            ? "Sin partidas registradas"
+                            : `${gamesPlayed} jugadas · ${gamesWon} ganadas · ${winRate}% WR`}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="mx-auto mt-14 grid max-w-4xl gap-6 md:grid-cols-2">
