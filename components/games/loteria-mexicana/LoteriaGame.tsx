@@ -45,7 +45,7 @@ type RoomPlayerRow = {
   created_at?: string;
 };
 
-const LOTERIA_DRAW_INTERVAL_MS = 4000;
+const LOTERIA_DRAW_INTERVAL_MS = 5000;
 const DEFAULT_DECK_SLUG = "tradicional";
 
 export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
