@@ -326,9 +326,9 @@ export default function SalaPage() {
               await fetchGame(nextRoom.game_slug);
             }
 
-if (nextRoom.status === "playing") {
-  router.push(`/juego/${code}`);
-}
+            if (nextRoom.status === "playing") {
+              router.replace(`/juego/${code}`);
+            }
           } else {
             const freshRoom = await fetchRoom();
             if (freshRoom?.game_slug) {
@@ -343,6 +343,14 @@ if (nextRoom.status === "playing") {
       supabase.removeChannel(channel);
     };
   }, [supabase, code, fetchPlayers, fetchRoom, fetchGame, router]);
+
+  useEffect(() => {
+    if (!room) return;
+
+    if (room.status === "playing") {
+      router.replace(`/juego/${code}`);
+    }
+  }, [room?.status, room, router, code]);
 
   useEffect(() => {
     if (!code || !currentPlayerName || players.length === 0) return;
@@ -397,7 +405,7 @@ if (nextRoom.status === "playing") {
         return;
       }
 
-router.push(`/juego/${code}`);
+      router.replace(`/juego/${code}`);
     } finally {
       setStarting(false);
     }
