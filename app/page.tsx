@@ -437,25 +437,32 @@ export default function HomePage() {
                 </button>
               </>
             ) : (
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => router.push("/perfil")}
-                  className="hidden items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10 md:flex"
-                >
-                  {renderProfileAvatar(selectedAvatar, selectedFrame, "sm")}
-                  <span>
-                    {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
-                  </span>
-                </button>
+<div className="flex items-center gap-3">
+  <button
+    onClick={() => router.push("/ranking")}
+    className="hidden rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10 md:block"
+  >
+    Ranking
+  </button>
 
-                <button
-                  onClick={handleSignOut}
-                  disabled={signingOut}
-                  className="rounded-2xl bg-orange-500 px-5 py-2.5 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {signingOut ? "Saliendo..." : "Cerrar sesión"}
-                </button>
-              </div>
+  <button
+    onClick={() => router.push("/perfil")}
+    className="hidden items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10 md:flex"
+  >
+    {renderProfileAvatar(selectedAvatar, selectedFrame, "sm")}
+    <span>
+      {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
+    </span>
+  </button>
+
+  <button
+    onClick={handleSignOut}
+    disabled={signingOut}
+    className="rounded-2xl bg-orange-500 px-5 py-2.5 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+  >
+    {signingOut ? "Saliendo..." : "Cerrar sesión"}
+  </button>
+</div>
             )}
           </div>
         </div>
@@ -485,14 +492,26 @@ export default function HomePage() {
               invita a tu familia y hagan recuerdos juntos sin importar la distancia.
             </p>
 
-            {playerIdentity && (
-              <div className="mx-auto mt-6 inline-flex items-center gap-3 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
-                {renderProfileAvatar(selectedAvatar, selectedFrame, "sm")}
-                <span>
-                  Jugando como: {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
-                </span>
-              </div>
-            )}
+{playerIdentity && (
+  <div className="mt-6 flex flex-col items-center gap-4">
+    <div className="inline-flex items-center gap-3 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
+      {renderProfileAvatar(selectedAvatar, selectedFrame, "sm")}
+      <span>
+        Jugando como: {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
+      </span>
+    </div>
+
+    {!playerIdentity.is_guest && (
+      <button
+        type="button"
+        onClick={() => router.push("/ranking")}
+        className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-5 py-3 font-bold text-orange-200 transition hover:bg-orange-500/15"
+      >
+        Ver ranking global
+      </button>
+    )}
+  </div>
+)}
           </div>
 
           <div className="mx-auto mt-14 grid max-w-4xl gap-6 md:grid-cols-2">
