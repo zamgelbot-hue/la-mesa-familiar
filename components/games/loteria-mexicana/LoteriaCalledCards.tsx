@@ -42,17 +42,19 @@ export default function LoteriaCalledCards({
           Aún no se han cantado cartas.
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 xl:grid-cols-5">
-          {[...calledCards].reverse().map((card) => (
-            <LoteriaCard
-              key={card.key}
-              card={card}
-              size="sm"
-              isCalled
-              isCurrentCalled={currentCardKey === card.key}
-              disabled
-            />
-          ))}
+        <div className="max-h-[300px] overflow-y-auto pr-2">
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 xl:grid-cols-5">
+            {[...calledCards].reverse().map((card) => (
+              <LoteriaCard
+                key={card.key}
+                card={card}
+                size="sm"
+                isCalled
+                isCurrentCalled={currentCardKey === card.key}
+                disabled
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>
