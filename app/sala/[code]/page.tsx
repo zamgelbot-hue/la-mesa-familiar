@@ -326,11 +326,9 @@ export default function SalaPage() {
               await fetchGame(nextRoom.game_slug);
             }
 
-            if (nextRoom.status === "playing") {
-              if (nextRoom.game_slug === "piedra-papel-o-tijera") {
-                router.push(`/juego/${code}`);
-              }
-            }
+if (nextRoom.status === "playing") {
+  router.push(`/juego/${code}`);
+}
           } else {
             const freshRoom = await fetchRoom();
             if (freshRoom?.game_slug) {
@@ -399,9 +397,7 @@ export default function SalaPage() {
         return;
       }
 
-      if (room.game_slug === "piedra-papel-o-tijera") {
-        router.push(`/juego/${code}`);
-      }
+router.push(`/juego/${code}`);
     } finally {
       setStarting(false);
     }
