@@ -648,47 +648,47 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
           </div>
         </div>
 
-        <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-              Jugador actual
-            </p>
-            <p className="mt-2 text-xl font-bold text-white">
-              {currentRoomPlayer?.player_name ?? playerIdentity?.name ?? "Jugador"}
-            </p>
-          </div>
+<div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+  <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
+    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+      Jugador actual
+    </p>
+    <p className="mt-1 text-lg font-bold text-white">
+      {currentRoomPlayer?.player_name ?? playerIdentity?.name ?? "Jugador"}
+    </p>
+  </div>
 
-          <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-              Rival
-            </p>
-            <p className="mt-2 text-xl font-bold text-white">
-              {opponentRoomPlayer?.player_name ?? "Esperando rival"}
-            </p>
-          </div>
+  <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
+    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+      Rival
+    </p>
+    <p className="mt-1 text-lg font-bold text-white">
+      {opponentRoomPlayer?.player_name ?? "Esperando rival"}
+    </p>
+  </div>
 
-          <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-              Cartas cantadas
-            </p>
-            <p className="mt-2 text-xl font-bold text-orange-300">
-              {calledCardKeys.length}
-            </p>
-          </div>
+  <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
+    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+      Cartas cantadas
+    </p>
+    <p className="mt-1 text-lg font-bold text-orange-300">
+      {calledCardKeys.length}
+    </p>
+  </div>
 
-          <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-              Resultado
-            </p>
-            <p className="mt-2 text-xl font-bold text-white">
-              {winnerLabel
-                ? `${winnerLabel} ganó`
-                : match?.status === "finished"
-                ? "Partida finalizada"
-                : "Sin ganador"}
-            </p>
-          </div>
-        </div>
+  <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
+    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+      Resultado
+    </p>
+    <p className="mt-1 text-lg font-bold text-white">
+      {winnerLabel
+        ? `${winnerLabel} ganó`
+        : match?.status === "finished"
+        ? "Partida finalizada"
+        : "Sin ganador"}
+    </p>
+  </div>
+</div>
 
         {errorMessage && (
           <div className="mb-5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
