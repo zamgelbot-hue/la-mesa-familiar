@@ -172,9 +172,9 @@ function getPodiumStyles(position: number) {
 }
 
 function getPositionBadge(position: number) {
-  if (position === 1) return "👑";
-  if (position === 2) return "🥈";
-  if (position === 3) return "🥉";
+  if (position === 1) return "👑 #1";
+  if (position === 2) return "🥈 #2";
+  if (position === 3) return "🥉 #3";
   return `#${position}`;
 }
 
@@ -425,7 +425,7 @@ export default function RankingPage() {
                       <div
                         key={player.id}
                         className={`rounded-[28px] border p-4 transition hover:border-orange-500/30 hover:bg-white/[0.05] ${getPodiumStyles(position)} ${
-                          isMe ? "ring-1 ring-emerald-400/40" : ""
+                          isMe ? "ring-2 ring-emerald-400/50 shadow-[0_0_25px_rgba(16,185,129,0.15)]" : ""
                         }`}
                       >
                         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -450,10 +450,11 @@ export default function RankingPage() {
                                 )}
                               </div>
 
-                              <p className="mt-2 text-sm leading-relaxed text-white/65">
-                                {player.games_played} jugadas · {player.games_won} ganadas · {player.games_lost} perdidas ·{" "}
-                                {player.win_rate.toFixed(1)}% WR · racha máx {player.best_win_streak}
-                              </p>
+<p className="mt-2 text-sm leading-relaxed text-white/65">
+  {player.games_played === 0
+    ? "Sin partidas registradas"
+    : `${player.games_played} jugadas · ${player.games_won} ganadas · ${player.games_lost} perdidas · ${player.win_rate.toFixed(1)}% WR · racha máx ${player.best_win_streak}`}
+</p>
                             </div>
                           </div>
 
