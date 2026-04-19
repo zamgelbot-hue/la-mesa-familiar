@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
 import RoomChat from "@/components/RoomChat";
 import PlayerAvatar from "@/components/PlayerAvatar";
+import ShareRoomButton from "@/components/room/ShareRoomButton";
 
 type Room = {
   id: string;
@@ -427,13 +428,214 @@ export default function SalaPage() {
       !sortedPlayers.some((player) => player.player_name === currentPlayerName));
 
   if (loading) {
-    return (
-      <main className="min-h-screen bg-black px-6 py-8 text-white">
-        <div className="mx-auto max-w-6xl rounded-[34px] border border-white/10 bg-zinc-950/90 p-10 text-center shadow-[0_0_40px_rgba(249,115,22,0.04)]">
-          <p className="text-3xl font-bold">Cargando sala...</p>
+return (
+  <main className="min-h-screen bg-[#0a0a0b] text-white px-4 py-6">
+    <div className="mx-auto max-w-7xl">
+
+      {/* BOTÓN VOLVER */}
+      <button
+        onClick={() => router.push("/")}
+        className="mb-6 rounded-xl bg-orange-500 px-5 py-2 font-bold text-black hover:bg-orange-400"
+      >
+        ← Volver
+      </button>
+
+      {/* HEADER */}
+      <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl mb-6">
+        <div className="flex flex-col lg:flex-row lg:justify-between gap-6">
+
+          {/* INFO */}
+          <div>
+            <h1 className="text-4xl font-extrabold">
+              {game?.name ?? "Sala"}
+            </h1>
+
+            <p className="text-white/60 mt-1">
+              {sortedPlayers.length}/2 jugadores
+            </p>
+
+            <div className="flex items-center gap-3 mt-4 flex-wrap">
+              <div className="bg-orange-500 text-black px-4 py-2 rounded-xl font-black tracking-widest text-xl">
+                {room.code}
+              </div>
+
+              <button
+                onClick={handleCopyCode}
+                className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20"
+              >
+                {copied ? "Copiado" : "Copiar"}
+              </button>
+
+              {/* 🔥 NUEVO */}
+              <ShareRoomButton roomCode={room.code} />
+            </div>
+          </div>
+
+          {/* STATUS */}
+          <div className="flex items-center">
+            <div
+              className={`rounded-2xl px-5 py-4 border ${
+                allReady
+                  ? "bg-emerald-500/10 border-emerald-400/30"
+                  : "bg-orange-500/10 border-orange-400/30"
+              }`}
+            >
+              <p className="font-bold">
+                {starting
+                  ? "Iniciando..."
+                  : allReady
+                  ? "Todos listos"
+                  : "Esperando jugadores"}
+              </p>
+            </div>
+          </div>
         </div>
-      </main>
-    );
+      </div>
+
+      {/* IDENTIDAD */}
+      {needsIdentitySelection && (
+        <div className="mb-6 p-5 rounded-2xl bg-cyan-500/10 border border-cyan-400/30">
+          <p className="font-bold text-cyan-300">
+            Selecciona tu jugador
+          </p>
+
+          <div className="grid md:grid-cols-2 gap-3 mt-4">
+            {sortedPlayers.map((player) => (
+              <button
+                key={player.id}
+                onClick={() => handleSelectIdentity(player.player_name)}
+                className="p-4 rounded-xl bg-white/10 hover:bg-white/20 text-left"
+              >
+                {player.player_name} {player.is_host && "👑"}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* LOBBY */}
+      <div className="grid lg:grid-cols-2 gap-6">
+
+        {/* JUGADORES */}
+        <div className="space-y-4">
+          {sortedPlayers.map((player) => {
+            const isMe = player.player_name === currentPlayerName;
+
+            return (
+              <div
+                key={player.id}
+                className={`rounded-2xl p-5 border transition ${
+                  player.is_ready
+                    ? "bg-orange-500/10 border-orange-400/30 shadow-[0_0_20px_rgba(249,115,22,0.15)]"
+                    : "bg-white/5 border-white/10"
+                }`}
+              >
+                <div className="flex justify-between items-center">
+
+                  {/* INFO */}
+                  <div className="flex items-center gap-4">
+                    <PlayerAvatar
+                      avatar={getAvatarByKey("avatar_sun")}
+                      frame={getFrameByKey("frame_orange")}
+                      size="md"
+                    />
+
+                    <div>
+                      <p className="text-xl font-bold">
+                        {player.player_name} {player.is_host && "👑"}
+                      </p>
+
+                      <p className="text-sm text-white/60">
+                        {isMe ? "Tú" : "Jugador"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* STATUS */}
+                  <div
+                    className={`px-4 py-2 rounded-full text-sm font-bold ${
+                      player.is_ready
+                        ? "bg-emerald-500/20 text-emerald-300 animate-pulse"
+                        : "bg-white/10 text-white/60"
+                    }`}
+                  >
+                    {player.is_ready ? "Listo" : "No listo"}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* SLOT VACÍO */}
+          {sortedPlayers.length < 2 && (
+            <div className="rounded-2xl p-6 border border-dashed border-white/10 text-center text-white/50">
+              Esperando jugador...
+            </div>
+          )}
+        </div>
+
+        {/* PANEL DERECHO */}
+        <div className="space-y-6">
+
+          {/* PREVIEW */}
+          <div className="rounded-2xl border border-white/10 p-5 bg-white/5">
+            <p className="font-bold mb-3">Preview</p>
+
+            <div className="grid grid-cols-4 gap-2">
+              {Array.from({ length: 16 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="aspect-square rounded bg-zinc-800"
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* ESTADO */}
+          <div className="rounded-2xl border border-white/10 p-5 bg-white/5">
+            <p className="font-bold">Estado</p>
+
+            <p className="text-white/60 mt-2">
+              {allReady
+                ? "Todo listo para iniciar"
+                : "Esperando que todos estén listos"}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* BOTONES */}
+      <div className="mt-6 flex gap-3 flex-col sm:flex-row">
+        <button
+          onClick={handleToggleReady}
+          disabled={needsIdentitySelection}
+          className="flex-1 py-3 rounded-xl bg-orange-500 text-black font-bold hover:bg-orange-400"
+        >
+          {players.find(p => p.player_name === currentPlayerName)?.is_ready
+            ? "Quitar listo"
+            : "Estoy listo"}
+        </button>
+
+        <button
+          onClick={handleStartGame}
+          disabled={!isHost || !allReady || starting}
+          className="flex-1 py-3 rounded-xl bg-white text-black font-bold hover:bg-gray-200 disabled:opacity-50"
+        >
+          {starting ? "Iniciando..." : "Iniciar partida"}
+        </button>
+      </div>
+    </div>
+
+    {/* CHAT (NO SE TOCA) */}
+    <RoomChat
+      roomCode={code}
+      context="lobby"
+      currentPlayerName={currentPlayerName}
+      currentUserId={currentPlayer?.user_id ?? null}
+      isGuest={currentPlayer?.is_guest ?? true}
+    />
+  </main>
+);
   }
 
   if (!room) {
