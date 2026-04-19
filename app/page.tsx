@@ -80,26 +80,29 @@ const GAME_CONFIGS: Record<string, GameConfig> = {
     },
   ],
 },
-  "piedra-papel-o-tijera": {
-    maxPlayersOptions: [2],
-    variants: [
-      {
-        key: "bo3",
-        label: "Mejor 2 de 3",
-        description: "Gana quien consiga 2 rondas primero.",
-      },
-      {
-        key: "bo5",
-        label: "Mejor 3 de 5",
-        description: "Gana quien consiga 3 rondas primero.",
-      },
-      {
-        key: "bo7",
-        label: "Mejor 4 de 7",
-        description: "Gana quien consiga 4 rondas primero.",
-      },
-    ],
-  },
+"piedra-papel-o-tijera": {
+  maxPlayersOptions: [2],
+  variants: [
+    {
+      key: "bo3",
+      label: "Mejor 2 de 3",
+      description: "Gana quien consiga 2 rondas primero.",
+      available: true,
+    },
+    {
+      key: "bo5",
+      label: "Mejor 3 de 5",
+      description: "Gana quien consiga 3 rondas primero.",
+      available: true,
+    },
+    {
+      key: "bo7",
+      label: "Mejor 4 de 7",
+      description: "Gana quien consiga 4 rondas primero.",
+      available: true,
+    },
+  ],
+},
 };
 
 const savePlayerIdentity = (
