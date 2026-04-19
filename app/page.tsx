@@ -36,6 +36,17 @@ type TopPlayer = {
   frame_key: string | null;
 };
 
+type VariantOption = {
+  key: string;
+  label: string;
+  description: string;
+};
+
+type GameConfig = {
+  maxPlayersOptions: number[];
+  variants: VariantOption[];
+};
+
 const DEFAULT_STATS: HomeStats = {
   activePlayers: 0,
   classicGames: 0,
@@ -43,6 +54,49 @@ const DEFAULT_STATS: HomeStats = {
 };
 
 const getPlayerStorageKey = (roomCode: string) => `lmf:player:${roomCode}`;
+
+const GAME_CONFIGS: Record<string, GameConfig> = {
+  "loteria-mexicana": {
+    maxPlayersOptions: [2, 4, 6],
+    variants: [
+      {
+        key: "clasica",
+        label: "Clásica",
+        description: "La versión tradicional de siempre.",
+      },
+      {
+        key: "infantil",
+        label: "Infantil",
+        description: "Ideal para una experiencia más ligera y familiar.",
+      },
+      {
+        key: "premium",
+        label: "Premium",
+        description: "Una versión especial para futuras cartas/arte premium.",
+      },
+    ],
+  },
+  "piedra-papel-o-tijera": {
+    maxPlayersOptions: [2],
+    variants: [
+      {
+        key: "bo3",
+        label: "Mejor 2 de 3",
+        description: "Gana quien consiga 2 rondas primero.",
+      },
+      {
+        key: "bo5",
+        label: "Mejor 3 de 5",
+        description: "Gana quien consiga 3 rondas primero.",
+      },
+      {
+        key: "bo7",
+        label: "Mejor 4 de 7",
+        description: "Gana quien consiga 4 rondas primero.",
+      },
+    ],
+  },
+};
 
 const savePlayerIdentity = (
   roomCode: string,
@@ -88,6 +142,47 @@ function generateRoomCode(length = 6) {
   return result;
 }
 
+function getDefaultVariantForGame(gameSlug: string) {
+  return GAME_CONFIGS[gameSlug]?.variants[0]?.key ?? "default";
+}
+
+function getDefaultMaxPlayersForGame(gameSlug: string) {
+  return GAME_CONFIGS[gameSlug]?.maxPlayersOptions[0] ?? 2;
+}
+
+function buildRoomSettings(gameSlug: string, variantKey: string, maxPlayers: number) {
+  if (gameSlug === "loteria-mexicana") {
+    return {
+      mode: "standard",
+      deck_variant: variantKey,
+      board_size: 4,
+      win_condition: "tabla",
+      max_players: maxPlayers,
+    };
+  }
+
+  if (gameSlug === "piedra-papel-o-tijera") {
+    const variantMap: Record<string, { best_of: number; rounds_to_win: number }> = {
+      bo3: { best_of: 3, rounds_to_win: 2 },
+      bo5: { best_of: 5, rounds_to_win: 3 },
+      bo7: { best_of: 7, rounds_to_win: 4 },
+    };
+
+    const selected = variantMap[variantKey] ?? variantMap.bo3;
+
+    return {
+      mode: "match_series",
+      best_of: selected.best_of,
+      rounds_to_win: selected.rounds_to_win,
+      max_players: 2,
+    };
+  }
+
+  return {
+    max_players: maxPlayers,
+  };
+}
+
 export default function HomePage() {
   const router = useRouter();
   const supabase = createClient();
@@ -95,6 +190,8 @@ export default function HomePage() {
   const [games, setGames] = useState<Game[]>([]);
   const [stats, setStats] = useState<HomeStats>(DEFAULT_STATS);
   const [selectedGameSlug, setSelectedGameSlug] = useState("piedra-papel-o-tijera");
+  const [selectedVariantKey, setSelectedVariantKey] = useState("bo3");
+  const [maxPlayers, setMaxPlayers] = useState(2);
   const [joinCode, setJoinCode] = useState("");
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
@@ -109,8 +206,32 @@ export default function HomePage() {
     [games, selectedGameSlug]
   );
 
+  const selectedGameConfig = useMemo(() => {
+    return GAME_CONFIGS[selectedGameSlug] ?? null;
+  }, [selectedGameSlug]);
+
+  const selectedVariant = useMemo(() => {
+    return (
+      selectedGameConfig?.variants.find((variant) => variant.key === selectedVariantKey) ??
+      selectedGameConfig?.variants[0] ??
+      null
+    );
+  }, [selectedGameConfig, selectedVariantKey]);
+
   const selectedAvatar = getAvatarByKey(playerIdentity?.avatar_key);
   const selectedFrame = getFrameByKey(playerIdentity?.frame_key);
+
+  useEffect(() => {
+    if (!selectedGameConfig) return;
+
+    if (!selectedGameConfig.maxPlayersOptions.includes(maxPlayers)) {
+      setMaxPlayers(selectedGameConfig.maxPlayersOptions[0]);
+    }
+
+    if (!selectedGameConfig.variants.some((variant) => variant.key === selectedVariantKey)) {
+      setSelectedVariantKey(selectedGameConfig.variants[0]?.key ?? "default");
+    }
+  }, [selectedGameConfig, maxPlayers, selectedVariantKey]);
 
   const renderProfileAvatar = (
     avatar: { emoji?: string; image?: string; label?: string },
@@ -189,6 +310,8 @@ export default function HomePage() {
     const firstAvailable = list.find((game) => game.status === "available");
     if (firstAvailable) {
       setSelectedGameSlug(firstAvailable.slug);
+      setSelectedVariantKey(getDefaultVariantForGame(firstAvailable.slug));
+      setMaxPlayers(getDefaultMaxPlayersForGame(firstAvailable.slug));
     }
   }, [supabase]);
 
@@ -309,6 +432,16 @@ export default function HomePage() {
       let created = false;
       let attempts = 0;
 
+      const finalVariantKey = selectedVariantKey || getDefaultVariantForGame(selectedGame.slug);
+      const finalMaxPlayers =
+        selectedGame.slug === "piedra-papel-o-tijera" ? 2 : maxPlayers;
+
+      const roomSettings = buildRoomSettings(
+        selectedGame.slug,
+        finalVariantKey,
+        finalMaxPlayers
+      );
+
       while (!created && attempts < 5) {
         attempts += 1;
         roomCode = generateRoomCode();
@@ -318,6 +451,9 @@ export default function HomePage() {
           status: "waiting",
           started_at: null,
           game_slug: selectedGame.slug,
+          game_variant: finalVariantKey,
+          max_players: finalMaxPlayers,
+          room_settings: roomSettings,
         });
 
         if (roomError) {
@@ -375,7 +511,7 @@ export default function HomePage() {
 
       const { data: room, error: roomError } = await supabase
         .from("rooms")
-        .select("code, status, game_slug")
+        .select("code, status, game_slug, max_players, game_variant, room_settings")
         .eq("code", normalizedCode)
         .maybeSingle();
 
@@ -411,7 +547,9 @@ export default function HomePage() {
         return;
       }
 
-      if (list.length >= 2) {
+      const roomCapacity = Number(room.max_players ?? 2);
+
+      if (list.length >= roomCapacity) {
         setErrorMessage("La sala ya está llena.");
         return;
       }
@@ -613,7 +751,8 @@ export default function HomePage() {
                   const frame = getFrameByKey(player.frame_key);
                   const gamesPlayed = player.games_played ?? 0;
                   const gamesWon = player.games_won ?? 0;
-                  const winRate = gamesPlayed > 0 ? ((gamesWon / gamesPlayed) * 100).toFixed(1) : null;
+                  const winRate =
+                    gamesPlayed > 0 ? ((gamesWon / gamesPlayed) * 100).toFixed(1) : null;
                   const isMe = !!playerIdentity?.user_id && player.id === playerIdentity.user_id;
 
                   return (
@@ -689,7 +828,12 @@ export default function HomePage() {
 
                 <select
                   value={selectedGameSlug}
-                  onChange={(e) => setSelectedGameSlug(e.target.value)}
+                  onChange={(e) => {
+                    const nextSlug = e.target.value;
+                    setSelectedGameSlug(nextSlug);
+                    setSelectedVariantKey(getDefaultVariantForGame(nextSlug));
+                    setMaxPlayers(getDefaultMaxPlayersForGame(nextSlug));
+                  }}
                   className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
                 >
                   {games.map((game) => (
@@ -720,9 +864,73 @@ export default function HomePage() {
                       </span>
                     </div>
 
-                    <p className="mt-3 text-sm text-orange-300">
-                      {selectedGame.min_players}-{selectedGame.max_players} jugadores
-                    </p>
+                    <div className="mt-4 space-y-4">
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/55">
+                          Jugadores
+                        </p>
+
+                        <div className="flex flex-wrap gap-2">
+                          {(selectedGameConfig?.maxPlayersOptions ?? [selectedGame.min_players]).map(
+                            (num) => (
+                              <button
+                                key={num}
+                                type="button"
+                                onClick={() => setMaxPlayers(num)}
+                                className={`rounded-2xl px-4 py-2 text-sm font-bold transition ${
+                                  maxPlayers === num
+                                    ? "bg-orange-500 text-black"
+                                    : "bg-white/10 text-white/70 hover:bg-white/15"
+                                }`}
+                              >
+                                {num}
+                              </button>
+                            )
+                          )}
+                        </div>
+
+                        <p className="mt-2 text-sm text-orange-300">
+                          Hasta {maxPlayers} jugadores
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/55">
+                          Variante
+                        </p>
+
+                        <div className="grid gap-2">
+                          {(selectedGameConfig?.variants ?? []).map((variant) => (
+                            <button
+                              key={variant.key}
+                              type="button"
+                              onClick={() => setSelectedVariantKey(variant.key)}
+                              className={`rounded-2xl border px-4 py-3 text-left transition ${
+                                selectedVariantKey === variant.key
+                                  ? "border-orange-500/40 bg-orange-500/10"
+                                  : "border-white/10 bg-white/5 hover:bg-white/10"
+                              }`}
+                            >
+                              <p className="font-bold text-white">{variant.label}</p>
+                              <p className="mt-1 text-sm text-white/60">{variant.description}</p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.18em] text-white/45">
+                        Configuración seleccionada
+                      </p>
+                      <p className="mt-2 text-sm text-white/75">
+                        <span className="font-bold text-white">{selectedGame.name}</span>
+                        {" · "}
+                        <span>{selectedVariant?.label ?? "Variante por defecto"}</span>
+                        {" · "}
+                        <span>{maxPlayers} jugador{maxPlayers !== 1 ? "es" : ""}</span>
+                      </p>
+                    </div>
                   </div>
                 )}
               </div>
@@ -841,7 +1049,9 @@ export default function HomePage() {
                 <p className="mt-3 min-h-[52px] text-white/65">{game.description}</p>
 
                 <div className="mt-4 inline-flex rounded-full bg-white/[0.04] px-3 py-1 text-sm text-white/60">
-                  {game.min_players}-{game.max_players} jugadores
+                  {game.slug === "piedra-papel-o-tijera"
+                    ? "2 jugadores"
+                    : `${game.min_players}-${game.max_players} jugadores`}
                 </div>
 
                 <div className="mt-6">
@@ -849,6 +1059,8 @@ export default function HomePage() {
                     <button
                       onClick={() => {
                         setSelectedGameSlug(game.slug);
+                        setSelectedVariantKey(getDefaultVariantForGame(game.slug));
+                        setMaxPlayers(getDefaultMaxPlayersForGame(game.slug));
                         window.scrollTo({ top: 0, behavior: "smooth" });
                       }}
                       className="rounded-2xl bg-orange-500 px-4 py-2.5 font-bold text-black transition hover:bg-orange-400"
@@ -901,14 +1113,13 @@ export default function HomePage() {
             ].map((item) => (
               <div
                 key={item.step}
-                className="rounded-[28px] border border-orange-500/15 bg-zinc-950/90 p-6"
+                className="rounded-[28px] border border-white/10 bg-zinc-950/80 p-6 transition hover:border-orange-500/30"
               >
-                <p className="text-sm font-bold tracking-[0.25em] text-orange-400">{item.step}</p>
-                <div className="mt-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
-                  ◆
+                <div className="text-sm font-bold uppercase tracking-[0.18em] text-orange-400">
+                  {item.step}
                 </div>
-                <h3 className="mt-5 text-2xl font-bold">{item.title}</h3>
-                <p className="mt-3 text-white/65">{item.text}</p>
+                <h3 className="mt-4 text-2xl font-bold">{item.title}</h3>
+                <p className="mt-4 text-white/65">{item.text}</p>
               </div>
             ))}
           </div>
@@ -918,105 +1129,50 @@ export default function HomePage() {
       <section id="funciones" className="border-t border-orange-500/10 px-6 py-16">
         <div className="mx-auto max-w-7xl">
           <div className="mb-12 text-center">
-            <h2 className="text-5xl font-extrabold">Hecho para la diversión familiar</h2>
+            <h2 className="text-5xl font-extrabold">Diseñado para jugar en familia</h2>
             <p className="mx-auto mt-4 max-w-3xl text-xl text-white/65">
-              Todo lo que necesitas para la noche de juegos perfecta.
+              Todo lo que necesitas para crear momentos inolvidables en línea.
             </p>
           </div>
 
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             {[
               {
-                title: "Videollamada integrada",
-                text: "Ve a tus seres queridos mientras juegas con videollamada incluida.",
+                title: "Salas privadas",
+                text: "Genera códigos únicos para jugar solo con tus invitados.",
               },
               {
-                title: "Juega desde cualquier lugar",
-                text: "Funciona en cualquier dispositivo con navegador—sin descargar nada.",
+                title: "Tiempo real",
+                text: "Movimientos sincronizados y reacciones instantáneas durante la partida.",
               },
               {
-                title: "Privado y seguro",
-                text: "Tus salas familiares son privadas y encriptadas de extremo a extremo.",
+                title: "Fácil de usar",
+                text: "Interfaz simple para niños, padres y abuelos.",
               },
               {
-                title: "Optimizado para móvil",
-                text: "Diseñado para celulares y tablets para jugar donde sea.",
+                title: "Sin descargas",
+                text: "Todo corre directo desde tu navegador.",
               },
               {
-                title: "Empieza al instante",
-                text: "No necesitas cuenta para unirte. Solo entra y juega.",
+                title: "Diseño cálido",
+                text: "Una experiencia visual inspirada en reuniones familiares y noches de juego.",
               },
               {
-                title: "Hecho para familias",
-                text: "Juegos para todas las edades en un ambiente seguro.",
+                title: "Más juegos pronto",
+                text: "Seguiremos agregando clásicos para que la mesa siga creciendo.",
               },
-            ].map((item) => (
+            ].map((feature) => (
               <div
-                key={item.title}
-                className="rounded-[28px] border border-orange-500/15 bg-zinc-950/90 p-6"
+                key={feature.title}
+                className="rounded-[28px] border border-white/10 bg-zinc-950/80 p-6 transition hover:border-orange-500/30"
               >
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
-                  ●
-                </div>
-                <h3 className="mt-5 text-2xl font-bold">{item.title}</h3>
-                <p className="mt-3 text-white/65">{item.text}</p>
+                <h3 className="text-2xl font-bold">{feature.title}</h3>
+                <p className="mt-4 text-white/65">{feature.text}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
-
-      <footer className="border-t border-orange-500/10 px-6 py-12 text-white/60">
-        <div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-4">
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-500 text-black">
-                <span className="text-lg font-black">◌</span>
-              </div>
-              <span className="text-xl font-bold text-white">La Mesa Familiar</span>
-            </div>
-            <p className="mt-4 leading-relaxed">
-              Uniéndo familias a través de la alegría de los juegos clásicos, sin importar la distancia.
-            </p>
-          </div>
-
-          <div>
-            <p className="mb-4 font-bold text-white">Juegos</p>
-            <div className="space-y-2">
-              {games.slice(0, 4).map((game) => (
-                <p key={game.id}>{game.name}</p>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="mb-4 font-bold text-white">Ayuda</p>
-            <div className="space-y-2">
-              <p>Centro de ayuda</p>
-              <p>Contáctanos</p>
-              <p>Preguntas frecuentes</p>
-            </div>
-          </div>
-
-          <div>
-            <p className="mb-4 font-bold text-white">Legal</p>
-            <div className="space-y-2">
-              <p>Política de privacidad</p>
-              <p>Términos de servicio</p>
-              <p>Política de cookies</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mx-auto mt-10 flex max-w-7xl flex-col gap-3 border-t border-white/10 pt-6 text-sm md:flex-row md:items-center md:justify-between">
-          <p>© 2026 La Mesa Familiar. Todos los derechos reservados.</p>
-          <div className="flex gap-5">
-            <span>Twitter</span>
-            <span>Instagram</span>
-            <span>Facebook</span>
-          </div>
-        </div>
-      </footer>
     </main>
   );
 }
