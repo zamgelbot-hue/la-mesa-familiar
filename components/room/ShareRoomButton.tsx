@@ -22,7 +22,7 @@ type ShareRoomButtonProps = {
 export default function ShareRoomButton({
   roomCode,
   roomUrl,
-  gameName={game?.name ?? "La Mesa Familiar"}
+  gameName = "La Mesa Familiar",
   className = "",
 }: ShareRoomButtonProps) {
   const [open, setOpen] = useState(false);
