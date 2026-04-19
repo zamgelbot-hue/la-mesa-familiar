@@ -11,6 +11,7 @@ import LoteriaBoard from "./LoteriaBoard";
 import LoteriaCalledCards from "./LoteriaCalledCards";
 import LoteriaClaimButton from "./LoteriaClaimButton";
 import LoteriaCurrentCard from "./LoteriaCurrentCard";
+import LoteriaWinnerOverlay from "./LoteriaWinnerOverlay";
 import { getLoteriaDeckBySlug } from "./loteriaDecks";
 import type {
   LoteriaGameProps,
@@ -61,12 +62,17 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
   const [startingMatch, setStartingMatch] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [leavingToRoom, setLeavingToRoom] = useState(false);
+  const [rematchLoading, setRematchLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [localMarkedCardKeys, setLocalMarkedCardKeys] = useState<string[]>([]);
+  const [showWinnerOverlay, setShowWinnerOverlay] = useState(false);
 
   const drawTimerRef = useRef<NodeJS.Timeout | null>(null);
   const creatingMatchRef = useRef(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const lastCurrentCardKeyRef = useRef<string | null>(null);
+  const lastWinnerRef = useRef<string | null>(null);
 
   const deckSlug = match?.deck_slug ?? DEFAULT_DECK_SLUG;
   const deck = useMemo(() => getLoteriaDeckBySlug(deckSlug), [deckSlug]);
@@ -132,6 +138,103 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
     if (!match?.winner_player_name) return null;
     return match.winner_player_name;
   }, [match]);
+
+  const currentPatternLabel = useMemo(() => {
+    return formatWinningPatternLabel(match?.winning_pattern ?? null);
+  }, [match?.winning_pattern]);
+
+  const allPlayersReadyForRematch = useMemo(() => {
+    if (!matchPlayers.length) return false;
+    return matchPlayers.length >= 2 && matchPlayers.every((p) => p.is_rematch_ready);
+  }, [matchPlayers]);
+
+  const currentPlayerRematchReady = useMemo(() => {
+    return !!currentMatchPlayer?.is_rematch_ready;
+  }, [currentMatchPlayer]);
+
+  const getAudioContext = useCallback(() => {
+    if (typeof window === "undefined") return null;
+
+    if (!audioContextRef.current) {
+      const Ctx =
+        window.AudioContext ||
+        (window as typeof window & {
+          webkitAudioContext?: typeof AudioContext;
+        }).webkitAudioContext;
+
+      if (!Ctx) return null;
+      audioContextRef.current = new Ctx();
+    }
+
+    return audioContextRef.current;
+  }, []);
+
+  const resumeAudioIfNeeded = useCallback(async () => {
+    const ctx = getAudioContext();
+    if (!ctx) return null;
+
+    if (ctx.state === "suspended") {
+      try {
+        await ctx.resume();
+      } catch (error) {
+        console.error("No se pudo reanudar audio:", error);
+      }
+    }
+
+    return ctx;
+  }, [getAudioContext]);
+
+  const playTone = useCallback(
+    async (
+      frequency: number,
+      duration = 0.12,
+      type: OscillatorType = "sine",
+      volume = 0.03
+    ) => {
+      const ctx = await resumeAudioIfNeeded();
+      if (!ctx) return;
+
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+
+      oscillator.type = type;
+      oscillator.frequency.value = frequency;
+
+      gainNode.gain.setValueAtTime(volume, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(
+        0.0001,
+        ctx.currentTime + duration
+      );
+
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      oscillator.start();
+      oscillator.stop(ctx.currentTime + duration);
+    },
+    [resumeAudioIfNeeded]
+  );
+
+  const playNewCardSound = useCallback(async () => {
+    await playTone(660, 0.08, "triangle", 0.025);
+    setTimeout(() => {
+      void playTone(880, 0.08, "triangle", 0.02);
+    }, 90);
+  }, [playTone]);
+
+  const playMarkSound = useCallback(async () => {
+    await playTone(520, 0.05, "sine", 0.025);
+    setTimeout(() => {
+      void playTone(720, 0.07, "sine", 0.02);
+    }, 50);
+  }, [playTone]);
+
+  const playWinSound = useCallback(async () => {
+    await playTone(523.25, 0.12, "triangle", 0.03);
+    setTimeout(() => void playTone(659.25, 0.12, "triangle", 0.03), 110);
+    setTimeout(() => void playTone(783.99, 0.18, "triangle", 0.035), 220);
+    setTimeout(() => void playTone(1046.5, 0.26, "triangle", 0.04), 360);
+  }, [playTone]);
 
   const loadPlayerIdentity = useCallback(async () => {
     const identity = await getPlayerIdentity();
@@ -387,6 +490,28 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
     };
   }, [supabase, match?.id, loadMatchPlayers]);
 
+  useEffect(() => {
+    if (currentCardKey && currentCardKey !== lastCurrentCardKeyRef.current) {
+      lastCurrentCardKeyRef.current = currentCardKey;
+      void playNewCardSound();
+    }
+  }, [currentCardKey, playNewCardSound]);
+
+  useEffect(() => {
+    if (winnerLabel && winnerLabel !== lastWinnerRef.current) {
+      lastWinnerRef.current = winnerLabel;
+      setShowWinnerOverlay(true);
+      void playWinSound();
+    }
+  }, [winnerLabel, playWinSound]);
+
+  useEffect(() => {
+    if (!winnerLabel) {
+      lastWinnerRef.current = null;
+      setShowWinnerOverlay(false);
+    }
+  }, [winnerLabel]);
+
   const handleStartMatch = useCallback(async () => {
     if (!match || !isHost) return;
 
@@ -404,6 +529,10 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
           started_at: new Date().toISOString(),
           called_card_keys: firstCardKey ? [firstCardKey] : [],
           current_card_key: firstCardKey,
+          winner_user_id: null,
+          winner_player_name: null,
+          winning_pattern: null,
+          finished_at: null,
         })
         .eq("id", match.id);
 
@@ -467,7 +596,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
     if (match.winner_player_name) return;
 
     drawTimerRef.current = setInterval(() => {
-      advanceDraw();
+      void advanceDraw();
     }, LOTERIA_DRAW_INTERVAL_MS);
 
     return () => {
@@ -498,6 +627,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
       const nextMarked = toggleMarkedCard(previousMarked, cardKey);
 
       setLocalMarkedCardKeys(nextMarked);
+      void playMarkSound();
 
       const { error } = await supabase
         .from("loteria_match_players")
@@ -512,7 +642,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
         setErrorMessage("No se pudo actualizar tu tablero.");
       }
     },
-    [match, currentMatchPlayer, calledCardKeys, supabase, localMarkedCardKeys]
+    [match, currentMatchPlayer, calledCardKeys, supabase, localMarkedCardKeys, playMarkSound]
   );
 
   const handleClaimLoteria = useCallback(async () => {
@@ -595,6 +725,123 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
     }
   }, [supabase, router, roomCode]);
 
+  const handleRematch = useCallback(async () => {
+    if (!match || !currentMatchPlayer || !isHost) return;
+
+    try {
+      setRematchLoading(true);
+      setErrorMessage("");
+      setMessage("");
+
+      await supabase
+        .from("loteria_match_players")
+        .update({ is_rematch_ready: true })
+        .eq("id", currentMatchPlayer.id);
+
+      const freshPlayers = await supabase
+        .from("loteria_match_players")
+        .select("*")
+        .eq("match_id", match.id)
+        .order("created_at", { ascending: true });
+
+      if (freshPlayers.error) {
+        console.error("Error leyendo rematch players:", freshPlayers.error);
+        return;
+      }
+
+      const playersNow = (freshPlayers.data ?? []) as LoteriaMatchPlayerRow[];
+      const everyoneReady =
+        playersNow.length >= 2 && playersNow.every((player) => player.is_rematch_ready);
+
+      if (!everyoneReady) {
+        setMessage("Tu revancha quedó lista. Esperando al otro jugador.");
+        return;
+      }
+
+      const newDrawOrder = generateDrawOrder(deck);
+
+      const resetRows = playersNow.map((player) => ({
+        id: player.id,
+        board_card_keys: generateBoardCardKeys(deck),
+        marked_card_keys: [],
+        has_claimed: false,
+        is_rematch_ready: false,
+      }));
+
+      for (const row of resetRows) {
+        const { error } = await supabase
+          .from("loteria_match_players")
+          .update({
+            board_card_keys: row.board_card_keys,
+            marked_card_keys: row.marked_card_keys,
+            has_claimed: row.has_claimed,
+            is_rematch_ready: row.is_rematch_ready,
+          })
+          .eq("id", row.id);
+
+        if (error) {
+          console.error("Error reseteando jugador de revancha:", error);
+          return;
+        }
+      }
+
+      const { error: matchResetError } = await supabase
+        .from("loteria_matches")
+        .update({
+          status: "waiting",
+          draw_order: newDrawOrder,
+          called_card_keys: [],
+          current_card_key: null,
+          winner_user_id: null,
+          winner_player_name: null,
+          winning_pattern: null,
+          started_at: null,
+          finished_at: null,
+        })
+        .eq("id", match.id);
+
+      if (matchResetError) {
+        console.error("Error reseteando match de revancha:", matchResetError);
+        return;
+      }
+
+      setLocalMarkedCardKeys([]);
+      setShowWinnerOverlay(false);
+      setMessage("Revancha lista. El host puede iniciar otra partida.");
+    } finally {
+      setRematchLoading(false);
+    }
+  }, [match, currentMatchPlayer, isHost, supabase, deck]);
+
+  const handleVoteRematch = useCallback(async () => {
+    if (!match || !currentMatchPlayer) return;
+
+    try {
+      setRematchLoading(true);
+      setErrorMessage("");
+      setMessage("");
+
+      const { error } = await supabase
+        .from("loteria_match_players")
+        .update({ is_rematch_ready: true })
+        .eq("id", currentMatchPlayer.id);
+
+      if (error) {
+        console.error("Error marcando revancha:", error);
+        setErrorMessage("No se pudo registrar tu revancha.");
+        return;
+      }
+
+      if (isHost) {
+        setMessage("Tu revancha quedó lista. Si ambos aceptan, se reinicia.");
+      } else {
+        setMessage("Listo. Esperando que el host reinicie la revancha.");
+      }
+    } finally {
+      setRematchLoading(false);
+    }
+  }, [match, currentMatchPlayer, supabase, isHost]);
+
   const canCurrentPlayerClaim = useMemo(() => {
     if (!currentMatchPlayer) return false;
 
@@ -622,7 +869,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(() => {
-      loadAfterAuthChange();
+      void loadAfterAuthChange();
     });
 
     return () => {
@@ -641,189 +888,47 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
   }
 
   return (
-    <main className="min-h-screen bg-black px-4 py-6 text-white md:px-6 md:py-8">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-6 flex flex-col gap-4 rounded-[32px] border border-orange-500/15 bg-zinc-950/90 p-5 shadow-[0_0_40px_rgba(249,115,22,0.05)] md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-orange-300/80">
-              La Mesa Familiar
-            </p>
-            <h1 className="mt-1 text-3xl font-extrabold text-white">
-              Lotería Mexicana
-            </h1>
-            <p className="mt-2 text-sm text-white/60">
-              Sala: <span className="font-bold text-orange-300">{roomCode}</span>
-            </p>
-          </div>
+    <>
+      <LoteriaWinnerOverlay
+        open={showWinnerOverlay}
+        winnerName={winnerLabel}
+        patternLabel={currentPatternLabel}
+        onClose={() => setShowWinnerOverlay(false)}
+      />
 
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-                Estado
+      <main className="min-h-screen bg-black px-4 py-6 text-white md:px-6 md:py-8">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-6 flex flex-col gap-4 rounded-[32px] border border-orange-500/15 bg-zinc-950/90 p-5 shadow-[0_0_40px_rgba(249,115,22,0.05)] md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-orange-300/80">
+                La Mesa Familiar
               </p>
-              <p className="mt-1 font-bold text-white">{gameStatusLabel}</p>
+              <h1 className="mt-1 text-3xl font-extrabold text-white">
+                Lotería Mexicana
+              </h1>
+              <p className="mt-2 text-sm text-white/60">
+                Sala: <span className="font-bold text-orange-300">{roomCode}</span>
+              </p>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-                Deck
-              </p>
-              <p className="mt-1 font-bold text-white">{deck.name}</p>
-            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                  Estado
+                </p>
+                <p className="mt-1 font-bold text-white">{gameStatusLabel}</p>
+              </div>
 
-            <button
-              type="button"
-              onClick={handleBackToRoom}
-              disabled={leavingToRoom}
-              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {leavingToRoom ? "Volviendo..." : "Volver a sala"}
-            </button>
-          </div>
-        </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                  Deck
+                </p>
+                <p className="mt-1 font-bold text-white">{deck.name}</p>
+              </div>
 
-        <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-              Jugador actual
-            </p>
-            <p className="mt-1 text-lg font-bold text-white">
-              {currentRoomPlayer?.player_name ?? playerIdentity?.name ?? "Jugador"}
-            </p>
-          </div>
-
-          <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-              Rival
-            </p>
-            <p className="mt-1 text-lg font-bold text-white">
-              {opponentRoomPlayer?.player_name ?? "Esperando rival"}
-            </p>
-          </div>
-
-          <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-              Cartas cantadas
-            </p>
-            <p className="mt-1 text-lg font-bold text-orange-300">
-              {calledCardKeys.length}
-            </p>
-          </div>
-
-          <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-              Resultado
-            </p>
-            <p className="mt-1 text-lg font-bold text-white">
-              {winnerLabel
-                ? `${winnerLabel} ganó`
-                : match?.status === "finished"
-                ? "Partida finalizada"
-                : "Sin ganador"}
-            </p>
-          </div>
-        </div>
-
-        {errorMessage && (
-          <div className="mb-5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
-            {errorMessage}
-          </div>
-        )}
-
-        {message && (
-          <div className="mb-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-emerald-300">
-            {message}
-          </div>
-        )}
-
-        {match?.status === "waiting" && (
-          <div className="mb-6 rounded-[30px] border border-orange-500/15 bg-orange-500/10 p-5">
-            <h2 className="text-2xl font-bold text-white">Partida lista para comenzar</h2>
-            <p className="mt-2 text-white/65">
-              {isHost
-                ? "Cuando estés listo, inicia la lotería para comenzar a cantar cartas."
-                : "Esperando a que el host inicie la partida."}
-            </p>
-
-            {isHost && (
               <button
                 type="button"
-                onClick={handleStartMatch}
-                disabled={startingMatch || roomPlayers.length < 2}
-                className="mt-5 rounded-2xl bg-orange-500 px-5 py-3 font-extrabold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {startingMatch ? "Iniciando..." : "Iniciar lotería"}
-              </button>
-            )}
-          </div>
-        )}
-
-        <div className="grid gap-6 xl:grid-cols-[1.1fr_1fr]">
-          <div className="space-y-6">
-            <LoteriaBoard
-              deck={deck}
-              boardCardKeys={currentMatchPlayer?.board_card_keys ?? []}
-              markedCardKeys={localMarkedCardKeys}
-              calledCardKeys={calledCardKeys}
-              winningCardKeys={match?.status === "finished" ? winningCardKeys : []}
-              currentCardKey={currentCardKey}
-              disabled={match?.status !== "playing"}
-              onToggleCard={handleToggleCard}
-            />
-          </div>
-
-          <div className="space-y-6">
-            <LoteriaCurrentCard
-              deck={deck}
-              currentCardKey={currentCardKey}
-              remainingCount={remainingCount}
-            />
-
-            <LoteriaClaimButton
-              onClaim={handleClaimLoteria}
-              loading={claiming}
-              disabled={
-                !match ||
-                match.status !== "playing" ||
-                !currentMatchPlayer ||
-                claiming
-              }
-              helperText={
-                canCurrentPlayerClaim
-                  ? "Tu tablero tiene una línea válida. ¡Puedes reclamar tu victoria!"
-                  : "Marca manualmente las cartas que hayan salido y reclama cuando completes una línea."
-              }
-            />
-
-            <LoteriaCalledCards
-              deck={deck}
-              calledCardKeys={calledCardKeys}
-              currentCardKey={currentCardKey}
-            />
-          </div>
-        </div>
-
-        {match?.status === "finished" && (
-          <div className="mt-6 rounded-[32px] border border-emerald-500/20 bg-emerald-500/10 p-6 shadow-[0_0_30px_rgba(16,185,129,0.08)]">
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-              Resultado final
-            </p>
-
-            <h2 className="mt-2 text-3xl font-extrabold text-white">
-              {winnerLabel ? `${winnerLabel} ganó la partida` : "La partida terminó"}
-            </h2>
-
-            <p className="mt-3 text-white/65">
-              Patrón ganador:{" "}
-              <span className="font-bold text-emerald-300">
-                {formatWinningPatternLabel(match.winning_pattern)}
-              </span>
-            </p>
-
-            <div className="mt-5 flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={handleBackToRoom}
+                onClick={() => void handleBackToRoom()}
                 disabled={leavingToRoom}
                 className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -831,8 +936,188 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
               </button>
             </div>
           </div>
-        )}
-      </div>
-    </main>
+
+          <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                Jugador actual
+              </p>
+              <p className="mt-1 text-lg font-bold text-white">
+                {currentRoomPlayer?.player_name ?? playerIdentity?.name ?? "Jugador"}
+              </p>
+            </div>
+
+            <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                Rival
+              </p>
+              <p className="mt-1 text-lg font-bold text-white">
+                {opponentRoomPlayer?.player_name ?? "Esperando rival"}
+              </p>
+            </div>
+
+            <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                Cartas cantadas
+              </p>
+              <p className="mt-1 text-lg font-bold text-orange-300">
+                {calledCardKeys.length}
+              </p>
+            </div>
+
+            <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                Resultado
+              </p>
+              <p className="mt-1 text-lg font-bold text-white">
+                {winnerLabel
+                  ? `${winnerLabel} ganó`
+                  : match?.status === "finished"
+                  ? "Partida finalizada"
+                  : "Sin ganador"}
+              </p>
+            </div>
+          </div>
+
+          {errorMessage && (
+            <div className="mb-5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
+              {errorMessage}
+            </div>
+          )}
+
+          {message && (
+            <div className="mb-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-emerald-300">
+              {message}
+            </div>
+          )}
+
+          {match?.status === "waiting" && (
+            <div className="mb-6 rounded-[30px] border border-orange-500/15 bg-orange-500/10 p-5">
+              <h2 className="text-2xl font-bold text-white">Partida lista para comenzar</h2>
+              <p className="mt-2 text-white/65">
+                {isHost
+                  ? "Cuando estés listo, inicia la lotería para comenzar a cantar cartas."
+                  : "Esperando a que el host inicie la partida."}
+              </p>
+
+              {isHost && (
+                <button
+                  type="button"
+                  onClick={() => void handleStartMatch()}
+                  disabled={startingMatch || roomPlayers.length < 2}
+                  className="mt-5 rounded-2xl bg-orange-500 px-5 py-3 font-extrabold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {startingMatch ? "Iniciando..." : "Iniciar lotería"}
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="grid gap-6 xl:grid-cols-[1.1fr_1fr]">
+            <div className="space-y-6">
+              <LoteriaBoard
+                deck={deck}
+                boardCardKeys={currentMatchPlayer?.board_card_keys ?? []}
+                markedCardKeys={localMarkedCardKeys}
+                calledCardKeys={calledCardKeys}
+                winningCardKeys={match?.status === "finished" ? winningCardKeys : []}
+                currentCardKey={currentCardKey}
+                disabled={match?.status !== "playing"}
+                onToggleCard={handleToggleCard}
+              />
+            </div>
+
+            <div className="space-y-6">
+              <LoteriaCurrentCard
+                deck={deck}
+                currentCardKey={currentCardKey}
+                remainingCount={remainingCount}
+              />
+
+              <LoteriaClaimButton
+                onClaim={() => void handleClaimLoteria()}
+                loading={claiming}
+                disabled={
+                  !match ||
+                  match.status !== "playing" ||
+                  !currentMatchPlayer ||
+                  claiming
+                }
+                helperText={
+                  canCurrentPlayerClaim
+                    ? "Tu tablero tiene una línea válida. ¡Puedes reclamar tu victoria!"
+                    : "Marca manualmente las cartas que hayan salido y reclama cuando completes una línea."
+                }
+              />
+
+              <LoteriaCalledCards
+                deck={deck}
+                calledCardKeys={calledCardKeys}
+                currentCardKey={currentCardKey}
+              />
+            </div>
+          </div>
+
+          {match?.status === "finished" && (
+            <div className="mt-6 rounded-[32px] border border-emerald-500/20 bg-emerald-500/10 p-6 shadow-[0_0_30px_rgba(16,185,129,0.08)]">
+              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                Resultado final
+              </p>
+
+              <h2 className="mt-2 text-3xl font-extrabold text-white">
+                {winnerLabel ? `${winnerLabel} ganó la partida` : "La partida terminó"}
+              </h2>
+
+              <p className="mt-3 text-white/65">
+                Patrón ganador:{" "}
+                <span className="font-bold text-emerald-300">
+                  {currentPatternLabel}
+                </span>
+              </p>
+
+              <div className="mt-5 flex flex-wrap gap-3">
+                {!currentPlayerRematchReady && (
+                  <button
+                    type="button"
+                    onClick={() => void handleVoteRematch()}
+                    disabled={rematchLoading}
+                    className="rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {rematchLoading ? "Preparando..." : "Quiero revancha"}
+                  </button>
+                )}
+
+                {isHost && allPlayersReadyForRematch && (
+                  <button
+                    type="button"
+                    onClick={() => void handleRematch()}
+                    disabled={rematchLoading}
+                    className="rounded-2xl bg-emerald-500 px-5 py-3 font-bold text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {rematchLoading ? "Reiniciando..." : "Iniciar revancha"}
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => void handleBackToRoom()}
+                  disabled={leavingToRoom}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {leavingToRoom ? "Volviendo..." : "Volver a sala"}
+                </button>
+              </div>
+
+              <p className="mt-4 text-sm text-white/60">
+                Revancha:{" "}
+                <span className="font-semibold text-white">
+                  {matchPlayers.filter((p) => p.is_rematch_ready).length}/{Math.max(matchPlayers.length, 2)}
+                </span>
+              </p>
+            </div>
+          )}
+        </div>
+      </main>
+    </>
   );
 }
