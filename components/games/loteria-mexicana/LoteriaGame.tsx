@@ -60,8 +60,10 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
   const [loading, setLoading] = useState(true);
   const [startingMatch, setStartingMatch] = useState(false);
   const [claiming, setClaiming] = useState(false);
+  const [leavingToRoom, setLeavingToRoom] = useState(false);
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [localMarkedCardKeys, setLocalMarkedCardKeys] = useState<string[]>([]);
 
   const drawTimerRef = useRef<NodeJS.Timeout | null>(null);
   const creatingMatchRef = useRef(false);
@@ -78,10 +80,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
           return player.user_id === playerIdentity.user_id;
         }
 
-        return (
-          !player.user_id &&
-          player.player_name === playerIdentity.name
-        );
+        return !player.user_id && player.player_name === playerIdentity.name;
       }) ?? null
     );
   }, [roomPlayers, playerIdentity]);
@@ -102,26 +101,28 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
 
   const opponentRoomPlayer = useMemo(() => {
     if (!currentRoomPlayer) return null;
-
-    return (
-      roomPlayers.find((player) => player.id !== currentRoomPlayer.id) ?? null
-    );
+    return roomPlayers.find((player) => player.id !== currentRoomPlayer.id) ?? null;
   }, [roomPlayers, currentRoomPlayer]);
 
   const isHost = !!currentRoomPlayer?.is_host;
   const calledCardKeys = match?.called_card_keys ?? [];
   const currentCardKey = match?.current_card_key ?? null;
+
+  useEffect(() => {
+    setLocalMarkedCardKeys(currentMatchPlayer?.marked_card_keys ?? []);
+  }, [currentMatchPlayer?.id, currentMatchPlayer?.marked_card_keys]);
+
   const winningCardKeys = useMemo(() => {
     if (!match || !currentMatchPlayer) return [];
 
     const result = validateLoteriaWin(
       currentMatchPlayer.board_card_keys ?? [],
-      currentMatchPlayer.marked_card_keys ?? [],
+      localMarkedCardKeys,
       calledCardKeys
     );
 
     return result.winningCardKeys;
-  }, [match, currentMatchPlayer, calledCardKeys]);
+  }, [match, currentMatchPlayer, localMarkedCardKeys, calledCardKeys]);
 
   const remainingCount = useMemo(() => {
     return getRemainingCardCount(deck, calledCardKeys);
@@ -484,16 +485,19 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
 
       const boardKeys = currentMatchPlayer.board_card_keys ?? [];
       if (!boardKeys.includes(cardKey)) return;
+
       if (!calledCardKeys.includes(cardKey)) {
         setMessage("Solo puedes marcar cartas que ya hayan salido.");
         return;
       }
 
       setMessage("");
-      const nextMarked = toggleMarkedCard(
-        currentMatchPlayer.marked_card_keys ?? [],
-        cardKey
-      );
+      setErrorMessage("");
+
+      const previousMarked = localMarkedCardKeys;
+      const nextMarked = toggleMarkedCard(previousMarked, cardKey);
+
+      setLocalMarkedCardKeys(nextMarked);
 
       const { error } = await supabase
         .from("loteria_match_players")
@@ -504,10 +508,11 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
 
       if (error) {
         console.error("Error actualizando marcado:", error);
+        setLocalMarkedCardKeys(previousMarked);
         setErrorMessage("No se pudo actualizar tu tablero.");
       }
     },
-    [match, currentMatchPlayer, calledCardKeys, supabase]
+    [match, currentMatchPlayer, calledCardKeys, supabase, localMarkedCardKeys]
   );
 
   const handleClaimLoteria = useCallback(async () => {
@@ -520,7 +525,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
 
       const result = validateLoteriaWin(
         currentMatchPlayer.board_card_keys ?? [],
-        currentMatchPlayer.marked_card_keys ?? [],
+        localMarkedCardKeys,
         calledCardKeys
       );
 
@@ -560,17 +565,45 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
     } finally {
       setClaiming(false);
     }
-  }, [match, currentMatchPlayer, calledCardKeys, supabase]);
+  }, [match, currentMatchPlayer, localMarkedCardKeys, calledCardKeys, supabase]);
+
+  const handleBackToRoom = useCallback(async () => {
+    try {
+      setLeavingToRoom(true);
+      setErrorMessage("");
+      setMessage("");
+
+      await supabase
+        .from("rooms")
+        .update({
+          status: "waiting",
+          started_at: null,
+        })
+        .eq("code", roomCode);
+
+      await supabase
+        .from("room_players")
+        .update({ is_ready: false })
+        .eq("room_code", roomCode);
+
+      router.replace(`/sala/${roomCode}`);
+    } catch (error) {
+      console.error("Error volviendo a sala:", error);
+      setErrorMessage("No se pudo volver a la sala.");
+    } finally {
+      setLeavingToRoom(false);
+    }
+  }, [supabase, router, roomCode]);
 
   const canCurrentPlayerClaim = useMemo(() => {
     if (!currentMatchPlayer) return false;
 
     return canClaimLoteria(
       currentMatchPlayer.board_card_keys ?? [],
-      currentMatchPlayer.marked_card_keys ?? [],
+      localMarkedCardKeys,
       calledCardKeys
     );
-  }, [currentMatchPlayer, calledCardKeys]);
+  }, [currentMatchPlayer, localMarkedCardKeys, calledCardKeys]);
 
   const gameStatusLabel = useMemo(() => {
     if (!match) return "Preparando partida";
@@ -640,55 +673,56 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
 
             <button
               type="button"
-              onClick={() => router.push(`/sala/${roomCode}`)}
-              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-white transition hover:bg-white/10"
+              onClick={handleBackToRoom}
+              disabled={leavingToRoom}
+              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Volver a sala
+              {leavingToRoom ? "Volviendo..." : "Volver a sala"}
             </button>
           </div>
         </div>
 
-<div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-  <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
-    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-      Jugador actual
-    </p>
-    <p className="mt-1 text-lg font-bold text-white">
-      {currentRoomPlayer?.player_name ?? playerIdentity?.name ?? "Jugador"}
-    </p>
-  </div>
+        <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+              Jugador actual
+            </p>
+            <p className="mt-1 text-lg font-bold text-white">
+              {currentRoomPlayer?.player_name ?? playerIdentity?.name ?? "Jugador"}
+            </p>
+          </div>
 
-  <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
-    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-      Rival
-    </p>
-    <p className="mt-1 text-lg font-bold text-white">
-      {opponentRoomPlayer?.player_name ?? "Esperando rival"}
-    </p>
-  </div>
+          <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+              Rival
+            </p>
+            <p className="mt-1 text-lg font-bold text-white">
+              {opponentRoomPlayer?.player_name ?? "Esperando rival"}
+            </p>
+          </div>
 
-  <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
-    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-      Cartas cantadas
-    </p>
-    <p className="mt-1 text-lg font-bold text-orange-300">
-      {calledCardKeys.length}
-    </p>
-  </div>
+          <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+              Cartas cantadas
+            </p>
+            <p className="mt-1 text-lg font-bold text-orange-300">
+              {calledCardKeys.length}
+            </p>
+          </div>
 
-  <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
-    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-      Resultado
-    </p>
-    <p className="mt-1 text-lg font-bold text-white">
-      {winnerLabel
-        ? `${winnerLabel} ganó`
-        : match?.status === "finished"
-        ? "Partida finalizada"
-        : "Sin ganador"}
-    </p>
-  </div>
-</div>
+          <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+              Resultado
+            </p>
+            <p className="mt-1 text-lg font-bold text-white">
+              {winnerLabel
+                ? `${winnerLabel} ganó`
+                : match?.status === "finished"
+                ? "Partida finalizada"
+                : "Sin ganador"}
+            </p>
+          </div>
+        </div>
 
         {errorMessage && (
           <div className="mb-5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
@@ -729,7 +763,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
             <LoteriaBoard
               deck={deck}
               boardCardKeys={currentMatchPlayer?.board_card_keys ?? []}
-              markedCardKeys={currentMatchPlayer?.marked_card_keys ?? []}
+              markedCardKeys={localMarkedCardKeys}
               calledCardKeys={calledCardKeys}
               winningCardKeys={match?.status === "finished" ? winningCardKeys : []}
               currentCardKey={currentCardKey}
@@ -789,10 +823,11 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
             <div className="mt-5 flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={() => router.push(`/sala/${roomCode}`)}
-                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-white transition hover:bg-white/10"
+                onClick={handleBackToRoom}
+                disabled={leavingToRoom}
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Volver a sala
+                {leavingToRoom ? "Volviendo..." : "Volver a sala"}
               </button>
             </div>
           </div>
