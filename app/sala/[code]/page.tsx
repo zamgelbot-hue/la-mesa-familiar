@@ -508,15 +508,15 @@ export default function SalaPage() {
                   {copied ? "Copiado" : "Copiar código"}
                 </button>
 
-                <ShareRoomButton
-                  roomCode={room.code}
-                  roomUrl={
-                    typeof window !== "undefined"
-                      ? `${window.location.origin}/sala/${room.code}`
-                      : undefined
-                  }
-                  gameName={game?.name ?? "Lotería Mexicana"}
-                />
+<ShareRoomButton
+  roomCode={room.code}
+  roomUrl={
+    typeof window !== "undefined"
+      ? `${window.location.origin}/sala/${room.code}`
+      : undefined
+  }
+  gameName={game?.name ?? "La Mesa Familiar"}
+/>
               </div>
 
               {game && (
