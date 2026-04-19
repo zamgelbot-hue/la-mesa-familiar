@@ -129,6 +129,16 @@ const readStoredPlayerName = (roomCode: string) => {
   return "";
 };
 
+function LoadingView() {
+  return (
+    <main className="min-h-screen bg-black px-6 py-8 text-white">
+      <div className="mx-auto max-w-6xl rounded-[34px] border border-white/10 bg-zinc-950/90 p-10 text-center shadow-[0_0_40px_rgba(249,115,22,0.04)]">
+        <p className="text-3xl font-bold">Cargando sala...</p>
+      </div>
+    </main>
+  );
+}
+
 export default function SalaPage() {
   const params = useParams();
   const router = useRouter();
@@ -428,214 +438,7 @@ export default function SalaPage() {
       !sortedPlayers.some((player) => player.player_name === currentPlayerName));
 
   if (loading) {
-return (
-  <main className="min-h-screen bg-[#0a0a0b] text-white px-4 py-6">
-    <div className="mx-auto max-w-7xl">
-
-      {/* BOTÓN VOLVER */}
-      <button
-        onClick={() => router.push("/")}
-        className="mb-6 rounded-xl bg-orange-500 px-5 py-2 font-bold text-black hover:bg-orange-400"
-      >
-        ← Volver
-      </button>
-
-      {/* HEADER */}
-      <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl mb-6">
-        <div className="flex flex-col lg:flex-row lg:justify-between gap-6">
-
-          {/* INFO */}
-          <div>
-            <h1 className="text-4xl font-extrabold">
-              {game?.name ?? "Sala"}
-            </h1>
-
-            <p className="text-white/60 mt-1">
-              {sortedPlayers.length}/2 jugadores
-            </p>
-
-            <div className="flex items-center gap-3 mt-4 flex-wrap">
-              <div className="bg-orange-500 text-black px-4 py-2 rounded-xl font-black tracking-widest text-xl">
-                {room.code}
-              </div>
-
-              <button
-                onClick={handleCopyCode}
-                className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20"
-              >
-                {copied ? "Copiado" : "Copiar"}
-              </button>
-
-              {/* 🔥 NUEVO */}
-              <ShareRoomButton roomCode={room.code} />
-            </div>
-          </div>
-
-          {/* STATUS */}
-          <div className="flex items-center">
-            <div
-              className={`rounded-2xl px-5 py-4 border ${
-                allReady
-                  ? "bg-emerald-500/10 border-emerald-400/30"
-                  : "bg-orange-500/10 border-orange-400/30"
-              }`}
-            >
-              <p className="font-bold">
-                {starting
-                  ? "Iniciando..."
-                  : allReady
-                  ? "Todos listos"
-                  : "Esperando jugadores"}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* IDENTIDAD */}
-      {needsIdentitySelection && (
-        <div className="mb-6 p-5 rounded-2xl bg-cyan-500/10 border border-cyan-400/30">
-          <p className="font-bold text-cyan-300">
-            Selecciona tu jugador
-          </p>
-
-          <div className="grid md:grid-cols-2 gap-3 mt-4">
-            {sortedPlayers.map((player) => (
-              <button
-                key={player.id}
-                onClick={() => handleSelectIdentity(player.player_name)}
-                className="p-4 rounded-xl bg-white/10 hover:bg-white/20 text-left"
-              >
-                {player.player_name} {player.is_host && "👑"}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* LOBBY */}
-      <div className="grid lg:grid-cols-2 gap-6">
-
-        {/* JUGADORES */}
-        <div className="space-y-4">
-          {sortedPlayers.map((player) => {
-            const isMe = player.player_name === currentPlayerName;
-
-            return (
-              <div
-                key={player.id}
-                className={`rounded-2xl p-5 border transition ${
-                  player.is_ready
-                    ? "bg-orange-500/10 border-orange-400/30 shadow-[0_0_20px_rgba(249,115,22,0.15)]"
-                    : "bg-white/5 border-white/10"
-                }`}
-              >
-                <div className="flex justify-between items-center">
-
-                  {/* INFO */}
-                  <div className="flex items-center gap-4">
-                    <PlayerAvatar
-                      avatar={getAvatarByKey("avatar_sun")}
-                      frame={getFrameByKey("frame_orange")}
-                      size="md"
-                    />
-
-                    <div>
-                      <p className="text-xl font-bold">
-                        {player.player_name} {player.is_host && "👑"}
-                      </p>
-
-                      <p className="text-sm text-white/60">
-                        {isMe ? "Tú" : "Jugador"}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* STATUS */}
-                  <div
-                    className={`px-4 py-2 rounded-full text-sm font-bold ${
-                      player.is_ready
-                        ? "bg-emerald-500/20 text-emerald-300 animate-pulse"
-                        : "bg-white/10 text-white/60"
-                    }`}
-                  >
-                    {player.is_ready ? "Listo" : "No listo"}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-
-          {/* SLOT VACÍO */}
-          {sortedPlayers.length < 2 && (
-            <div className="rounded-2xl p-6 border border-dashed border-white/10 text-center text-white/50">
-              Esperando jugador...
-            </div>
-          )}
-        </div>
-
-        {/* PANEL DERECHO */}
-        <div className="space-y-6">
-
-          {/* PREVIEW */}
-          <div className="rounded-2xl border border-white/10 p-5 bg-white/5">
-            <p className="font-bold mb-3">Preview</p>
-
-            <div className="grid grid-cols-4 gap-2">
-              {Array.from({ length: 16 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="aspect-square rounded bg-zinc-800"
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* ESTADO */}
-          <div className="rounded-2xl border border-white/10 p-5 bg-white/5">
-            <p className="font-bold">Estado</p>
-
-            <p className="text-white/60 mt-2">
-              {allReady
-                ? "Todo listo para iniciar"
-                : "Esperando que todos estén listos"}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* BOTONES */}
-      <div className="mt-6 flex gap-3 flex-col sm:flex-row">
-        <button
-          onClick={handleToggleReady}
-          disabled={needsIdentitySelection}
-          className="flex-1 py-3 rounded-xl bg-orange-500 text-black font-bold hover:bg-orange-400"
-        >
-          {players.find(p => p.player_name === currentPlayerName)?.is_ready
-            ? "Quitar listo"
-            : "Estoy listo"}
-        </button>
-
-        <button
-          onClick={handleStartGame}
-          disabled={!isHost || !allReady || starting}
-          className="flex-1 py-3 rounded-xl bg-white text-black font-bold hover:bg-gray-200 disabled:opacity-50"
-        >
-          {starting ? "Iniciando..." : "Iniciar partida"}
-        </button>
-      </div>
-    </div>
-
-    {/* CHAT (NO SE TOCA) */}
-    <RoomChat
-      roomCode={code}
-      context="lobby"
-      currentPlayerName={currentPlayerName}
-      currentUserId={currentPlayer?.user_id ?? null}
-      isGuest={currentPlayer?.is_guest ?? true}
-    />
-  </main>
-);
+    return <LoadingView />;
   }
 
   if (!room) {
@@ -655,8 +458,8 @@ return (
   }
 
   return (
-    <main className="min-h-screen bg-black px-6 py-8 text-white">
-      <div className="mx-auto max-w-6xl">
+    <main className="min-h-screen bg-[#0a0a0b] px-4 py-6 text-white sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
         <button
           onClick={() => router.push("/")}
           className="mb-6 rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black transition hover:bg-orange-400"
@@ -664,18 +467,37 @@ return (
           ← Volver
         </button>
 
-        <div className="rounded-[34px] border border-white/10 bg-zinc-950/90 p-8 shadow-[0_0_40px_rgba(249,115,22,0.05)] md:p-10">
-          <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+        <div className="relative overflow-hidden rounded-[34px] border border-white/10 bg-zinc-950/90 p-6 shadow-[0_0_40px_rgba(249,115,22,0.05)] md:p-8">
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute left-1/2 top-[-120px] h-[260px] w-[260px] -translate-x-1/2 rounded-full bg-orange-500/10 blur-3xl" />
+            <div className="absolute bottom-[-80px] right-[-40px] h-[220px] w-[220px] rounded-full bg-orange-400/10 blur-3xl" />
+          </div>
+
+          <div className="relative flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
             <div>
-              <h1 className="text-5xl font-extrabold md:text-6xl">Sala</h1>
-              <p className="mt-5 text-2xl font-semibold text-white/90">
-                Jugadores ({sortedPlayers.length}) — {allReady ? "Todos listos" : "Esperando"}
+              <div className="inline-flex items-center rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-orange-200">
+                Lobby
+              </div>
+
+              <h1 className="mt-4 text-4xl font-extrabold md:text-5xl">
+                {game?.name ?? "Sala"}
+              </h1>
+
+              <p className="mt-3 text-base text-white/70 md:text-lg">
+                {sortedPlayers.length}/2 jugadores —{" "}
+                {starting
+                  ? "Iniciando partida..."
+                  : allReady
+                  ? "Todos listos"
+                  : sortedPlayers.length < 2
+                  ? "Esperando jugadores..."
+                  : "Esperando confirmación"}
               </p>
             </div>
 
             <div className="flex flex-col gap-4 xl:items-end">
               <div className="flex flex-wrap items-center gap-3">
-                <div className="rounded-2xl bg-orange-500 px-5 py-3 text-2xl font-extrabold text-black shadow-[0_0_25px_rgba(249,115,22,0.18)]">
+                <div className="rounded-2xl bg-orange-500 px-5 py-3 text-xl font-extrabold tracking-[0.25em] text-black shadow-[0_0_25px_rgba(249,115,22,0.18)] sm:text-2xl">
                   {room.code}
                 </div>
 
@@ -685,14 +507,24 @@ return (
                 >
                   {copied ? "Copiado" : "Copiar código"}
                 </button>
+
+                <ShareRoomButton
+                  roomCode={room.code}
+                  roomUrl={
+                    typeof window !== "undefined"
+                      ? `${window.location.origin}/sala/${room.code}`
+                      : undefined
+                  }
+                  gameName={game?.name ?? "Lotería Mexicana"}
+                />
               </div>
 
               {game && (
-                <div className="rounded-[28px] border border-orange-500/20 bg-orange-500/10 px-6 py-5 text-right shadow-[0_0_30px_rgba(249,115,22,0.06)]">
+                <div className="rounded-[28px] border border-orange-500/20 bg-orange-500/10 px-6 py-5 text-left shadow-[0_0_30px_rgba(249,115,22,0.06)] xl:text-right">
                   <p className="text-xs uppercase tracking-[0.3em] text-orange-200">
                     Juego seleccionado
                   </p>
-                  <p className="mt-2 text-4xl font-extrabold text-white">
+                  <p className="mt-2 text-3xl font-extrabold text-white md:text-4xl">
                     {game.name}
                   </p>
                   <p className="mt-2 text-sm text-white/70">
@@ -704,7 +536,7 @@ return (
           </div>
 
           {needsIdentitySelection && (
-            <div className="mt-8 rounded-[28px] border border-cyan-400/25 bg-cyan-500/10 p-6">
+            <div className="relative mt-8 rounded-[28px] border border-cyan-400/25 bg-cyan-500/10 p-6">
               <p className="text-lg font-semibold text-cyan-300">
                 Este navegador todavía no sabe qué jugador eres
               </p>
@@ -731,54 +563,126 @@ return (
             </div>
           )}
 
-          <div className="mt-8 space-y-4">
-            {sortedPlayers.map((player) => {
-              const isMe = player.player_name === currentPlayerName;
-              const profile = player.user_id ? profilesMap[player.user_id] : null;
-              const avatar = getAvatarByKey(
-                player.is_guest ? "avatar_guest" : profile?.avatar_key ?? "avatar_sun"
-              );
-              const frame = getFrameByKey(
-                player.is_guest ? "frame_guest" : profile?.frame_key ?? "frame_orange"
-              );
+          <div className="relative mt-8 grid gap-6 xl:grid-cols-[1.25fr_0.85fr]">
+            <div className="space-y-4">
+              {sortedPlayers.map((player) => {
+                const isMe = player.player_name === currentPlayerName;
+                const profile = player.user_id ? profilesMap[player.user_id] : null;
+                const avatar = getAvatarByKey(
+                  player.is_guest ? "avatar_guest" : profile?.avatar_key ?? "avatar_sun"
+                );
+                const frame = getFrameByKey(
+                  player.is_guest ? "frame_guest" : profile?.frame_key ?? "frame_orange"
+                );
 
-              return (
-                <div
-                  key={player.id}
-                  className={`flex items-center justify-between rounded-[26px] border px-5 py-5 transition ${
-                    isMe
-                      ? "border-emerald-400/35 bg-emerald-500/10 shadow-[0_0_25px_rgba(16,185,129,0.08)]"
-                      : "border-white/10 bg-white/[0.03]"
-                  }`}
-                >
-                  <div className="flex items-center gap-4">
-                    <PlayerAvatar avatar={avatar} frame={frame} size="md" />
-
-                    <div>
-                      <p className="text-3xl font-extrabold">
-                        {player.player_name} {player.is_host ? "👑" : ""}
-                      </p>
-                      <p className="mt-1 text-white/60">
-                        {isMe ? "Tú" : player.is_guest ? "Invitado en sala" : "Jugador registrado"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <span
-                    className={`rounded-full px-5 py-2 text-sm font-bold ${
+                return (
+                  <div
+                    key={player.id}
+                    className={`rounded-[26px] border px-5 py-5 transition ${
                       player.is_ready
-                        ? "bg-emerald-500/15 text-emerald-300"
-                        : "bg-white/10 text-white/60"
+                        ? "border-orange-400/30 bg-orange-500/10 shadow-[0_0_25px_rgba(249,115,22,0.12)]"
+                        : isMe
+                        ? "border-emerald-400/35 bg-emerald-500/10 shadow-[0_0_25px_rgba(16,185,129,0.08)]"
+                        : "border-white/10 bg-white/[0.03]"
                     }`}
                   >
-                    {player.is_ready ? "Listo" : "No listo"}
-                  </span>
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex min-w-0 items-center gap-4">
+                        <PlayerAvatar avatar={avatar} frame={frame} size="md" />
+
+                        <div className="min-w-0">
+                          <p className="truncate text-2xl font-extrabold md:text-3xl">
+                            {player.player_name} {player.is_host ? "👑" : ""}
+                          </p>
+                          <p className="mt-1 text-sm text-white/60 md:text-base">
+                            {isMe
+                              ? "Tú"
+                              : player.is_guest
+                              ? "Invitado en sala"
+                              : "Jugador registrado"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <span
+                        className={`shrink-0 rounded-full px-5 py-2 text-sm font-bold ${
+                          player.is_ready
+                            ? "bg-emerald-500/15 text-emerald-300"
+                            : "bg-white/10 text-white/60"
+                        }`}
+                      >
+                        {player.is_ready ? "Listo" : "No listo"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {sortedPlayers.length < 2 && (
+                <div className="rounded-[26px] border border-dashed border-white/10 bg-white/[0.03] px-5 py-8 text-center text-white/50">
+                  Esperando jugador...
                 </div>
-              );
-            })}
+              )}
+            </div>
+
+            <div className="space-y-6">
+              <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
+                <p className="text-xs font-bold uppercase tracking-[0.25em] text-orange-200">
+                  Preview
+                </p>
+
+                <div className="mt-4 grid grid-cols-4 gap-2">
+                  {Array.from({ length: 16 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="aspect-square rounded-xl border border-white/5 bg-zinc-800/80"
+                    />
+                  ))}
+                </div>
+
+                <p className="mt-4 text-sm text-white/55">
+                  Vista previa decorativa del tablero de Lotería.
+                </p>
+              </div>
+
+              <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
+                <p className="text-xs font-bold uppercase tracking-[0.25em] text-orange-200">
+                  Estado
+                </p>
+
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
+                    <span className="text-sm text-white/60">Jugadores conectados</span>
+                    <span className="font-bold">{sortedPlayers.length}/2</span>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
+                    <span className="text-sm text-white/60">Juego</span>
+                    <span className="font-bold">{game?.name ?? "Lotería Mexicana"}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
+                    <span className="text-sm text-white/60">Estado de sala</span>
+                    <span
+                      className={`font-bold ${
+                        allReady ? "text-emerald-300" : "text-orange-200"
+                      }`}
+                    >
+                      {starting
+                        ? "Iniciando..."
+                        : allReady
+                        ? "Todo listo"
+                        : sortedPlayers.length < 2
+                        ? "Esperando jugadores"
+                        : "Pendiente"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+          <div className="relative mt-8 flex flex-col gap-3 sm:flex-row">
             <button
               onClick={handleToggleReady}
               disabled={needsIdentitySelection || !currentPlayerName}
