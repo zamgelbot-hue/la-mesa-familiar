@@ -626,24 +626,65 @@ export default function SalaPage() {
             </div>
 
             <div className="space-y-6">
-              <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
-                <p className="text-xs font-bold uppercase tracking-[0.25em] text-orange-200">
-                  Preview
-                </p>
+<div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
+  <p className="text-xs font-bold uppercase tracking-[0.25em] text-orange-200">
+    Preview
+  </p>
 
-                <div className="mt-4 grid grid-cols-4 gap-2">
-                  {Array.from({ length: 16 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="aspect-square rounded-xl border border-white/5 bg-zinc-800/80"
-                    />
-                  ))}
-                </div>
+  {game?.slug === "loteria-mexicana" ? (
+    <>
+      <div className="mt-4 grid grid-cols-4 gap-2">
+        {Array.from({ length: 16 }).map((_, i) => (
+          <div
+            key={i}
+            className="aspect-square rounded-xl border border-white/5 bg-zinc-800/80"
+          />
+        ))}
+      </div>
 
-                <p className="mt-4 text-sm text-white/55">
-                  Vista previa decorativa del tablero de Lotería.
-                </p>
-              </div>
+      <p className="mt-4 text-sm text-white/55">
+        Vista previa decorativa del tablero de Lotería.
+      </p>
+    </>
+  ) : game?.slug === "piedra-papel-tijera" ? (
+    <>
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        {[
+          { emoji: "🪨", label: "Piedra" },
+          { emoji: "📄", label: "Papel" },
+          { emoji: "✂️", label: "Tijera" },
+        ].map((item) => (
+          <div
+            key={item.label}
+            className="flex aspect-[1/1.1] flex-col items-center justify-center rounded-2xl border border-white/10 bg-zinc-800/80 text-center"
+          >
+            <div className="text-4xl">{item.emoji}</div>
+            <div className="mt-2 text-sm font-bold text-white">{item.label}</div>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-4 text-sm text-white/55">
+        Elige entre piedra, papel o tijera y vence a tu rival.
+      </p>
+    </>
+  ) : (
+    <>
+      <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-800/60 p-6 text-center">
+        <p className="text-lg font-bold text-white">
+          {game?.name ?? "Juego"}
+        </p>
+        <p className="mt-2 text-sm text-white/60">
+          Sala lista para comenzar.
+        </p>
+      </div>
+
+      <p className="mt-4 text-sm text-white/55">
+        Vista previa disponible próximamente.
+      </p>
+    </>
+  )}
+</div>
 
               <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
                 <p className="text-xs font-bold uppercase tracking-[0.25em] text-orange-200">
@@ -657,8 +698,8 @@ export default function SalaPage() {
                   </div>
 
                   <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
-                    <span className="text-sm text-white/60">Juego</span>
-                    <span className="font-bold">{game?.name ?? "Lotería Mexicana"}</span>
+                  <span className="text-sm text-white/60">Juego</span>
+                  <span className="font-bold">{game?.name ?? "Sin seleccionar"}</span>
                   </div>
 
                   <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
