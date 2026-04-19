@@ -40,6 +40,7 @@ type VariantOption = {
   key: string;
   label: string;
   description: string;
+  available: boolean;
 };
 
 type GameConfig = {
@@ -56,26 +57,29 @@ const DEFAULT_STATS: HomeStats = {
 const getPlayerStorageKey = (roomCode: string) => `lmf:player:${roomCode}`;
 
 const GAME_CONFIGS: Record<string, GameConfig> = {
-  "loteria-mexicana": {
-    maxPlayersOptions: [2, 4, 6],
-    variants: [
-      {
-        key: "clasica",
-        label: "Clásica",
-        description: "La versión tradicional de siempre.",
-      },
-      {
-        key: "infantil",
-        label: "Infantil",
-        description: "Ideal para una experiencia más ligera y familiar.",
-      },
-      {
-        key: "premium",
-        label: "Premium",
-        description: "Una versión especial para futuras cartas/arte premium.",
-      },
-    ],
-  },
+"loteria-mexicana": {
+  maxPlayersOptions: [2, 4, 6],
+  variants: [
+    {
+      key: "clasica",
+      label: "Clásica",
+      description: "La versión tradicional de siempre.",
+      available: true,
+    },
+    {
+      key: "familia-palomares",
+      label: "Familia Palomares",
+      description: "Edición especial próximamente.",
+      available: false,
+    },
+    {
+      key: "comidas-mexicanas",
+      label: "Comidas Mexicanas",
+      description: "Nueva variante próximamente.",
+      available: false,
+    },
+  ],
+},
   "piedra-papel-o-tijera": {
     maxPlayersOptions: [2],
     variants: [
@@ -221,17 +225,22 @@ export default function HomePage() {
   const selectedAvatar = getAvatarByKey(playerIdentity?.avatar_key);
   const selectedFrame = getFrameByKey(playerIdentity?.frame_key);
 
-  useEffect(() => {
-    if (!selectedGameConfig) return;
+useEffect(() => {
+  if (!selectedGameConfig) return;
 
-    if (!selectedGameConfig.maxPlayersOptions.includes(maxPlayers)) {
-      setMaxPlayers(selectedGameConfig.maxPlayersOptions[0]);
-    }
+  if (!selectedGameConfig.maxPlayersOptions.includes(maxPlayers)) {
+    setMaxPlayers(selectedGameConfig.maxPlayersOptions[0]);
+  }
 
-    if (!selectedGameConfig.variants.some((variant) => variant.key === selectedVariantKey)) {
-      setSelectedVariantKey(selectedGameConfig.variants[0]?.key ?? "default");
-    }
-  }, [selectedGameConfig, maxPlayers, selectedVariantKey]);
+  const availableVariants = selectedGameConfig.variants.filter((variant) => variant.available);
+  const currentIsValid = availableVariants.some(
+    (variant) => variant.key === selectedVariantKey
+  );
+
+  if (!currentIsValid) {
+    setSelectedVariantKey(availableVariants[0]?.key ?? "default");
+  }
+}, [selectedGameConfig, maxPlayers, selectedVariantKey]);
 
   const renderProfileAvatar = (
     avatar: { emoji?: string; image?: string; label?: string },
@@ -900,21 +909,42 @@ export default function HomePage() {
                         </p>
 
                         <div className="grid gap-2">
-                          {(selectedGameConfig?.variants ?? []).map((variant) => (
-                            <button
-                              key={variant.key}
-                              type="button"
-                              onClick={() => setSelectedVariantKey(variant.key)}
-                              className={`rounded-2xl border px-4 py-3 text-left transition ${
-                                selectedVariantKey === variant.key
-                                  ? "border-orange-500/40 bg-orange-500/10"
-                                  : "border-white/10 bg-white/5 hover:bg-white/10"
-                              }`}
-                            >
-                              <p className="font-bold text-white">{variant.label}</p>
-                              <p className="mt-1 text-sm text-white/60">{variant.description}</p>
-                            </button>
-                          ))}
+{(selectedGameConfig?.variants ?? []).map((variant) => {
+  const isSelected = selectedVariantKey === variant.key;
+  const isAvailable = variant.available;
+
+  return (
+    <button
+      key={variant.key}
+      type="button"
+      onClick={() => {
+        if (!isAvailable) return;
+        setSelectedVariantKey(variant.key);
+      }}
+      disabled={!isAvailable}
+      className={`rounded-2xl border px-4 py-3 text-left transition ${
+        !isAvailable
+          ? "cursor-not-allowed border-white/10 bg-white/[0.03] opacity-60"
+          : isSelected
+          ? "border-orange-500/40 bg-orange-500/10"
+          : "border-white/10 bg-white/5 hover:bg-white/10"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-bold text-white">{variant.label}</p>
+          <p className="mt-1 text-sm text-white/60">{variant.description}</p>
+        </div>
+
+        {!isAvailable && (
+          <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white/60">
+            Próximamente
+          </span>
+        )}
+      </div>
+    </button>
+  );
+})}
                         </div>
                       </div>
                     </div>
