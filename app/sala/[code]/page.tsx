@@ -14,6 +14,9 @@ type Room = {
   status: string;
   started_at: string | null;
   game_slug: string | null;
+  max_players: number | null;
+  game_variant: string | null;
+  room_settings: Record<string, any> | null;
 };
 
 type RoomPlayer = {
@@ -139,6 +142,32 @@ function LoadingView() {
   );
 }
 
+function getVariantLabel(gameSlug?: string | null, variantKey?: string | null) {
+  if (!variantKey) return "Sin variante";
+
+  if (gameSlug === "loteria-mexicana") {
+    const loteriaMap: Record<string, string> = {
+      clasica: "Clásica",
+      "familia-palomares": "Familia Palomares",
+      "comidas-mexicanas": "Comidas Mexicanas",
+    };
+
+    return loteriaMap[variantKey] ?? variantKey;
+  }
+
+  if (gameSlug === "piedra-papel-o-tijera") {
+    const pptMap: Record<string, string> = {
+      bo3: "Mejor 2 de 3",
+      bo5: "Mejor 3 de 5",
+      bo7: "Mejor 4 de 7",
+    };
+
+    return pptMap[variantKey] ?? variantKey;
+  }
+
+  return variantKey;
+}
+
 export default function SalaPage() {
   const params = useParams();
   const router = useRouter();
@@ -163,15 +192,21 @@ export default function SalaPage() {
     });
   }, [players]);
 
-  const allReady = useMemo(() => {
-    return sortedPlayers.length >= 2 && sortedPlayers.every((p) => p.is_ready);
-  }, [sortedPlayers]);
-
   const currentPlayer = useMemo(() => {
     return sortedPlayers.find((p) => p.player_name === currentPlayerName) ?? null;
   }, [sortedPlayers, currentPlayerName]);
 
   const isHost = !!currentPlayer?.is_host;
+  const roomMaxPlayers = room?.max_players ?? game?.max_players ?? 2;
+  const minPlayersToStart = game?.min_players ?? 2;
+  const variantLabel = getVariantLabel(room?.game_slug, room?.game_variant);
+
+  const allReady = useMemo(() => {
+    return (
+      sortedPlayers.length >= minPlayersToStart &&
+      sortedPlayers.every((p) => p.is_ready)
+    );
+  }, [sortedPlayers, minPlayersToStart]);
 
   const fetchProfilesForPlayers = useCallback(
     async (playerList: RoomPlayer[]) => {
@@ -398,7 +433,7 @@ export default function SalaPage() {
     if (!room) return;
     if (!isHost) return;
     if (!allReady) return;
-    if (sortedPlayers.length < 2) return;
+    if (sortedPlayers.length < minPlayersToStart) return;
 
     try {
       setStarting(true);
@@ -484,14 +519,18 @@ export default function SalaPage() {
               </h1>
 
               <p className="mt-3 text-base text-white/70 md:text-lg">
-                {sortedPlayers.length}/2 jugadores —{" "}
+                {sortedPlayers.length}/{roomMaxPlayers} jugadores —{" "}
                 {starting
                   ? "Iniciando partida..."
                   : allReady
                   ? "Todos listos"
-                  : sortedPlayers.length < 2
+                  : sortedPlayers.length < minPlayersToStart
                   ? "Esperando jugadores..."
                   : "Esperando confirmación"}
+              </p>
+
+              <p className="mt-2 text-sm text-orange-200">
+                Variante activa: <span className="font-bold text-white">{variantLabel}</span>
               </p>
             </div>
 
@@ -508,15 +547,15 @@ export default function SalaPage() {
                   {copied ? "Copiado" : "Copiar código"}
                 </button>
 
-<ShareRoomButton
-  roomCode={room.code}
-  roomUrl={
-    typeof window !== "undefined"
-      ? `${window.location.origin}/sala/${room.code}`
-      : undefined
-  }
-  gameName={game?.name ?? "La Mesa Familiar"}
-/>
+                <ShareRoomButton
+                  roomCode={room.code}
+                  roomUrl={
+                    typeof window !== "undefined"
+                      ? `${window.location.origin}/sala/${room.code}`
+                      : undefined
+                  }
+                  gameName={game?.name ?? "La Mesa Familiar"}
+                />
               </div>
 
               {game && (
@@ -528,7 +567,10 @@ export default function SalaPage() {
                     {game.name}
                   </p>
                   <p className="mt-2 text-sm text-white/70">
-                    {game.min_players}-{game.max_players} jugadores
+                    Mínimo {minPlayersToStart} · Máximo {roomMaxPlayers}
+                  </p>
+                  <p className="mt-2 text-sm text-orange-200">
+                    Variante: <span className="font-bold text-white">{variantLabel}</span>
                   </p>
                 </div>
               )}
@@ -618,73 +660,74 @@ export default function SalaPage() {
                 );
               })}
 
-              {sortedPlayers.length < 2 && (
-                <div className="rounded-[26px] border border-dashed border-white/10 bg-white/[0.03] px-5 py-8 text-center text-white/50">
+              {Array.from({
+                length: Math.max(roomMaxPlayers - sortedPlayers.length, 0),
+              }).map((_, index) => (
+                <div
+                  key={`empty-slot-${index}`}
+                  className="rounded-[26px] border border-dashed border-white/10 bg-white/[0.03] px-5 py-8 text-center text-white/50"
+                >
                   Esperando jugador...
                 </div>
-              )}
+              ))}
             </div>
 
             <div className="space-y-6">
-<div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
-  <p className="text-xs font-bold uppercase tracking-[0.25em] text-orange-200">
-    Preview
-  </p>
+              <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
+                <p className="text-xs font-bold uppercase tracking-[0.25em] text-orange-200">
+                  Preview
+                </p>
 
-  {game?.slug === "loteria-mexicana" ? (
-    <>
-      <div className="mt-4 grid grid-cols-4 gap-2">
-        {Array.from({ length: 16 }).map((_, i) => (
-          <div
-            key={i}
-            className="aspect-square rounded-xl border border-white/5 bg-zinc-800/80"
-          />
-        ))}
-      </div>
+                {game?.slug === "loteria-mexicana" ? (
+                  <>
+                    <div className="mt-4 grid grid-cols-4 gap-2">
+                      {Array.from({ length: 16 }).map((_, i) => (
+                        <div
+                          key={i}
+                          className="aspect-square rounded-xl border border-white/5 bg-zinc-800/80"
+                        />
+                      ))}
+                    </div>
 
-      <p className="mt-4 text-sm text-white/55">
-        Vista previa decorativa del tablero de Lotería.
-      </p>
-    </>
-  ) : game?.slug === "piedra-papel-tijera" ? (
-    <>
-      <div className="mt-4 grid grid-cols-3 gap-3">
-        {[
-          { emoji: "🪨", label: "Piedra" },
-          { emoji: "📄", label: "Papel" },
-          { emoji: "✂️", label: "Tijera" },
-        ].map((item) => (
-          <div
-            key={item.label}
-            className="flex aspect-[1/1.1] flex-col items-center justify-center rounded-2xl border border-white/10 bg-zinc-800/80 text-center"
-          >
-            <div className="text-4xl">{item.emoji}</div>
-            <div className="mt-2 text-sm font-bold text-white">{item.label}</div>
-          </div>
-        ))}
-      </div>
+                    <p className="mt-4 text-sm text-white/55">
+                      Vista previa decorativa del tablero de Lotería.
+                    </p>
+                    <p className="mt-2 text-sm text-orange-200">
+                      Variante: <span className="font-bold text-white">{variantLabel}</span>
+                    </p>
+                  </>
+                ) : game?.slug === "piedra-papel-o-tijera" ? (
+                  <>
+                    <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-800/60 p-6 text-center">
+                      <p className="text-lg font-bold text-white">
+                        Piedra, Papel o Tijera
+                      </p>
+                      <p className="mt-2 text-sm text-white/60">
+                        Serie activa: {variantLabel}
+                      </p>
+                    </div>
 
-      <p className="mt-4 text-sm text-white/55">
-        Elige entre piedra, papel o tijera y vence a tu rival.
-      </p>
-    </>
-  ) : (
-    <>
-      <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-800/60 p-6 text-center">
-        <p className="text-lg font-bold text-white">
-          {game?.name ?? "Juego"}
-        </p>
-        <p className="mt-2 text-sm text-white/60">
-          Sala lista para comenzar.
-        </p>
-      </div>
+                    <p className="mt-4 text-sm text-white/55">
+                      La sala está configurada para jugar en formato {variantLabel.toLowerCase()}.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-800/60 p-6 text-center">
+                      <p className="text-lg font-bold text-white">
+                        {game?.name ?? "Juego"}
+                      </p>
+                      <p className="mt-2 text-sm text-white/60">
+                        Sala lista para comenzar.
+                      </p>
+                    </div>
 
-      <p className="mt-4 text-sm text-white/55">
-        Vista previa disponible próximamente.
-      </p>
-    </>
-  )}
-</div>
+                    <p className="mt-4 text-sm text-white/55">
+                      Vista previa disponible próximamente.
+                    </p>
+                  </>
+                )}
+              </div>
 
               <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
                 <p className="text-xs font-bold uppercase tracking-[0.25em] text-orange-200">
@@ -694,12 +737,24 @@ export default function SalaPage() {
                 <div className="mt-4 space-y-3">
                   <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
                     <span className="text-sm text-white/60">Jugadores conectados</span>
-                    <span className="font-bold">{sortedPlayers.length}/2</span>
+                    <span className="font-bold">
+                      {sortedPlayers.length}/{roomMaxPlayers}
+                    </span>
                   </div>
 
                   <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
-                  <span className="text-sm text-white/60">Juego</span>
-                  <span className="font-bold">{game?.name ?? "Sin seleccionar"}</span>
+                    <span className="text-sm text-white/60">Juego</span>
+                    <span className="font-bold">{game?.name ?? "Sin seleccionar"}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
+                    <span className="text-sm text-white/60">Variante</span>
+                    <span className="font-bold">{variantLabel}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
+                    <span className="text-sm text-white/60">Mínimo para iniciar</span>
+                    <span className="font-bold">{minPlayersToStart}</span>
                   </div>
 
                   <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
@@ -713,7 +768,7 @@ export default function SalaPage() {
                         ? "Iniciando..."
                         : allReady
                         ? "Todo listo"
-                        : sortedPlayers.length < 2
+                        : sortedPlayers.length < minPlayersToStart
                         ? "Esperando jugadores"
                         : "Pendiente"}
                     </span>
@@ -736,7 +791,7 @@ export default function SalaPage() {
 
             <button
               onClick={handleStartGame}
-              disabled={!isHost || !allReady || sortedPlayers.length < 2 || starting}
+              disabled={!isHost || !allReady || sortedPlayers.length < minPlayersToStart || starting}
               className="rounded-2xl bg-orange-900/70 px-6 py-3.5 font-bold text-orange-100 transition hover:bg-orange-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {starting ? "Iniciando..." : "Iniciar partida"}
