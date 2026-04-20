@@ -25,9 +25,22 @@ import {
   generateDrawOrder,
   getNextCardToCall,
   getRemainingCardCount,
-  toggleMarkedCard,
+  isCardExpired,
+  isCardMarkable,
+  markCard,
+  resolveCardVisualState,
+  sleep,
   validateLoteriaWin,
 } from "./loteriaUtils";
+import {
+  playLoteriaCardVoice,
+  playLoteriaExpiredSound,
+  playLoteriaInvalidSound,
+  playLoteriaMarkSound,
+  playLoteriaStartVoice,
+  playLoteriaWinVoice,
+  unlockLoteriaAudio,
+} from "./loteriaSounds";
 
 type RoomRow = {
   code: string;
@@ -47,6 +60,7 @@ type RoomPlayerRow = {
 };
 
 const LOTERIA_DRAW_INTERVAL_MS = 5000;
+const LOTERIA_START_DELAY_MS = 2000;
 const DEFAULT_DECK_SLUG = "tradicional";
 
 export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
@@ -67,10 +81,12 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
   const [errorMessage, setErrorMessage] = useState("");
   const [localMarkedCardKeys, setLocalMarkedCardKeys] = useState<string[]>([]);
   const [showWinnerOverlay, setShowWinnerOverlay] = useState(false);
+  const [feedbackPulseCardKey, setFeedbackPulseCardKey] = useState<string | null>(null);
+  const [feedbackInvalidCardKey, setFeedbackInvalidCardKey] = useState<string | null>(null);
+  const [phaseLabel, setPhaseLabel] = useState("Carta actual");
 
   const drawTimerRef = useRef<NodeJS.Timeout | null>(null);
   const creatingMatchRef = useRef(false);
-  const audioContextRef = useRef<AudioContext | null>(null);
   const lastCurrentCardKeyRef = useRef<string | null>(null);
   const lastWinnerRef = useRef<string | null>(null);
 
@@ -151,90 +167,6 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
   const currentPlayerRematchReady = useMemo(() => {
     return !!currentMatchPlayer?.is_rematch_ready;
   }, [currentMatchPlayer]);
-
-  const getAudioContext = useCallback(() => {
-    if (typeof window === "undefined") return null;
-
-    if (!audioContextRef.current) {
-      const Ctx =
-        window.AudioContext ||
-        (window as typeof window & {
-          webkitAudioContext?: typeof AudioContext;
-        }).webkitAudioContext;
-
-      if (!Ctx) return null;
-      audioContextRef.current = new Ctx();
-    }
-
-    return audioContextRef.current;
-  }, []);
-
-  const resumeAudioIfNeeded = useCallback(async () => {
-    const ctx = getAudioContext();
-    if (!ctx) return null;
-
-    if (ctx.state === "suspended") {
-      try {
-        await ctx.resume();
-      } catch (error) {
-        console.error("No se pudo reanudar audio:", error);
-      }
-    }
-
-    return ctx;
-  }, [getAudioContext]);
-
-  const playTone = useCallback(
-    async (
-      frequency: number,
-      duration = 0.12,
-      type: OscillatorType = "sine",
-      volume = 0.03
-    ) => {
-      const ctx = await resumeAudioIfNeeded();
-      if (!ctx) return;
-
-      const oscillator = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-
-      oscillator.type = type;
-      oscillator.frequency.value = frequency;
-
-      gainNode.gain.setValueAtTime(volume, ctx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(
-        0.0001,
-        ctx.currentTime + duration
-      );
-
-      oscillator.connect(gainNode);
-      gainNode.connect(ctx.destination);
-
-      oscillator.start();
-      oscillator.stop(ctx.currentTime + duration);
-    },
-    [resumeAudioIfNeeded]
-  );
-
-  const playNewCardSound = useCallback(async () => {
-    await playTone(660, 0.08, "triangle", 0.025);
-    setTimeout(() => {
-      void playTone(880, 0.08, "triangle", 0.02);
-    }, 90);
-  }, [playTone]);
-
-  const playMarkSound = useCallback(async () => {
-    await playTone(520, 0.05, "sine", 0.025);
-    setTimeout(() => {
-      void playTone(720, 0.07, "sine", 0.02);
-    }, 50);
-  }, [playTone]);
-
-  const playWinSound = useCallback(async () => {
-    await playTone(523.25, 0.12, "triangle", 0.03);
-    setTimeout(() => void playTone(659.25, 0.12, "triangle", 0.03), 110);
-    setTimeout(() => void playTone(783.99, 0.18, "triangle", 0.035), 220);
-    setTimeout(() => void playTone(1046.5, 0.26, "triangle", 0.04), 360);
-  }, [playTone]);
 
   const loadPlayerIdentity = useCallback(async () => {
     const identity = await getPlayerIdentity();
@@ -493,17 +425,18 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
   useEffect(() => {
     if (currentCardKey && currentCardKey !== lastCurrentCardKeyRef.current) {
       lastCurrentCardKeyRef.current = currentCardKey;
-      void playNewCardSound();
+      setPhaseLabel("Carta actual");
+      void playLoteriaCardVoice(currentCardKey);
     }
-  }, [currentCardKey, playNewCardSound]);
+  }, [currentCardKey]);
 
   useEffect(() => {
     if (winnerLabel && winnerLabel !== lastWinnerRef.current) {
       lastWinnerRef.current = winnerLabel;
       setShowWinnerOverlay(true);
-      void playWinSound();
+      void playLoteriaWinVoice();
     }
-  }, [winnerLabel, playWinSound]);
+  }, [winnerLabel]);
 
   useEffect(() => {
     if (!winnerLabel) {
@@ -512,13 +445,32 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
     }
   }, [winnerLabel]);
 
+  const pulseCard = useCallback((cardKey: string) => {
+    setFeedbackPulseCardKey(cardKey);
+    window.setTimeout(() => {
+      setFeedbackPulseCardKey((prev) => (prev === cardKey ? null : prev));
+    }, 550);
+  }, []);
+
+  const shakeCard = useCallback((cardKey: string) => {
+    setFeedbackInvalidCardKey(cardKey);
+    window.setTimeout(() => {
+      setFeedbackInvalidCardKey((prev) => (prev === cardKey ? null : prev));
+    }, 340);
+  }, []);
+
   const handleStartMatch = useCallback(async () => {
     if (!match || !isHost) return;
 
     try {
       setStartingMatch(true);
-      setMessage("");
+      setMessage("Preparando salida...");
       setErrorMessage("");
+      setPhaseLabel("Preparando salida");
+
+      await unlockLoteriaAudio();
+      await playLoteriaStartVoice();
+      await sleep(LOTERIA_START_DELAY_MS);
 
       const firstCardKey = getNextCardToCall(match.draw_order ?? [], []);
 
@@ -541,6 +493,9 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
         setErrorMessage("No se pudo iniciar la partida.");
         return;
       }
+
+      setMessage("");
+      setPhaseLabel("Carta actual");
     } finally {
       setStartingMatch(false);
     }
@@ -615,8 +570,47 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
       const boardKeys = currentMatchPlayer.board_card_keys ?? [];
       if (!boardKeys.includes(cardKey)) return;
 
+      const visualState = resolveCardVisualState({
+        cardKey,
+        currentCardKey,
+        boardCardKeys: boardKeys,
+        calledCardKeys,
+        markedCardKeys: localMarkedCardKeys,
+      });
+
+      if (visualState === "marked") {
+        setMessage("Esa carta ya quedó marcada definitivamente.");
+        pulseCard(cardKey);
+        return;
+      }
+
       if (!calledCardKeys.includes(cardKey)) {
-        setMessage("Solo puedes marcar cartas que ya hayan salido.");
+        setMessage("Esa carta todavía no ha sido cantada.");
+        shakeCard(cardKey);
+        void playLoteriaInvalidSound();
+        return;
+      }
+
+      if (
+        isCardExpired(calledCardKeys, localMarkedCardKeys, cardKey)
+      ) {
+        setMessage("Esa carta ya expiró. Solo tenías 2 turnos para marcarla.");
+        shakeCard(cardKey);
+        void playLoteriaExpiredSound();
+        return;
+      }
+
+      if (
+        !isCardMarkable(
+          boardKeys,
+          calledCardKeys,
+          localMarkedCardKeys,
+          cardKey
+        )
+      ) {
+        setMessage("Esa jugada no es válida.");
+        shakeCard(cardKey);
+        void playLoteriaInvalidSound();
         return;
       }
 
@@ -624,10 +618,11 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
       setErrorMessage("");
 
       const previousMarked = localMarkedCardKeys;
-      const nextMarked = toggleMarkedCard(previousMarked, cardKey);
+      const nextMarked = markCard(previousMarked, cardKey);
 
       setLocalMarkedCardKeys(nextMarked);
-      void playMarkSound();
+      pulseCard(cardKey);
+      void playLoteriaMarkSound();
 
       const { error } = await supabase
         .from("loteria_match_players")
@@ -642,7 +637,16 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
         setErrorMessage("No se pudo actualizar tu tablero.");
       }
     },
-    [match, currentMatchPlayer, calledCardKeys, supabase, localMarkedCardKeys, playMarkSound]
+    [
+      match,
+      currentMatchPlayer,
+      currentCardKey,
+      calledCardKeys,
+      supabase,
+      localMarkedCardKeys,
+      pulseCard,
+      shakeCard,
+    ]
   );
 
   const handleClaimLoteria = useCallback(async () => {
@@ -807,6 +811,9 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
 
       setLocalMarkedCardKeys([]);
       setShowWinnerOverlay(false);
+      setFeedbackPulseCardKey(null);
+      setFeedbackInvalidCardKey(null);
+      setPhaseLabel("Carta actual");
       setMessage("Revancha lista. El host puede iniciar otra partida.");
     } finally {
       setRematchLoading(false);
@@ -1007,7 +1014,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
                   disabled={startingMatch || roomPlayers.length < 2}
                   className="mt-5 rounded-2xl bg-orange-500 px-5 py-3 font-extrabold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {startingMatch ? "Iniciando..." : "Iniciar lotería"}
+                  {startingMatch ? "Preparando salida..." : "Iniciar lotería"}
                 </button>
               )}
             </div>
@@ -1023,6 +1030,8 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
                 winningCardKeys={match?.status === "finished" ? winningCardKeys : []}
                 currentCardKey={currentCardKey}
                 disabled={match?.status !== "playing"}
+                feedbackPulseCardKey={feedbackPulseCardKey}
+                feedbackInvalidCardKey={feedbackInvalidCardKey}
                 onToggleCard={handleToggleCard}
               />
             </div>
@@ -1032,6 +1041,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
                 deck={deck}
                 currentCardKey={currentCardKey}
                 remainingCount={remainingCount}
+                phaseLabel={phaseLabel}
               />
 
               <LoteriaClaimButton
@@ -1046,7 +1056,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
                 helperText={
                   canCurrentPlayerClaim
                     ? "Tu tablero tiene una línea válida. ¡Puedes reclamar tu victoria!"
-                    : "Marca manualmente las cartas que hayan salido y reclama cuando completes una línea."
+                    : "Marca a tiempo las cartas cantadas. Si pasan 2 turnos sin marcarlas, se perderán."
                 }
               />
 
