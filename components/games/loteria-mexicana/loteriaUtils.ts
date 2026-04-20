@@ -1,5 +1,6 @@
 import type {
   LoteriaCardData,
+  LoteriaCardVisualState,
   LoteriaDeckDefinition,
   LoteriaValidationResult,
   LoteriaWinningPattern,
@@ -7,6 +8,7 @@ import type {
 
 const BOARD_SIZE = 16;
 const BOARD_DIMENSION = 4;
+export const LOTERIA_MARK_WINDOW_TURNS = 2;
 
 const WINNING_LINES: Array<{
   pattern: LoteriaWinningPattern;
@@ -76,14 +78,12 @@ export function generateBoardCardKeys(
   return keys.slice(0, size);
 }
 
-export function toggleMarkedCard(
+export function markCard(
   markedCardKeys: string[],
   cardKey: string
 ): string[] {
-  const exists = markedCardKeys.includes(cardKey);
-
-  if (exists) {
-    return markedCardKeys.filter((key) => key !== cardKey);
+  if (markedCardKeys.includes(cardKey)) {
+    return markedCardKeys;
   }
 
   return [...markedCardKeys, cardKey];
@@ -101,14 +101,6 @@ export function isCardMarked(
   cardKey: string
 ): boolean {
   return markedCardKeys.includes(cardKey);
-}
-
-export function isBoardCardCallable(
-  boardCardKeys: string[],
-  calledCardKeys: string[],
-  cardKey: string
-): boolean {
-  return boardCardKeys.includes(cardKey) && calledCardKeys.includes(cardKey);
 }
 
 export function getCalledBoardCardKeys(
@@ -148,6 +140,98 @@ export function getWinningLineCardKeys(
   indexes: number[]
 ): string[] {
   return indexes.map((index) => boardCardKeys[index]).filter(Boolean);
+}
+
+export function getCalledTurnIndex(
+  calledCardKeys: string[],
+  cardKey: string
+): number {
+  return calledCardKeys.indexOf(cardKey);
+}
+
+export function getTurnsSinceCalled(
+  calledCardKeys: string[],
+  cardKey: string
+): number {
+  const calledIndex = getCalledTurnIndex(calledCardKeys, cardKey);
+  if (calledIndex < 0) return -1;
+  return calledCardKeys.length - 1 - calledIndex;
+}
+
+export function isCardExpired(
+  calledCardKeys: string[],
+  markedCardKeys: string[],
+  cardKey: string,
+  markWindowTurns = LOTERIA_MARK_WINDOW_TURNS
+): boolean {
+  if (!calledCardKeys.includes(cardKey)) return false;
+  if (markedCardKeys.includes(cardKey)) return false;
+
+  return getTurnsSinceCalled(calledCardKeys, cardKey) > markWindowTurns;
+}
+
+export function isCardMarkable(
+  boardCardKeys: string[],
+  calledCardKeys: string[],
+  markedCardKeys: string[],
+  cardKey: string,
+  markWindowTurns = LOTERIA_MARK_WINDOW_TURNS
+): boolean {
+  if (!boardCardKeys.includes(cardKey)) return false;
+  if (!calledCardKeys.includes(cardKey)) return false;
+  if (markedCardKeys.includes(cardKey)) return false;
+  if (isCardExpired(calledCardKeys, markedCardKeys, cardKey, markWindowTurns)) {
+    return false;
+  }
+
+  return true;
+}
+
+export function resolveCardVisualState(params: {
+  cardKey: string;
+  currentCardKey?: string | null;
+  boardCardKeys: string[];
+  calledCardKeys: string[];
+  markedCardKeys: string[];
+  winningCardKeys?: string[];
+  markWindowTurns?: number;
+}): LoteriaCardVisualState {
+  const {
+    cardKey,
+    currentCardKey = null,
+    boardCardKeys,
+    calledCardKeys,
+    markedCardKeys,
+    winningCardKeys = [],
+    markWindowTurns = LOTERIA_MARK_WINDOW_TURNS,
+  } = params;
+
+  const isWinning = winningCardKeys.includes(cardKey);
+  if (isWinning) return "winning";
+
+  const isMarkedNow = markedCardKeys.includes(cardKey);
+  if (isMarkedNow) return "marked";
+
+  const isCalledNow = calledCardKeys.includes(cardKey);
+  if (!isCalledNow) return "idle";
+
+  const expired = isCardExpired(
+    calledCardKeys,
+    markedCardKeys,
+    cardKey,
+    markWindowTurns
+  );
+
+  if (expired) return "expired";
+
+  const isBoardCard = boardCardKeys.includes(cardKey);
+  if (!isBoardCard) return "idle";
+
+  if (currentCardKey === cardKey) {
+    return "just_called";
+  }
+
+  return "markable";
 }
 
 export function validateLoteriaWin(
@@ -310,4 +394,8 @@ export function formatWinningPatternLabel(
     default:
       return "Sin patrón";
   }
+}
+
+export function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
