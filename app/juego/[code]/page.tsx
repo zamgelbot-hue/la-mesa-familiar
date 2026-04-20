@@ -10,6 +10,8 @@ type RoomRow = {
   code: string;
   status: string;
   game_slug: string | null;
+  game_variant: string | null;
+  room_settings: Record<string, any> | null;
 };
 
 export default function JuegoPage() {
@@ -38,7 +40,7 @@ export default function JuegoPage() {
 
         const { data, error } = await supabase
           .from("rooms")
-          .select("code, status, game_slug")
+          .select("code, status, game_slug, game_variant, room_settings")
           .eq("code", code)
           .maybeSingle();
 
@@ -82,7 +84,7 @@ export default function JuegoPage() {
         async () => {
           const { data, error } = await supabase
             .from("rooms")
-            .select("code, status, game_slug")
+            .select("code, status, game_slug, game_variant, room_settings")
             .eq("code", code)
             .maybeSingle();
 
@@ -151,7 +153,13 @@ export default function JuegoPage() {
   }
 
   if (room.game_slug === "piedra-papel-o-tijera") {
-    return <PPTGame roomCode={code} />;
+    return (
+      <PPTGame
+        roomCode={code}
+        roomVariant={room.game_variant}
+        roomSettings={room.room_settings}
+      />
+    );
   }
 
   if (room.game_slug === "loteria-mexicana") {
