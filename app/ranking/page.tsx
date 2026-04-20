@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
 import PlayerAvatar from "@/components/PlayerAvatar";
+import Link from "next/link";
 
 type LeaderboardTab = "points" | "total_points_earned" | "best_win_streak" | "win_rate";
 
@@ -258,46 +259,41 @@ export default function RankingPage() {
     };
   }, [rankedPlayers, playerIdentity]);
 
-  return (
-    <main className="min-h-screen bg-black text-white">
-      <header className="sticky top-0 z-50 border-b border-orange-500/10 bg-black/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => router.push("/")}
-              className="flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-500 text-black shadow-[0_0_30px_rgba(249,115,22,0.25)] transition hover:bg-orange-400"
-            >
-              <span className="text-lg font-black">◌</span>
-            </button>
+return (
+  <main className="min-h-screen bg-black text-white">
+    <header className="sticky top-0 z-50 border-b border-orange-500/10 bg-black/80 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
 
-            <div>
-              <p className="text-xl font-bold">La Mesa Familiar</p>
-              <p className="text-xs uppercase tracking-[0.2em] text-orange-300/80">
-                Ranking global
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => router.push("/")}
-              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10"
-            >
-              Inicio
-            </button>
-
-            <button
-              type="button"
-              onClick={() => router.push("/perfil")}
-              className="rounded-2xl bg-orange-500 px-5 py-2.5 font-bold text-black transition hover:bg-orange-400"
-            >
-              Perfil
-            </button>
-          </div>
+        {/* LOGO */}
+        <div className="flex items-center">
+          <Link href="/" className="shrink-0 transition hover:opacity-90">
+            <img
+              src="/branding/logo-horizontal.png?v=7"
+              alt="La Mesa Familiar"
+              className="h-14 w-auto object-contain"
+            />
+          </Link>
         </div>
-      </header>
+
+        {/* BOTONES */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push("/")}
+            className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white hover:bg-white/10"
+          >
+            Inicio
+          </button>
+
+          <button
+            onClick={() => router.push("/perfil")}
+            className="rounded-2xl bg-orange-500 px-5 py-2.5 font-bold text-black hover:bg-orange-400"
+          >
+            Perfil
+          </button>
+        </div>
+
+      </div>
+    </header>
 
       <section className="relative overflow-hidden px-6 pb-14 pt-16">
         <div className="absolute inset-0 opacity-30">
