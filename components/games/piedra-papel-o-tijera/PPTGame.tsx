@@ -42,8 +42,6 @@ export default function PPTGame({
     subtitle: "",
   });
 
-  const [showChampionOverlay, setShowChampionOverlay] = useState(false);
-
   const autoAdvanceRef = useRef<NodeJS.Timeout | null>(null);
   const resolvingRoundRef = useRef(false);
   const lastResolvedKeyRef = useRef("");
@@ -532,6 +530,22 @@ export default function PPTGame({
     [sortedPlayers, supabase, fetchProfilesForPlayers]
   );
 
+  const clearGameChat = useCallback(async () => {
+    try {
+      const { error } = await supabase
+        .from("room_messages")
+        .delete()
+        .eq("room_code", code)
+        .eq("context", "game");
+
+      if (error) {
+        console.error("Error limpiando chat de partida:", error);
+      }
+    } catch (error) {
+      console.error("Error inesperado limpiando chat de partida:", error);
+    }
+  }, [supabase, code]);
+
   const resolveRoundIfNeeded = useCallback(async () => {
     if (!isHost) return;
     if (!bothPlayersPresent) return;
@@ -658,52 +672,36 @@ export default function PPTGame({
     });
   };
 
-const clearGameChat = useCallback(async () => {
-  try {
-    const { error } = await supabase
-      .from("room_messages")
-      .delete()
-      .eq("room_code", code)
-      .eq("context", "game");
+  const goBackToRoom = useCallback(async () => {
+    const fresh = buildFreshState(sortedPlayers);
 
-    if (error) {
-      console.error("Error limpiando chat de partida:", error);
+    const { error: roomError } = await supabase
+      .from("rooms")
+      .update({
+        status: "waiting",
+        started_at: null,
+      })
+      .eq("code", code);
+
+    if (roomError) {
+      console.error("Error actualizando room:", roomError);
+      return;
     }
-  } catch (error) {
-    console.error("Error inesperado limpiando chat de partida:", error);
-  }
-}, [supabase, code]);
 
-const goBackToRoom = useCallback(async () => {
-  const fresh = buildFreshState(sortedPlayers);
+    const { error: playersError } = await supabase
+      .from("room_players")
+      .update({ is_ready: false })
+      .eq("room_code", code);
 
-  const { error: roomError } = await supabase
-    .from("rooms")
-    .update({
-      status: "waiting",
-      started_at: null,
-    })
-    .eq("code", code);
+    if (playersError) {
+      console.error("Error reseteando ready:", playersError);
+      return;
+    }
 
-  if (roomError) {
-    console.error("Error actualizando room:", roomError);
-    return;
-  }
-
-  const { error: playersError } = await supabase
-    .from("room_players")
-    .update({ is_ready: false })
-    .eq("room_code", code);
-
-  if (playersError) {
-    console.error("Error reseteando ready:", playersError);
-    return;
-  }
-
-  await clearGameChat();
-  await writeGameState(fresh);
-  router.push(`/sala/${code}`);
-}, [sortedPlayers, supabase, code, clearGameChat, writeGameState, router]);
+    await clearGameChat();
+    await writeGameState(fresh);
+    router.push(`/sala/${code}`);
+  }, [sortedPlayers, supabase, code, clearGameChat, writeGameState, router]);
 
   const handleRematch = async () => {
     if (!currentPlayerName) return;
@@ -897,7 +895,6 @@ const goBackToRoom = useCallback(async () => {
     lastResolvedKeyRef.current = key;
 
     if (gameState.matchOver && gameState.champion) {
-      setShowChampionOverlay(true);
       playPPTSfx("victoria");
       lastChampionRef.current = gameState.champion;
       return;
@@ -1136,9 +1133,10 @@ const goBackToRoom = useCallback(async () => {
             <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-sm uppercase tracking-[0.2em] text-white/60">Ronda actual</p>
-                <h2 className="text-2xl font-bold">
-                  Ronda {gameState.round} de {bestOf}
-                </h2>
+                <h2 className="text-2xl font-bold">Ronda {gameState.round}</h2>
+                <p className="mt-1 text-sm text-white/60">
+                  Formato activo: {variantLabel}
+                </p>
               </div>
 
               <div className="rounded-2xl bg-black/20 px-4 py-3">
@@ -1201,70 +1199,56 @@ const goBackToRoom = useCallback(async () => {
         )}
 
         {gameState.matchOver && (
-          <>
-            {showChampionOverlay && (
-              <div className="mb-6 rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6 text-center shadow-[0_0_40px_rgba(250,204,21,0.12)]">
-                <p className="mb-2 text-sm uppercase tracking-[0.35em] text-yellow-300">Campeón</p>
-                <h2 className="text-4xl font-extrabold text-yellow-400">
-                  👑 {gameState.champion}
-                </h2>
-                <p className="mt-3 text-lg text-white/80">
-                  Ganó la partida en formato {variantLabel.toLowerCase()}.
-                </p>
-              </div>
-            )}
-
-            <div className="mb-6 rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6">
-              <div className="text-center">
-                <p className="mb-2 text-sm uppercase tracking-[0.3em] text-yellow-300">Campeón</p>
-                <h2 className="text-4xl font-extrabold text-yellow-400">👑 {gameState.champion}</h2>
-                <p className="mt-3 text-lg text-white/80">
-                  La partida terminó. Ya tenemos campeón del {modeLabel.toLowerCase()}.
-                </p>
-              </div>
-
-              <div className="mt-6 grid gap-4 md:grid-cols-2">
-                {sortedPlayers.map((player) => (
-                  <div
-                    key={player.id}
-                    className={`rounded-2xl border p-4 ${
-                      player.player_name === gameState.champion
-                        ? "border-yellow-400/40 bg-yellow-500/10"
-                        : "border-white/10 bg-white/5"
-                    }`}
-                  >
-                    <p className="text-lg font-bold">{player.player_name}</p>
-                    <p className="text-white/70">
-                      Rondas ganadas:{" "}
-                      <span className="font-bold text-white">
-                        {gameState.scores?.[player.player_name] ?? 0}
-                      </span>
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-6 flex flex-col gap-3 md:flex-row md:justify-center">
-                <button
-                  onClick={handleRematch}
-                  className="rounded-2xl bg-emerald-500 px-6 py-3 font-bold text-black transition hover:bg-emerald-400"
-                >
-                  Revancha
-                </button>
-
-                <button
-                  onClick={goBackToRoom}
-                  className="rounded-2xl border border-white/15 bg-white/10 px-6 py-3 font-bold transition hover:bg-white/15"
-                >
-                  Volver a sala
-                </button>
-              </div>
-
-              <p className="mt-4 text-center text-sm text-white/60">
-                Votos de revancha: {gameState.rematchVotes?.length ?? 0}/{Math.max(sortedPlayers.length, 2)}
+          <div className="mb-6 rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6">
+            <div className="text-center">
+              <p className="mb-2 text-sm uppercase tracking-[0.3em] text-yellow-300">Campeón</p>
+              <h2 className="text-4xl font-extrabold text-yellow-400">👑 {gameState.champion}</h2>
+              <p className="mt-3 text-lg text-white/80">
+                La partida terminó. Ya tenemos campeón del {modeLabel.toLowerCase()}.
               </p>
             </div>
-          </>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              {sortedPlayers.map((player) => (
+                <div
+                  key={player.id}
+                  className={`rounded-2xl border p-4 ${
+                    player.player_name === gameState.champion
+                      ? "border-yellow-400/40 bg-yellow-500/10"
+                      : "border-white/10 bg-white/5"
+                  }`}
+                >
+                  <p className="text-lg font-bold">{player.player_name}</p>
+                  <p className="text-white/70">
+                    Rondas ganadas:{" "}
+                    <span className="font-bold text-white">
+                      {gameState.scores?.[player.player_name] ?? 0}
+                    </span>
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-6 flex flex-col gap-3 md:flex-row md:justify-center">
+              <button
+                onClick={handleRematch}
+                className="rounded-2xl bg-emerald-500 px-6 py-3 font-bold text-black transition hover:bg-emerald-400"
+              >
+                Revancha
+              </button>
+
+              <button
+                onClick={goBackToRoom}
+                className="rounded-2xl border border-white/15 bg-white/10 px-6 py-3 font-bold transition hover:bg-white/15"
+              >
+                Volver a sala
+              </button>
+            </div>
+
+            <p className="mt-4 text-center text-sm text-white/60">
+              Votos de revancha: {gameState.rematchVotes?.length ?? 0}/{Math.max(sortedPlayers.length, 2)}
+            </p>
+          </div>
         )}
 
         <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
