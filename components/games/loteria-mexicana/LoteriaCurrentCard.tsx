@@ -7,12 +7,14 @@ type LoteriaCurrentCardProps = {
   deck: LoteriaDeckDefinition;
   currentCardKey: string | null;
   remainingCount?: number;
+  phaseLabel?: string;
 };
 
 export default function LoteriaCurrentCard({
   deck,
   currentCardKey,
   remainingCount = 0,
+  phaseLabel = "Carta actual",
 }: LoteriaCurrentCardProps) {
   const currentCard = currentCardKey ? getCardByKey(deck, currentCardKey) : null;
 
@@ -21,7 +23,7 @@ export default function LoteriaCurrentCard({
       <div className="mb-4 flex items-center justify-between gap-4">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-yellow-300/80">
-            Carta actual
+            {phaseLabel}
           </p>
           <h2 className="mt-1 text-2xl font-bold text-white">
             {currentCard ? currentCard.name : "Esperando inicio"}
@@ -41,7 +43,7 @@ export default function LoteriaCurrentCard({
       <div className="flex min-h-[240px] items-center justify-center rounded-[28px] border border-white/8 bg-black/25 p-5">
         {currentCard ? (
           <div className="flex w-full max-w-sm flex-col items-center text-center">
-            <div className="flex h-40 w-full items-center justify-center rounded-[28px] border border-white/8 bg-white/[0.03]">
+            <div className="flex h-40 w-full items-center justify-center rounded-[28px] border border-white/8 bg-white/[0.03] shadow-[0_0_30px_rgba(250,204,21,0.08)]">
               {currentCard.image ? (
                 <img
                   src={currentCard.image}
