@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
 import RoomChat from "@/components/RoomChat";
@@ -36,10 +37,12 @@ export default function PPTGame({
     visible: boolean;
     title: string;
     subtitle: string;
+    accent: "orange" | "yellow" | "emerald";
   }>({
     visible: false,
     title: "",
     subtitle: "",
+    accent: "orange",
   });
 
   const autoAdvanceRef = useRef<NodeJS.Timeout | null>(null);
@@ -193,6 +196,17 @@ export default function PPTGame({
 
   const shouldRevealChoices =
     bothChoicesSubmitted || !!gameState.roundWinner || !!gameState.matchOver;
+
+  const leadingPlayerName = useMemo(() => {
+    if (sortedPlayers.length < 2) return null;
+
+    const [a, b] = sortedPlayers;
+    const scoreA = gameState.scores?.[a.player_name] ?? 0;
+    const scoreB = gameState.scores?.[b.player_name] ?? 0;
+
+    if (scoreA === scoreB) return null;
+    return scoreA > scoreB ? a.player_name : b.player_name;
+  }, [sortedPlayers, gameState.scores]);
 
   const fetchProfilesForPlayers = useCallback(
     async (playerList: RoomPlayer[]) => {
@@ -658,6 +672,8 @@ export default function PPTGame({
     if (gameState.roundWinner) return;
     if (gameState.playerChoices?.[currentPlayerName]) return;
 
+    playPPTSfx(choice as "piedra" | "papel" | "tijera");
+
     await updateGameState((prev) => {
       if (prev.matchOver || prev.roundWinner) return prev;
       if (prev.playerChoices?.[currentPlayerName]) return prev;
@@ -905,6 +921,7 @@ export default function PPTGame({
         visible: true,
         title: "Empate",
         subtitle: gameState.resultDetail ?? "Ambos eligieron lo mismo.",
+        accent: "yellow",
       });
       playPPTSfx("empate");
     } else {
@@ -913,6 +930,7 @@ export default function PPTGame({
         visible: true,
         title: gameState.resultText,
         subtitle: detail,
+        accent: "orange",
       });
 
       if (detail.toLowerCase().includes("piedra")) {
@@ -943,10 +961,14 @@ export default function PPTGame({
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-neutral-950 p-6 text-white">
-        <div className="text-center">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center"
+        >
           <p className="text-xl font-semibold">Cargando partida...</p>
           <p className="mt-2 text-white/60">Preparando el juego...</p>
-        </div>
+        </motion.div>
       </div>
     );
   }
@@ -987,10 +1009,38 @@ export default function PPTGame({
     );
   };
 
+  const getPlayerCardStyles = (playerName: string, isCurrent: boolean) => {
+    const isRoundWinner = gameState.roundWinner === playerName;
+    const isChampion = gameState.champion === playerName;
+    const isLeading = leadingPlayerName === playerName && !gameState.matchOver;
+
+    if (isChampion) {
+      return "border-yellow-400/40 bg-yellow-500/10 shadow-[0_0_28px_rgba(250,204,21,0.12)]";
+    }
+
+    if (isRoundWinner) {
+      return "border-orange-400/40 bg-orange-500/10 shadow-[0_0_24px_rgba(249,115,22,0.12)]";
+    }
+
+    if (isCurrent) {
+      return "border-emerald-400/40 bg-emerald-500/10 shadow-[0_0_24px_rgba(16,185,129,0.10)]";
+    }
+
+    if (isLeading) {
+      return "border-yellow-400/20 bg-yellow-500/5";
+    }
+
+    return "border-white/10 bg-white/5";
+  };
+
   return (
     <main className="min-h-screen bg-neutral-950 p-4 text-white md:p-8">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-6 flex flex-col gap-4 rounded-3xl border border-white/10 bg-white/5 p-5 md:flex-row md:items-center md:justify-between">
+        <motion.div
+          initial={{ opacity: 0, y: -18 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 flex flex-col gap-4 rounded-3xl border border-white/10 bg-white/5 p-5 md:flex-row md:items-center md:justify-between"
+        >
           <div>
             <p className="text-sm uppercase tracking-[0.2em] text-white/60">La Mesa Familiar</p>
             <h1 className="text-3xl font-bold">Piedra, Papel o Tijera</h1>
@@ -1009,76 +1059,112 @@ export default function PPTGame({
           </div>
 
           <div className="flex flex-col gap-3 md:items-end">
-            <div className="rounded-2xl bg-white/5 px-4 py-3 text-center">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="rounded-2xl bg-white/5 px-4 py-3 text-center shadow-[0_0_24px_rgba(250,204,21,0.05)]"
+            >
               <p className="text-sm text-white/60">Modo</p>
               <p className="text-xl font-bold text-yellow-400">{modeLabel}</p>
               <p className="text-sm text-white/60">
                 Gana quien llegue a {roundsToWin} ronda{roundsToWin !== 1 ? "s" : ""}
               </p>
-            </div>
+            </motion.div>
 
             <div className="flex flex-col gap-2 sm:flex-row">
-              <button
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.96 }}
                 onClick={goBackToRoom}
                 className="rounded-2xl border border-white/15 bg-white/10 px-4 py-2 font-semibold transition hover:bg-white/15"
               >
                 Volver a sala
-              </button>
+              </motion.button>
 
-              <button
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.96 }}
                 onClick={handleTerminateMatch}
                 className="rounded-2xl bg-red-500/90 px-4 py-2 font-semibold text-white transition hover:bg-red-500"
               >
                 Terminar partida
-              </button>
+              </motion.button>
             </div>
           </div>
-        </div>
+        </motion.div>
 
-        {needsIdentitySelection && (
-          <div className="mb-6 rounded-3xl border border-cyan-400/25 bg-cyan-500/10 p-5">
-            <p className="text-lg font-semibold text-cyan-300">
-              Este navegador todavía no sabe qué jugador eres
-            </p>
-            <p className="mt-1 text-white/70">
-              Selecciona tu jugador una sola vez en este navegador.
-            </p>
+        <AnimatePresence>
+          {needsIdentitySelection && (
+            <motion.div
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="mb-6 rounded-3xl border border-cyan-400/25 bg-cyan-500/10 p-5"
+            >
+              <p className="text-lg font-semibold text-cyan-300">
+                Este navegador todavía no sabe qué jugador eres
+              </p>
+              <p className="mt-1 text-white/70">
+                Selecciona tu jugador una sola vez en este navegador.
+              </p>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {sortedPlayers.map((player) => (
-                <button
-                  key={player.id}
-                  onClick={() => handleSelectIdentity(player.player_name)}
-                  className="rounded-2xl border border-white/15 bg-white/10 px-4 py-4 text-left transition hover:bg-white/15"
-                >
-                  <p className="text-lg font-bold">
-                    {player.player_name} {player.is_host ? "👑" : ""}
-                  </p>
-                  <p className="text-sm text-white/60">
-                    Usar esta identidad en este navegador
-                  </p>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {sortedPlayers.map((player) => (
+                  <button
+                    key={player.id}
+                    onClick={() => handleSelectIdentity(player.player_name)}
+                    className="rounded-2xl border border-white/15 bg-white/10 px-4 py-4 text-left transition hover:bg-white/15"
+                  >
+                    <p className="text-lg font-bold">
+                      {player.player_name} {player.is_host ? "👑" : ""}
+                    </p>
+                    <p className="text-sm text-white/60">
+                      Usar esta identidad en este navegador
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {!bothPlayersPresent && (
-          <div className="mb-6 rounded-3xl border border-yellow-500/20 bg-yellow-500/10 p-5">
-            <p className="text-lg font-semibold text-yellow-300">Esperando al segundo jugador...</p>
-          </div>
-        )}
+        <AnimatePresence>
+          {!bothPlayersPresent && (
+            <motion.div
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="mb-6 rounded-3xl border border-yellow-500/20 bg-yellow-500/10 p-5"
+            >
+              <p className="text-lg font-semibold text-yellow-300">Esperando al segundo jugador...</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {roundPopup.visible && !gameState.matchOver && (
-          <div className="mb-6 rounded-3xl border border-orange-400/30 bg-orange-500/10 p-5 text-center shadow-[0_0_25px_rgba(249,115,22,0.10)]">
-            <p className="text-sm uppercase tracking-[0.3em] text-orange-300">Resultado de ronda</p>
-            <h2 className="mt-2 text-2xl font-extrabold text-white">{roundPopup.title}</h2>
-            <p className="mt-2 text-white/75">{roundPopup.subtitle}</p>
-          </div>
-        )}
+        <AnimatePresence>
+          {roundPopup.visible && !gameState.matchOver && (
+            <motion.div
+              initial={{ opacity: 0, y: -24, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -18, scale: 0.96 }}
+              transition={{ duration: 0.22 }}
+              className={`mb-6 overflow-hidden rounded-3xl border p-5 text-center shadow-[0_0_28px_rgba(249,115,22,0.12)] ${
+                roundPopup.accent === "yellow"
+                  ? "border-yellow-400/30 bg-yellow-500/10"
+                  : roundPopup.accent === "emerald"
+                  ? "border-emerald-400/30 bg-emerald-500/10"
+                  : "border-orange-400/30 bg-orange-500/10"
+              }`}
+            >
+              <p className="text-sm uppercase tracking-[0.3em] text-orange-200">Resultado de ronda</p>
+              <h2 className="mt-2 text-2xl font-extrabold text-white">{roundPopup.title}</h2>
+              <p className="mt-2 text-white/75">{roundPopup.subtitle}</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className="mb-6 grid gap-4 md:grid-cols-2">
-          {sortedPlayers.map((player) => {
+          {sortedPlayers.map((player, index) => {
             const score = gameState.scores?.[player.player_name] ?? 0;
             const selected = gameState.playerChoices?.[player.player_name] ?? null;
             const isCurrent = player.player_name === currentPlayerName;
@@ -1093,13 +1179,19 @@ export default function PPTGame({
             );
 
             return (
-              <div
+              <motion.div
                 key={player.id}
-                className={`rounded-3xl border p-5 ${
+                initial={{ opacity: 0, x: index === 0 ? -20 : 20 }}
+                animate={{
+                  opacity: 1,
+                  x: 0,
+                  scale: gameState.roundWinner === player.player_name ? [1, 1.02, 1] : 1,
+                }}
+                transition={{ duration: 0.28 }}
+                className={`rounded-3xl border p-5 ${getPlayerCardStyles(
+                  player.player_name,
                   isCurrent
-                    ? "border-emerald-400/40 bg-emerald-500/10"
-                    : "border-white/10 bg-white/5"
-                }`}
+                )}`}
               >
                 <div className="mb-3 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
@@ -1113,23 +1205,32 @@ export default function PPTGame({
                     </div>
                   </div>
 
-                  <div className="rounded-2xl bg-black/30 px-4 py-2 text-center">
+                  <motion.div
+                    animate={{
+                      scale: gameState.roundWinner === player.player_name ? [1, 1.12, 1] : 1,
+                    }}
+                    transition={{ duration: 0.28 }}
+                    className="rounded-2xl bg-black/30 px-4 py-2 text-center"
+                  >
                     <p className="text-xs uppercase tracking-widest text-white/50">Marcador</p>
                     <p className="text-2xl font-bold text-yellow-400">{score}</p>
-                  </div>
+                  </motion.div>
                 </div>
 
                 <div className="rounded-2xl bg-black/20 px-4 py-3">
                   <p className="text-sm text-white/60">Jugada actual</p>
                   <p className="text-lg font-semibold capitalize">{visibleChoice}</p>
                 </div>
-              </div>
+              </motion.div>
             );
           })}
         </div>
 
         {!gameState.matchOver && (
-          <div className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-5">
+          <motion.div
+            layout
+            className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-5"
+          >
             <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-sm uppercase tracking-[0.2em] text-white/60">Ronda actual</p>
@@ -1153,7 +1254,9 @@ export default function PPTGame({
             </div>
 
             <div className="grid gap-3 md:grid-cols-3">
-              <button
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.96 }}
                 onClick={() => handleChoice("piedra")}
                 disabled={
                   !bothPlayersPresent ||
@@ -1165,9 +1268,11 @@ export default function PPTGame({
                 className="rounded-2xl border border-white/10 bg-white/10 px-5 py-4 text-lg font-semibold transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 ✊ Piedra
-              </button>
+              </motion.button>
 
-              <button
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.96 }}
                 onClick={() => handleChoice("papel")}
                 disabled={
                   !bothPlayersPresent ||
@@ -1179,9 +1284,11 @@ export default function PPTGame({
                 className="rounded-2xl border border-white/10 bg-white/10 px-5 py-4 text-lg font-semibold transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 ✋ Papel
-              </button>
+              </motion.button>
 
-              <button
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.96 }}
                 onClick={() => handleChoice("tijera")}
                 disabled={
                   !bothPlayersPresent ||
@@ -1193,65 +1300,119 @@ export default function PPTGame({
                 className="rounded-2xl border border-white/10 bg-white/10 px-5 py-4 text-lg font-semibold transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 ✌️ Tijera
-              </button>
+              </motion.button>
             </div>
-          </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {sortedPlayers.map((player) => {
+                const score = gameState.scores?.[player.player_name] ?? 0;
+                const dots = Array.from({ length: roundsToWin });
+
+                return (
+                  <div
+                    key={`progress-${player.player_name}`}
+                    className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-semibold text-white">
+                        {player.player_name}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {dots.map((_, idx) => (
+                          <span
+                            key={idx}
+                            className={`h-2.5 w-2.5 rounded-full ${
+                              idx < score ? "bg-yellow-400" : "bg-white/15"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
         )}
 
-        {gameState.matchOver && (
-          <div className="mb-6 rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6">
-            <div className="text-center">
-              <p className="mb-2 text-sm uppercase tracking-[0.3em] text-yellow-300">Campeón</p>
-              <h2 className="text-4xl font-extrabold text-yellow-400">👑 {gameState.champion}</h2>
-              <p className="mt-3 text-lg text-white/80">
-                La partida terminó. Ya tenemos campeón del {modeLabel.toLowerCase()}.
-              </p>
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              {sortedPlayers.map((player) => (
-                <div
-                  key={player.id}
-                  className={`rounded-2xl border p-4 ${
-                    player.player_name === gameState.champion
-                      ? "border-yellow-400/40 bg-yellow-500/10"
-                      : "border-white/10 bg-white/5"
-                  }`}
+        <AnimatePresence>
+          {gameState.matchOver && (
+            <motion.div
+              initial={{ opacity: 0, y: 22, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12 }}
+              transition={{ duration: 0.28 }}
+              className="mb-6 overflow-hidden rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6 shadow-[0_0_40px_rgba(250,204,21,0.12)]"
+            >
+              <div className="text-center">
+                <p className="mb-2 text-sm uppercase tracking-[0.3em] text-yellow-300">Campeón</p>
+                <motion.h2
+                  initial={{ scale: 0.92, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.08 }}
+                  className="text-4xl font-extrabold text-yellow-400 md:text-5xl"
                 >
-                  <p className="text-lg font-bold">{player.player_name}</p>
-                  <p className="text-white/70">
-                    Rondas ganadas:{" "}
-                    <span className="font-bold text-white">
-                      {gameState.scores?.[player.player_name] ?? 0}
-                    </span>
-                  </p>
-                </div>
-              ))}
-            </div>
+                  👑 {gameState.champion}
+                </motion.h2>
+                <p className="mt-3 text-lg text-white/80">
+                  La partida terminó. Ya tenemos campeón del {modeLabel.toLowerCase()}.
+                </p>
+              </div>
 
-            <div className="mt-6 flex flex-col gap-3 md:flex-row md:justify-center">
-              <button
-                onClick={handleRematch}
-                className="rounded-2xl bg-emerald-500 px-6 py-3 font-bold text-black transition hover:bg-emerald-400"
-              >
-                Revancha
-              </button>
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                {sortedPlayers.map((player) => (
+                  <motion.div
+                    key={player.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`rounded-2xl border p-4 ${
+                      player.player_name === gameState.champion
+                        ? "border-yellow-400/40 bg-yellow-500/10"
+                        : "border-white/10 bg-white/5"
+                    }`}
+                  >
+                    <p className="text-lg font-bold">{player.player_name}</p>
+                    <p className="text-white/70">
+                      Rondas ganadas:{" "}
+                      <span className="font-bold text-white">
+                        {gameState.scores?.[player.player_name] ?? 0}
+                      </span>
+                    </p>
+                  </motion.div>
+                ))}
+              </div>
 
-              <button
-                onClick={goBackToRoom}
-                className="rounded-2xl border border-white/15 bg-white/10 px-6 py-3 font-bold transition hover:bg-white/15"
-              >
-                Volver a sala
-              </button>
-            </div>
+              <div className="mt-6 flex flex-col gap-3 md:flex-row md:justify-center">
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.96 }}
+                  onClick={handleRematch}
+                  className="rounded-2xl bg-emerald-500 px-6 py-3 font-bold text-black transition hover:bg-emerald-400"
+                >
+                  Revancha
+                </motion.button>
 
-            <p className="mt-4 text-center text-sm text-white/60">
-              Votos de revancha: {gameState.rematchVotes?.length ?? 0}/{Math.max(sortedPlayers.length, 2)}
-            </p>
-          </div>
-        )}
+                <motion.button
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.96 }}
+                  onClick={goBackToRoom}
+                  className="rounded-2xl border border-white/15 bg-white/10 px-6 py-3 font-bold transition hover:bg-white/15"
+                >
+                  Volver a sala
+                </motion.button>
+              </div>
 
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+              <p className="mt-4 text-center text-sm text-white/60">
+                Votos de revancha: {gameState.rematchVotes?.length ?? 0}/{Math.max(sortedPlayers.length, 2)}
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <motion.div
+          layout
+          className="rounded-3xl border border-white/10 bg-white/5 p-5"
+        >
           <h3 className="mb-3 text-xl font-bold">Resumen en tiempo real</h3>
           <div className="space-y-2 text-white/75">
             <p>
@@ -1279,7 +1440,7 @@ export default function PPTGame({
               </p>
             )}
           </div>
-        </div>
+        </motion.div>
       </div>
 
       <RoomChat
