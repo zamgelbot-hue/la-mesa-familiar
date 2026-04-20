@@ -614,71 +614,80 @@ useEffect(() => {
 
   return (
     <main className="min-h-screen bg-black text-white">
-      <header className="sticky top-0 z-50 border-b border-orange-500/10 bg-black/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-orange-500 text-black shadow-[0_0_30px_rgba(249,115,22,0.25)]">
-              <span className="text-lg font-black">◌</span>
-            </div>
-            <span className="text-xl font-bold">La Mesa Familiar</span>
-          </div>
+<header className="sticky top-0 z-50 border-b border-orange-500/10 bg-black/80 backdrop-blur-xl">
+  <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+    <div className="flex items-center gap-8">
+      <Link href="/" className="shrink-0">
+        <img
+          src="/branding/logo-horizontal.png?v=6"
+          alt="La Mesa Familiar"
+          className="h-14 w-auto object-contain"
+        />
+      </Link>
 
-          <nav className="hidden items-center gap-10 text-white/70 md:flex">
-            <a href="#juegos" className="transition hover:text-white">Juegos</a>
-            <a href="#como-funciona" className="transition hover:text-white">Cómo funciona</a>
-            <a href="#funciones" className="transition hover:text-white">Funciones</a>
-          </nav>
+      <nav className="hidden items-center gap-10 text-white/70 md:flex">
+        <a href="#juegos" className="transition hover:text-white">
+          Juegos
+        </a>
+        <a href="#como-funciona" className="transition hover:text-white">
+          Cómo funciona
+        </a>
+        <a href="#funciones" className="transition hover:text-white">
+          Funciones
+        </a>
+      </nav>
+    </div>
 
-          <div className="flex items-center gap-3">
-            {!playerIdentity ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => router.push("/acceso")}
-                  className="hidden rounded-2xl px-4 py-2 font-semibold text-white transition hover:bg-white/5 md:block"
-                >
-                  Iniciar sesión
-                </button>
+    <div className="flex items-center gap-3">
+      {!playerIdentity ? (
+        <>
+          <button
+            type="button"
+            onClick={() => router.push("/acceso")}
+            className="hidden rounded-2xl px-4 py-2 font-semibold text-white transition hover:bg-white/5 md:block"
+          >
+            Iniciar sesión
+          </button>
 
-                <button
-                  type="button"
-                  onClick={() => router.push("/acceso")}
-                  className="rounded-2xl bg-orange-500 px-5 py-2.5 font-bold text-black transition hover:bg-orange-400"
-                >
-                  Empezar
-                </button>
-              </>
-            ) : (
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => router.push("/ranking")}
-                  className="hidden rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10 md:block"
-                >
-                  Ranking
-                </button>
+          <button
+            type="button"
+            onClick={() => router.push("/acceso")}
+            className="rounded-2xl bg-orange-500 px-5 py-2.5 font-bold text-black transition hover:bg-orange-400"
+          >
+            Empezar
+          </button>
+        </>
+      ) : (
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => router.push("/ranking")}
+            className="hidden rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10 md:block"
+          >
+            Ranking
+          </button>
 
-                <button
-                  onClick={() => router.push("/perfil")}
-                  className="hidden items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10 md:flex"
-                >
-                  {renderProfileAvatar(selectedAvatar, selectedFrame, "sm")}
-                  <span>
-                    {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
-                  </span>
-                </button>
+          <button
+            onClick={() => router.push("/perfil")}
+            className="hidden items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10 md:flex"
+          >
+            {renderProfileAvatar(selectedAvatar, selectedFrame, "sm")}
+            <span>
+              {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
+            </span>
+          </button>
 
-                <button
-                  onClick={handleSignOut}
-                  disabled={signingOut}
-                  className="rounded-2xl bg-orange-500 px-5 py-2.5 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {signingOut ? "Saliendo..." : "Cerrar sesión"}
-                </button>
-              </div>
-            )}
-          </div>
+          <button
+            onClick={handleSignOut}
+            disabled={signingOut}
+            className="rounded-2xl bg-orange-500 px-5 py-2.5 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {signingOut ? "Saliendo..." : "Cerrar sesión"}
+          </button>
         </div>
-      </header>
+      )}
+    </div>
+  </div>
+</header>
 
       <section className="relative overflow-hidden px-6 pb-14 pt-16">
         <div className="absolute inset-0 opacity-30">
