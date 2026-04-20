@@ -1,45 +1,46 @@
-import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
-import './globals.css'
-
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
-
-export const metadata: Metadata = {
-  title: 'La Mesa Familiar - Juegos Multijugador para la Familia',
-  description: 'Juega juegos clásicos en línea con tu familia. Crea o únete a una sala y empiecen a jugar juntos.',
-  generator: 'v0.app',
-  icons: {
-    icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
-    ],
-    apple: '/apple-icon.png',
-  },
-}
+import "./globals.css";
+import Image from "next/image";
+import Link from "next/link";
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html lang="es-MX" className="bg-background">
-      <body className="font-sans antialiased">
+    <html lang="es">
+      <body className="bg-black text-white">
+        
+        {/* 🔥 NAVBAR */}
+        <header className="w-full border-b border-orange-500/10">
+          <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+            
+            {/* LOGO */}
+            <Link href="/" className="flex items-center gap-3">
+              <Image
+                src="/branding/logo-horizontal.png"
+                alt="La Mesa Familiar"
+                width={200}
+                height={50}
+                priority
+                className="h-10 w-auto transition-opacity hover:opacity-80"
+              />
+            </Link>
+
+            {/* MENU */}
+            <nav className="hidden md:flex gap-8 text-zinc-400">
+              <a href="#" className="hover:text-white">Juegos</a>
+              <a href="#" className="hover:text-white">Cómo funciona</a>
+              <a href="#" className="hover:text-white">Funciones</a>
+            </nav>
+
+          </div>
+        </header>
+
+        {/* CONTENIDO */}
         {children}
-        {process.env.NODE_ENV === 'production' && <Analytics />}
+
       </body>
     </html>
-  )
+  );
 }
