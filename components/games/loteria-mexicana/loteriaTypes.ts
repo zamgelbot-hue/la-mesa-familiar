@@ -23,6 +23,14 @@ export type LoteriaWinningPattern =
   | "diagonal_main"
   | "diagonal_anti";
 
+export type LoteriaCardVisualState =
+  | "idle"
+  | "just_called"
+  | "markable"
+  | "marked"
+  | "expired"
+  | "winning";
+
 export type LoteriaBoardCell = {
   card_key: string;
 };
