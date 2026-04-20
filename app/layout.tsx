@@ -1,4 +1,38 @@
 import "./globals.css";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  metadataBase: new URL("https://lamesafamiliar.net"),
+  title: "La Mesa Familiar",
+  description: "Juegos clásicos en línea para disfrutar con tu familia donde sea.",
+  icons: {
+    icon: "/branding/logo-icono.png",
+    shortcut: "/branding/logo-icono.png",
+    apple: "/branding/logo-icono.png",
+  },
+  openGraph: {
+    title: "La Mesa Familiar",
+    description: "Juegos clásicos en línea para disfrutar con tu familia donde sea.",
+    url: "https://lamesafamiliar.net",
+    siteName: "La Mesa Familiar",
+    images: [
+      {
+        url: "/branding/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "La Mesa Familiar",
+      },
+    ],
+    locale: "es_MX",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "La Mesa Familiar",
+    description: "Juegos clásicos en línea para disfrutar con tu familia donde sea.",
+    images: ["/branding/og-image.png"],
+  },
+};
 
 export default function RootLayout({
   children,
@@ -7,9 +41,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body className="bg-black text-white">
-        {children}
-      </body>
+      <body className="bg-black text-white">{children}</body>
     </html>
   );
 }
