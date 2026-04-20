@@ -658,52 +658,52 @@ export default function PPTGame({
     });
   };
 
-  const goBackToRoom = useCallback(async () => {
-    const fresh = buildFreshState(sortedPlayers);
+const clearGameChat = useCallback(async () => {
+  try {
+    const { error } = await supabase
+      .from("room_messages")
+      .delete()
+      .eq("room_code", code)
+      .eq("context", "game");
 
-    const { error: roomError } = await supabase
-      .from("rooms")
-      .update({
-        status: "waiting",
-        started_at: null,
-      })
-      .eq("code", code);
-
-    if (roomError) {
-      console.error("Error actualizando room:", roomError);
-      return;
+    if (error) {
+      console.error("Error limpiando chat de partida:", error);
     }
+  } catch (error) {
+    console.error("Error inesperado limpiando chat de partida:", error);
+  }
+}, [supabase, code]);
 
-    const { error: playersError } = await supabase
-      .from("room_players")
-      .update({ is_ready: false })
-      .eq("room_code", code);
+const goBackToRoom = useCallback(async () => {
+  const fresh = buildFreshState(sortedPlayers);
 
-    if (playersError) {
-      console.error("Error reseteando ready:", playersError);
-      return;
-    }
+  const { error: roomError } = await supabase
+    .from("rooms")
+    .update({
+      status: "waiting",
+      started_at: null,
+    })
+    .eq("code", code);
 
-    await clearGameChat();
-    await writeGameState(fresh);
-    router.push(`/sala/${code}`);
-  }, [sortedPlayers, supabase, code, clearGameChat, writeGameState, router]);
+  if (roomError) {
+    console.error("Error actualizando room:", roomError);
+    return;
+  }
 
-  const clearGameChat = useCallback(async () => {
-    try {
-      const { error } = await supabase
-        .from("room_messages")
-        .delete()
-        .eq("room_code", code)
-        .eq("context", "game");
+  const { error: playersError } = await supabase
+    .from("room_players")
+    .update({ is_ready: false })
+    .eq("room_code", code);
 
-      if (error) {
-        console.error("Error limpiando chat de partida:", error);
-      }
-    } catch (error) {
-      console.error("Error inesperado limpiando chat de partida:", error);
-    }
-  }, [supabase, code]);
+  if (playersError) {
+    console.error("Error reseteando ready:", playersError);
+    return;
+  }
+
+  await clearGameChat();
+  await writeGameState(fresh);
+  router.push(`/sala/${code}`);
+}, [sortedPlayers, supabase, code, clearGameChat, writeGameState, router]);
 
   const handleRematch = async () => {
     if (!currentPlayerName) return;
