@@ -1,29 +1,39 @@
 "use client";
 
-import type { LoteriaCardData } from "./loteriaTypes";
+import type { LoteriaCardData, LoteriaCardVisualState } from "./loteriaTypes";
 
 type LoteriaCardProps = {
   card: LoteriaCardData;
-  isMarked?: boolean;
+  visualState?: LoteriaCardVisualState;
   isCalled?: boolean;
   isWinningCard?: boolean;
   isCurrentCalled?: boolean;
   disabled?: boolean;
   size?: "sm" | "md" | "lg";
+  showPulse?: boolean;
+  showInvalidShake?: boolean;
   onClick?: () => void;
 };
 
 export default function LoteriaCard({
   card,
-  isMarked = false,
+  visualState = "idle",
   isCalled = false,
   isWinningCard = false,
   isCurrentCalled = false,
   disabled = false,
   size = "md",
+  showPulse = false,
+  showInvalidShake = false,
   onClick,
 }: LoteriaCardProps) {
   const clickable = !!onClick && !disabled;
+
+  const isMarked = visualState === "marked";
+  const isExpired = visualState === "expired";
+  const isJustCalled = visualState === "just_called";
+  const isMarkable = visualState === "markable";
+  const isWinning = visualState === "winning" || isWinningCard;
 
   const sizeClasses =
     size === "sm"
@@ -53,14 +63,18 @@ export default function LoteriaCard({
           idBadge: "text-[10px]",
         };
 
-  const stateClasses = isWinningCard
+  const stateClasses = isWinning
     ? "border-emerald-400/50 bg-emerald-500/15 shadow-[0_0_25px_rgba(16,185,129,0.16)]"
-    : isCurrentCalled
-    ? "border-yellow-400/45 bg-yellow-500/15 shadow-[0_0_25px_rgba(250,204,21,0.14)]"
+    : isExpired
+    ? "border-red-500/45 bg-red-500/12 shadow-[0_0_20px_rgba(239,68,68,0.14)]"
+    : isJustCalled
+    ? "border-yellow-400/50 bg-yellow-500/15 shadow-[0_0_28px_rgba(250,204,21,0.18)]"
     : isMarked
     ? "border-orange-400/40 bg-orange-500/12 shadow-[0_0_20px_rgba(249,115,22,0.12)]"
+    : isMarkable
+    ? "border-sky-400/35 bg-sky-500/10 shadow-[0_0_18px_rgba(56,189,248,0.08)]"
     : isCalled
-    ? "border-sky-400/25 bg-sky-500/10"
+    ? "border-white/10 bg-white/[0.04]"
     : "border-white/10 bg-white/[0.03]";
 
   return (
@@ -72,7 +86,9 @@ export default function LoteriaCard({
         clickable
           ? "hover:-translate-y-[2px] hover:border-orange-400/35 hover:bg-white/[0.05]"
           : "cursor-default"
-      } ${disabled ? "opacity-70" : ""}`}
+      } ${disabled ? "opacity-70" : ""} ${showPulse ? "animate-pulse" : ""} ${
+        showInvalidShake ? "animate-[loteria_shake_.28s_ease-in-out]" : ""
+      }`}
     >
       <div className="pointer-events-none">
         <div className="mb-2 flex items-start justify-between gap-2">
@@ -82,13 +98,19 @@ export default function LoteriaCard({
             {card.id}
           </span>
 
-          {isWinningCard ? (
+          {isWinning ? (
             <span
               className={`rounded-full border border-emerald-400/30 bg-emerald-500/15 font-bold uppercase tracking-wider text-emerald-300 ${sizeClasses.badge}`}
             >
               Línea
             </span>
-          ) : isCurrentCalled ? (
+          ) : isExpired ? (
+            <span
+              className={`rounded-full border border-red-400/30 bg-red-500/15 font-bold uppercase tracking-wider text-red-300 ${sizeClasses.badge}`}
+            >
+              Perdida
+            </span>
+          ) : isJustCalled ? (
             <span
               className={`rounded-full border border-yellow-400/30 bg-yellow-500/15 font-bold uppercase tracking-wider text-yellow-300 ${sizeClasses.badge}`}
             >
@@ -100,11 +122,17 @@ export default function LoteriaCard({
             >
               Marcada
             </span>
-          ) : isCalled ? (
+          ) : isMarkable ? (
             <span
               className={`rounded-full border border-sky-400/20 bg-sky-500/10 font-bold uppercase tracking-wider text-sky-300 ${sizeClasses.badge}`}
             >
-              Salió
+              Disponible
+            </span>
+          ) : isCurrentCalled ? (
+            <span
+              className={`rounded-full border border-yellow-400/30 bg-yellow-500/15 font-bold uppercase tracking-wider text-yellow-300 ${sizeClasses.badge}`}
+            >
+              Actual
             </span>
           ) : null}
         </div>
@@ -136,6 +164,24 @@ export default function LoteriaCard({
       {isMarked && (
         <div className="pointer-events-none absolute inset-0 rounded-[inherit] ring-1 ring-orange-400/30" />
       )}
+
+      {isExpired && (
+        <div className="pointer-events-none absolute inset-0 rounded-[inherit] ring-1 ring-red-400/35" />
+      )}
+
+      {isJustCalled && !isMarked && !isExpired && (
+        <div className="pointer-events-none absolute inset-0 rounded-[inherit] ring-2 ring-yellow-300/25" />
+      )}
+
+      <style jsx global>{`
+        @keyframes loteria_shake_ {
+          0% { transform: translateX(0); }
+          25% { transform: translateX(-3px); }
+          50% { transform: translateX(3px); }
+          75% { transform: translateX(-2px); }
+          100% { transform: translateX(0); }
+        }
+      `}</style>
     </button>
   );
 }
