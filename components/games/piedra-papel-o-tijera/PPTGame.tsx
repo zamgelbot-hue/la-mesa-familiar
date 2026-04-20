@@ -7,9 +7,12 @@ import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
 import RoomChat from "@/components/RoomChat";
 
 type Choice = "piedra" | "papel" | "tijera" | null;
+type RoundSoundType = "piedra" | "papel" | "tijera" | "empate" | "victoria";
 
 type PPTGameProps = {
   roomCode: string;
+  roomVariant?: string | null;
+  roomSettings?: Record<string, any> | null;
 };
 
 type RoomPlayer = {
@@ -29,6 +32,7 @@ type GameState = {
   scores: Record<string, number>;
   roundWinner: string | null;
   resultText: string | null;
+  resultDetail: string | null;
   champion: string | null;
   matchOver: boolean;
   rematchVotes: string[];
@@ -54,6 +58,7 @@ const DEFAULT_STATE: GameState = {
   scores: {},
   roundWinner: null,
   resultText: null,
+  resultDetail: null,
   champion: null,
   matchOver: false,
   rematchVotes: [],
@@ -62,7 +67,129 @@ const DEFAULT_STATE: GameState = {
 
 const getPlayerStorageKey = (roomCode: string) => `lmf:player:${roomCode}`;
 
-export default function PPTGame({ roomCode }: PPTGameProps) {
+function getModeConfig(
+  roomVariant?: string | null,
+  roomSettings?: Record<string, any> | null
+) {
+  const bestOfFromSettings = Number(roomSettings?.best_of ?? 0);
+  const roundsToWinFromSettings = Number(roomSettings?.rounds_to_win ?? 0);
+
+  if (bestOfFromSettings > 0 && roundsToWinFromSettings > 0) {
+    return {
+      bestOf: bestOfFromSettings,
+      roundsToWin: roundsToWinFromSettings,
+      modeLabel: `Mejor de ${bestOfFromSettings}`,
+      variantLabel: `Mejor ${roundsToWinFromSettings} de ${bestOfFromSettings}`,
+    };
+  }
+
+  if (roomVariant === "bo5") {
+    return {
+      bestOf: 5,
+      roundsToWin: 3,
+      modeLabel: "Mejor de 5",
+      variantLabel: "Mejor 3 de 5",
+    };
+  }
+
+  if (roomVariant === "bo7") {
+    return {
+      bestOf: 7,
+      roundsToWin: 4,
+      modeLabel: "Mejor de 7",
+      variantLabel: "Mejor 4 de 7",
+    };
+  }
+
+  return {
+    bestOf: 3,
+    roundsToWin: 2,
+    modeLabel: "Mejor de 3",
+    variantLabel: "Mejor 2 de 3",
+  };
+}
+
+function getChoiceLabel(choice: Exclude<Choice, null>) {
+  if (choice === "piedra") return "Piedra";
+  if (choice === "papel") return "Papel";
+  return "Tijera";
+}
+
+function getRoundOutcome(a: Exclude<Choice, null>, b: Exclude<Choice, null>) {
+  if (a === b) {
+    return {
+      winnerSide: "empate" as const,
+      winningChoice: null,
+      losingChoice: null,
+      detailText: "Empate",
+      sound: "empate" as RoundSoundType,
+    };
+  }
+
+  if (a === "piedra" && b === "tijera") {
+    return {
+      winnerSide: "a" as const,
+      winningChoice: "piedra" as const,
+      losingChoice: "tijera" as const,
+      detailText: "Piedra vence a Tijera",
+      sound: "piedra" as RoundSoundType,
+    };
+  }
+
+  if (a === "tijera" && b === "papel") {
+    return {
+      winnerSide: "a" as const,
+      winningChoice: "tijera" as const,
+      losingChoice: "papel" as const,
+      detailText: "Tijera vence a Papel",
+      sound: "tijera" as RoundSoundType,
+    };
+  }
+
+  if (a === "papel" && b === "piedra") {
+    return {
+      winnerSide: "a" as const,
+      winningChoice: "papel" as const,
+      losingChoice: "piedra" as const,
+      detailText: "Papel vence a Piedra",
+      sound: "papel" as RoundSoundType,
+    };
+  }
+
+  if (b === "piedra" && a === "tijera") {
+    return {
+      winnerSide: "b" as const,
+      winningChoice: "piedra" as const,
+      losingChoice: "tijera" as const,
+      detailText: "Piedra vence a Tijera",
+      sound: "piedra" as RoundSoundType,
+    };
+  }
+
+  if (b === "tijera" && a === "papel") {
+    return {
+      winnerSide: "b" as const,
+      winningChoice: "tijera" as const,
+      losingChoice: "papel" as const,
+      detailText: "Tijera vence a Papel",
+      sound: "tijera" as RoundSoundType,
+    };
+  }
+
+  return {
+    winnerSide: "b" as const,
+    winningChoice: "papel" as const,
+    losingChoice: "piedra" as const,
+    detailText: "Papel vence a Piedra",
+    sound: "papel" as RoundSoundType,
+  };
+}
+
+export default function PPTGame({
+  roomCode,
+  roomVariant,
+  roomSettings,
+}: PPTGameProps) {
   const router = useRouter();
   const supabase = createClient();
 
@@ -75,8 +202,27 @@ export default function PPTGame({ roomCode }: PPTGameProps) {
   const [roomStatus, setRoomStatus] = useState("playing");
   const [loading, setLoading] = useState(true);
 
+  const [roundPopup, setRoundPopup] = useState<{
+    visible: boolean;
+    title: string;
+    subtitle: string;
+  }>({
+    visible: false,
+    title: "",
+    subtitle: "",
+  });
+
+  const [showChampionOverlay, setShowChampionOverlay] = useState(false);
+
   const autoAdvanceRef = useRef<NodeJS.Timeout | null>(null);
   const resolvingRoundRef = useRef(false);
+  const lastResolvedKeyRef = useRef("");
+  const lastChampionRef = useRef<string | null>(null);
+
+  const { bestOf, roundsToWin, modeLabel, variantLabel } = useMemo(
+    () => getModeConfig(roomVariant, roomSettings),
+    [roomVariant, roomSettings]
+  );
 
   const sortedPlayers = useMemo(() => {
     return [...players].sort((a, b) => {
@@ -235,6 +381,7 @@ export default function PPTGame({ roomCode }: PPTGameProps) {
       scores,
       roundWinner: null,
       resultText: null,
+      resultDetail: null,
       champion: null,
       matchOver: false,
       rematchVotes: [],
@@ -594,19 +741,63 @@ export default function PPTGame({ roomCode }: PPTGameProps) {
     [sortedPlayers, supabase, fetchProfilesForPlayers]
   );
 
-  const getWinnerChoice = (a: Exclude<Choice, null>, b: Exclude<Choice, null>) => {
-    if (a === b) return "empate";
+  const playSfx = useCallback((type: RoundSoundType) => {
+    if (typeof window === "undefined") return;
 
-    if (
-      (a === "piedra" && b === "tijera") ||
-      (a === "tijera" && b === "papel") ||
-      (a === "papel" && b === "piedra")
-    ) {
-      return "a";
+    const AudioCtx =
+      window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+    if (!AudioCtx) return;
+
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+
+    const makeTone = (
+      frequency: number,
+      start: number,
+      duration: number,
+      oscType: OscillatorType,
+      gainValue: number
+    ) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = oscType;
+      osc.frequency.setValueAtTime(frequency, start);
+
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(gainValue, start + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(start);
+      osc.stop(start + duration);
+    };
+
+    if (type === "piedra") {
+      makeTone(120, now, 0.15, "square", 0.07);
+      makeTone(90, now + 0.04, 0.2, "square", 0.05);
+    } else if (type === "papel") {
+      makeTone(380, now, 0.12, "sine", 0.05);
+      makeTone(520, now + 0.08, 0.14, "sine", 0.04);
+    } else if (type === "tijera") {
+      makeTone(900, now, 0.08, "triangle", 0.05);
+      makeTone(1150, now + 0.07, 0.08, "triangle", 0.04);
+    } else if (type === "empate") {
+      makeTone(260, now, 0.08, "sine", 0.04);
+      makeTone(260, now + 0.1, 0.08, "sine", 0.04);
+    } else if (type === "victoria") {
+      makeTone(440, now, 0.12, "triangle", 0.05);
+      makeTone(554, now + 0.14, 0.12, "triangle", 0.05);
+      makeTone(659, now + 0.28, 0.18, "triangle", 0.06);
     }
 
-    return "b";
-  };
+    window.setTimeout(() => {
+      ctx.close().catch(() => {});
+    }, 700);
+  }, []);
 
   const resolveRoundIfNeeded = useCallback(async () => {
     if (!isHost) return;
@@ -645,36 +836,42 @@ export default function PPTGame({ roomCode }: PPTGameProps) {
 
       let roundWinner: string | null = null;
       let resultText = "Empate";
+      let resultDetail = "Ambos eligieron lo mismo.";
       let champion: string | null = null;
       let matchOver = false;
       let canAdvanceRound = true;
 
-      const result = getWinnerChoice(choice1, choice2);
+      const outcome = getRoundOutcome(choice1, choice2);
 
-      if (result === "a") {
+      if (outcome.winnerSide === "a") {
         roundWinner = player1;
         scores[player1] = (scores[player1] ?? 0) + 1;
         resultText = `${player1} gana la ronda`;
-      } else if (result === "b") {
+        resultDetail = outcome.detailText;
+      } else if (outcome.winnerSide === "b") {
         roundWinner = player2;
         scores[player2] = (scores[player2] ?? 0) + 1;
         resultText = `${player2} gana la ronda`;
+        resultDetail = outcome.detailText;
       } else {
         resultText = "Empate";
+        resultDetail = outcome.detailText;
       }
 
-      if ((scores[player1] ?? 0) >= 2) {
+      if ((scores[player1] ?? 0) >= roundsToWin) {
         champion = player1;
         awardedChampion = player1;
         matchOver = true;
         canAdvanceRound = false;
         resultText = `${player1} es el campeón`;
-      } else if ((scores[player2] ?? 0) >= 2) {
+        resultDetail = `${player1} gana la partida en formato ${variantLabel.toLowerCase()}`;
+      } else if ((scores[player2] ?? 0) >= roundsToWin) {
         champion = player2;
         awardedChampion = player2;
         matchOver = true;
         canAdvanceRound = false;
         resultText = `${player2} es el campeón`;
+        resultDetail = `${player2} gana la partida en formato ${variantLabel.toLowerCase()}`;
       }
 
       return {
@@ -682,6 +879,7 @@ export default function PPTGame({ roomCode }: PPTGameProps) {
         scores,
         roundWinner,
         resultText,
+        resultDetail,
         champion,
         matchOver,
         canAdvanceRound,
@@ -693,7 +891,18 @@ export default function PPTGame({ roomCode }: PPTGameProps) {
     }
 
     resolvingRoundRef.current = false;
-  }, [isHost, bothPlayersPresent, gameState, sortedPlayers, updateGameState, awardPoints]);
+  }, [
+    isHost,
+    bothPlayersPresent,
+    gameState.matchOver,
+    gameState.roundWinner,
+    gameState.playerChoices,
+    sortedPlayers,
+    updateGameState,
+    awardPoints,
+    roundsToWin,
+    variantLabel,
+  ]);
 
   const handleChoice = async (choice: Exclude<Choice, null>) => {
     if (!currentPlayerName) return;
@@ -905,6 +1114,7 @@ export default function PPTGame({ roomCode }: PPTGameProps) {
           playerChoices: clearedChoices,
           roundWinner: null,
           resultText: null,
+          resultDetail: null,
           canAdvanceRound: false,
           rematchVotes: [],
         };
@@ -925,6 +1135,65 @@ export default function PPTGame({ roomCode }: PPTGameProps) {
       }
     };
   }, []);
+
+  useEffect(() => {
+    const key = [
+      gameState.round,
+      gameState.roundWinner ?? "none",
+      gameState.resultDetail ?? "none",
+      gameState.matchOver ? "over" : "live",
+    ].join("|");
+
+    if (!gameState.resultText || key === lastResolvedKeyRef.current) return;
+    lastResolvedKeyRef.current = key;
+
+    if (gameState.matchOver && gameState.champion) {
+      setShowChampionOverlay(true);
+      playSfx("victoria");
+      lastChampionRef.current = gameState.champion;
+      return;
+    }
+
+    if (gameState.resultText === "Empate") {
+      setRoundPopup({
+        visible: true,
+        title: "Empate",
+        subtitle: gameState.resultDetail ?? "Ambos eligieron lo mismo.",
+      });
+      playSfx("empate");
+    } else {
+      const detail = gameState.resultDetail ?? "";
+      setRoundPopup({
+        visible: true,
+        title: gameState.resultText,
+        subtitle: detail,
+      });
+
+      if (detail.toLowerCase().includes("piedra")) {
+        playSfx("piedra");
+      } else if (detail.toLowerCase().includes("papel")) {
+        playSfx("papel");
+      } else if (detail.toLowerCase().includes("tijera")) {
+        playSfx("tijera");
+      }
+    }
+
+    const timer = window.setTimeout(() => {
+      setRoundPopup((prev) => ({ ...prev, visible: false }));
+    }, 1600);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    gameState.round,
+    gameState.roundWinner,
+    gameState.resultText,
+    gameState.resultDetail,
+    gameState.matchOver,
+    gameState.champion,
+    playSfx,
+  ]);
 
   if (loading) {
     return (
@@ -974,7 +1243,7 @@ export default function PPTGame({ roomCode }: PPTGameProps) {
   };
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-white p-4 md:p-8">
+    <main className="min-h-screen bg-neutral-950 p-4 text-white md:p-8">
       <div className="mx-auto max-w-6xl">
         <div className="mb-6 flex flex-col gap-4 rounded-3xl border border-white/10 bg-white/5 p-5 md:flex-row md:items-center md:justify-between">
           <div>
@@ -997,8 +1266,10 @@ export default function PPTGame({ roomCode }: PPTGameProps) {
           <div className="flex flex-col gap-3 md:items-end">
             <div className="rounded-2xl bg-white/5 px-4 py-3 text-center">
               <p className="text-sm text-white/60">Modo</p>
-              <p className="text-xl font-bold text-yellow-400">Mejor de 3</p>
-              <p className="text-sm text-white/60">Gana quien llegue a 2 rondas</p>
+              <p className="text-xl font-bold text-yellow-400">{modeLabel}</p>
+              <p className="text-sm text-white/60">
+                Gana quien llegue a {roundsToWin} ronda{roundsToWin !== 1 ? "s" : ""}
+              </p>
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row">
@@ -1050,6 +1321,14 @@ export default function PPTGame({ roomCode }: PPTGameProps) {
         {!bothPlayersPresent && (
           <div className="mb-6 rounded-3xl border border-yellow-500/20 bg-yellow-500/10 p-5">
             <p className="text-lg font-semibold text-yellow-300">Esperando al segundo jugador...</p>
+          </div>
+        )}
+
+        {roundPopup.visible && !gameState.matchOver && (
+          <div className="mb-6 rounded-3xl border border-orange-400/30 bg-orange-500/10 p-5 text-center shadow-[0_0_25px_rgba(249,115,22,0.10)]">
+            <p className="text-sm uppercase tracking-[0.3em] text-orange-300">Resultado de ronda</p>
+            <h2 className="mt-2 text-2xl font-extrabold text-white">{roundPopup.title}</h2>
+            <p className="mt-2 text-white/75">{roundPopup.subtitle}</p>
           </div>
         )}
 
@@ -1109,7 +1388,9 @@ export default function PPTGame({ roomCode }: PPTGameProps) {
             <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-sm uppercase tracking-[0.2em] text-white/60">Ronda actual</p>
-                <h2 className="text-2xl font-bold">Ronda {gameState.round}</h2>
+                <h2 className="text-2xl font-bold">
+                  Ronda {gameState.round} de {bestOf}
+                </h2>
               </div>
 
               <div className="rounded-2xl bg-black/20 px-4 py-3">
@@ -1172,56 +1453,70 @@ export default function PPTGame({ roomCode }: PPTGameProps) {
         )}
 
         {gameState.matchOver && (
-          <div className="mb-6 rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6">
-            <div className="text-center">
-              <p className="mb-2 text-sm uppercase tracking-[0.3em] text-yellow-300">Campeón</p>
-              <h2 className="text-4xl font-extrabold text-yellow-400">👑 {gameState.champion}</h2>
-              <p className="mt-3 text-lg text-white/80">
-                La partida terminó. Ya tenemos campeón del mejor de 3.
+          <>
+            {showChampionOverlay && (
+              <div className="mb-6 rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6 text-center shadow-[0_0_40px_rgba(250,204,21,0.12)]">
+                <p className="mb-2 text-sm uppercase tracking-[0.35em] text-yellow-300">Campeón</p>
+                <h2 className="text-4xl font-extrabold text-yellow-400">
+                  👑 {gameState.champion}
+                </h2>
+                <p className="mt-3 text-lg text-white/80">
+                  Ganó la partida en formato {variantLabel.toLowerCase()}.
+                </p>
+              </div>
+            )}
+
+            <div className="mb-6 rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6">
+              <div className="text-center">
+                <p className="mb-2 text-sm uppercase tracking-[0.3em] text-yellow-300">Campeón</p>
+                <h2 className="text-4xl font-extrabold text-yellow-400">👑 {gameState.champion}</h2>
+                <p className="mt-3 text-lg text-white/80">
+                  La partida terminó. Ya tenemos campeón del {modeLabel.toLowerCase()}.
+                </p>
+              </div>
+
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                {sortedPlayers.map((player) => (
+                  <div
+                    key={player.id}
+                    className={`rounded-2xl border p-4 ${
+                      player.player_name === gameState.champion
+                        ? "border-yellow-400/40 bg-yellow-500/10"
+                        : "border-white/10 bg-white/5"
+                    }`}
+                  >
+                    <p className="text-lg font-bold">{player.player_name}</p>
+                    <p className="text-white/70">
+                      Rondas ganadas:{" "}
+                      <span className="font-bold text-white">
+                        {gameState.scores?.[player.player_name] ?? 0}
+                      </span>
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 flex flex-col gap-3 md:flex-row md:justify-center">
+                <button
+                  onClick={handleRematch}
+                  className="rounded-2xl bg-emerald-500 px-6 py-3 font-bold text-black transition hover:bg-emerald-400"
+                >
+                  Revancha
+                </button>
+
+                <button
+                  onClick={goBackToRoom}
+                  className="rounded-2xl border border-white/15 bg-white/10 px-6 py-3 font-bold transition hover:bg-white/15"
+                >
+                  Volver a sala
+                </button>
+              </div>
+
+              <p className="mt-4 text-center text-sm text-white/60">
+                Votos de revancha: {gameState.rematchVotes?.length ?? 0}/{Math.max(sortedPlayers.length, 2)}
               </p>
             </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              {sortedPlayers.map((player) => (
-                <div
-                  key={player.id}
-                  className={`rounded-2xl border p-4 ${
-                    player.player_name === gameState.champion
-                      ? "border-yellow-400/40 bg-yellow-500/10"
-                      : "border-white/10 bg-white/5"
-                  }`}
-                >
-                  <p className="text-lg font-bold">{player.player_name}</p>
-                  <p className="text-white/70">
-                    Rondas ganadas:{" "}
-                    <span className="font-bold text-white">
-                      {gameState.scores?.[player.player_name] ?? 0}
-                    </span>
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-6 flex flex-col gap-3 md:flex-row md:justify-center">
-              <button
-                onClick={handleRematch}
-                className="rounded-2xl bg-emerald-500 px-6 py-3 font-bold text-black transition hover:bg-emerald-400"
-              >
-                Revancha
-              </button>
-
-              <button
-                onClick={goBackToRoom}
-                className="rounded-2xl border border-white/15 bg-white/10 px-6 py-3 font-bold transition hover:bg-white/15"
-              >
-                Volver a sala
-              </button>
-            </div>
-
-            <p className="mt-4 text-center text-sm text-white/60">
-              Votos de revancha: {gameState.rematchVotes?.length ?? 0}/{Math.max(sortedPlayers.length, 2)}
-            </p>
-          </div>
+          </>
         )}
 
         <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
@@ -1245,6 +1540,12 @@ export default function PPTGame({ roomCode }: PPTGameProps) {
                 {gameState.resultText ?? "Sin resultado todavía"}
               </span>
             </p>
+            {gameState.resultDetail && (
+              <p>
+                Detalle:{" "}
+                <span className="font-semibold text-white">{gameState.resultDetail}</span>
+              </p>
+            )}
           </div>
         </div>
       </div>
