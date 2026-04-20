@@ -266,7 +266,6 @@ return (
   playerIdentity={playerIdentity}
   showHomeButton
   showProfileButton={!!playerIdentity}
-/>tartButton={!playerIdentity}
 />
 
       <section className="relative overflow-hidden px-6 pb-14 pt-16">
