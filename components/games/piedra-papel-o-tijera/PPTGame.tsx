@@ -5,185 +5,15 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
 import RoomChat from "@/components/RoomChat";
-
-type Choice = "piedra" | "papel" | "tijera" | null;
-type RoundSoundType = "piedra" | "papel" | "tijera" | "empate" | "victoria";
-
-type PPTGameProps = {
-  roomCode: string;
-  roomVariant?: string | null;
-  roomSettings?: Record<string, any> | null;
-};
-
-type RoomPlayer = {
-  id: string;
-  room_code: string;
-  player_name: string;
-  is_host: boolean;
-  is_ready: boolean;
-  created_at: string;
-  user_id: string | null;
-  is_guest: boolean;
-};
-
-type GameState = {
-  round: number;
-  playerChoices: Record<string, Choice>;
-  scores: Record<string, number>;
-  roundWinner: string | null;
-  resultText: string | null;
-  resultDetail: string | null;
-  champion: string | null;
-  matchOver: boolean;
-  rematchVotes: string[];
-  canAdvanceRound: boolean;
-};
-
-type ProfileMap = Record<
-  string,
-  {
-    display_name: string | null;
-    avatar_key: string | null;
-    frame_key: string | null;
-    points: number | null;
-    games_played: number | null;
-    games_won: number | null;
-    games_lost: number | null;
-  }
->;
-
-const DEFAULT_STATE: GameState = {
-  round: 1,
-  playerChoices: {},
-  scores: {},
-  roundWinner: null,
-  resultText: null,
-  resultDetail: null,
-  champion: null,
-  matchOver: false,
-  rematchVotes: [],
-  canAdvanceRound: false,
-};
-
-const getPlayerStorageKey = (roomCode: string) => `lmf:player:${roomCode}`;
-
-function getModeConfig(
-  roomVariant?: string | null,
-  roomSettings?: Record<string, any> | null
-) {
-  const bestOfFromSettings = Number(roomSettings?.best_of ?? 0);
-  const roundsToWinFromSettings = Number(roomSettings?.rounds_to_win ?? 0);
-
-  if (bestOfFromSettings > 0 && roundsToWinFromSettings > 0) {
-    return {
-      bestOf: bestOfFromSettings,
-      roundsToWin: roundsToWinFromSettings,
-      modeLabel: `Mejor de ${bestOfFromSettings}`,
-      variantLabel: `Mejor ${roundsToWinFromSettings} de ${bestOfFromSettings}`,
-    };
-  }
-
-  if (roomVariant === "bo5") {
-    return {
-      bestOf: 5,
-      roundsToWin: 3,
-      modeLabel: "Mejor de 5",
-      variantLabel: "Mejor 3 de 5",
-    };
-  }
-
-  if (roomVariant === "bo7") {
-    return {
-      bestOf: 7,
-      roundsToWin: 4,
-      modeLabel: "Mejor de 7",
-      variantLabel: "Mejor 4 de 7",
-    };
-  }
-
-  return {
-    bestOf: 3,
-    roundsToWin: 2,
-    modeLabel: "Mejor de 3",
-    variantLabel: "Mejor 2 de 3",
-  };
-}
-
-function getChoiceLabel(choice: Exclude<Choice, null>) {
-  if (choice === "piedra") return "Piedra";
-  if (choice === "papel") return "Papel";
-  return "Tijera";
-}
-
-function getRoundOutcome(a: Exclude<Choice, null>, b: Exclude<Choice, null>) {
-  if (a === b) {
-    return {
-      winnerSide: "empate" as const,
-      winningChoice: null,
-      losingChoice: null,
-      detailText: "Empate",
-      sound: "empate" as RoundSoundType,
-    };
-  }
-
-  if (a === "piedra" && b === "tijera") {
-    return {
-      winnerSide: "a" as const,
-      winningChoice: "piedra" as const,
-      losingChoice: "tijera" as const,
-      detailText: "Piedra vence a Tijera",
-      sound: "piedra" as RoundSoundType,
-    };
-  }
-
-  if (a === "tijera" && b === "papel") {
-    return {
-      winnerSide: "a" as const,
-      winningChoice: "tijera" as const,
-      losingChoice: "papel" as const,
-      detailText: "Tijera vence a Papel",
-      sound: "tijera" as RoundSoundType,
-    };
-  }
-
-  if (a === "papel" && b === "piedra") {
-    return {
-      winnerSide: "a" as const,
-      winningChoice: "papel" as const,
-      losingChoice: "piedra" as const,
-      detailText: "Papel vence a Piedra",
-      sound: "papel" as RoundSoundType,
-    };
-  }
-
-  if (b === "piedra" && a === "tijera") {
-    return {
-      winnerSide: "b" as const,
-      winningChoice: "piedra" as const,
-      losingChoice: "tijera" as const,
-      detailText: "Piedra vence a Tijera",
-      sound: "piedra" as RoundSoundType,
-    };
-  }
-
-  if (b === "tijera" && a === "papel") {
-    return {
-      winnerSide: "b" as const,
-      winningChoice: "tijera" as const,
-      losingChoice: "papel" as const,
-      detailText: "Tijera vence a Papel",
-      sound: "tijera" as RoundSoundType,
-    };
-  }
-
-  return {
-    winnerSide: "b" as const,
-    winningChoice: "papel" as const,
-    losingChoice: "piedra" as const,
-    detailText: "Papel vence a Piedra",
-    sound: "papel" as RoundSoundType,
-  };
-}
+import type { Choice, GameState, PPTGameProps, ProfileMap, RoomPlayer } from "./pptTypes";
+import {
+  DEFAULT_STATE,
+  buildFreshState,
+  getModeConfig,
+  getPlayerStorageKey,
+  getRoundOutcome,
+  playPPTSfx,
+} from "./pptUtils";
 
 export default function PPTGame({
   roomCode,
@@ -366,45 +196,6 @@ export default function PPTGame({
   const shouldRevealChoices =
     bothChoicesSubmitted || !!gameState.roundWinner || !!gameState.matchOver;
 
-  const buildFreshState = useCallback((playerList: RoomPlayer[]): GameState => {
-    const playerChoices: Record<string, Choice> = {};
-    const scores: Record<string, number> = {};
-
-    for (const player of playerList) {
-      playerChoices[player.player_name] = null;
-      scores[player.player_name] = 0;
-    }
-
-    return {
-      round: 1,
-      playerChoices,
-      scores,
-      roundWinner: null,
-      resultText: null,
-      resultDetail: null,
-      champion: null,
-      matchOver: false,
-      rematchVotes: [],
-      canAdvanceRound: false,
-    };
-  }, []);
-
-  const clearGameChat = useCallback(async () => {
-    try {
-      const { error } = await supabase
-        .from("room_messages")
-        .delete()
-        .eq("room_code", code)
-        .eq("context", "game");
-
-      if (error) {
-        console.error("Error limpiando chat de partida:", error);
-      }
-    } catch (error) {
-      console.error("Error inesperado limpiando chat de partida:", error);
-    }
-  }, [supabase, code]);
-
   const fetchProfilesForPlayers = useCallback(
     async (playerList: RoomPlayer[]) => {
       try {
@@ -558,7 +349,7 @@ export default function PPTGame({
         console.error("Error inesperado asegurando game_state:", error);
       }
     },
-    [supabase, code, buildFreshState]
+    [supabase, code]
   );
 
   const refreshGameState = useCallback(async () => {
@@ -741,64 +532,6 @@ export default function PPTGame({
     [sortedPlayers, supabase, fetchProfilesForPlayers]
   );
 
-  const playSfx = useCallback((type: RoundSoundType) => {
-    if (typeof window === "undefined") return;
-
-    const AudioCtx =
-      window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-
-    if (!AudioCtx) return;
-
-    const ctx = new AudioCtx();
-    const now = ctx.currentTime;
-
-    const makeTone = (
-      frequency: number,
-      start: number,
-      duration: number,
-      oscType: OscillatorType,
-      gainValue: number
-    ) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = oscType;
-      osc.frequency.setValueAtTime(frequency, start);
-
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(gainValue, start + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start(start);
-      osc.stop(start + duration);
-    };
-
-    if (type === "piedra") {
-      makeTone(120, now, 0.15, "square", 0.07);
-      makeTone(90, now + 0.04, 0.2, "square", 0.05);
-    } else if (type === "papel") {
-      makeTone(380, now, 0.12, "sine", 0.05);
-      makeTone(520, now + 0.08, 0.14, "sine", 0.04);
-    } else if (type === "tijera") {
-      makeTone(900, now, 0.08, "triangle", 0.05);
-      makeTone(1150, now + 0.07, 0.08, "triangle", 0.04);
-    } else if (type === "empate") {
-      makeTone(260, now, 0.08, "sine", 0.04);
-      makeTone(260, now + 0.1, 0.08, "sine", 0.04);
-    } else if (type === "victoria") {
-      makeTone(440, now, 0.12, "triangle", 0.05);
-      makeTone(554, now + 0.14, 0.12, "triangle", 0.05);
-      makeTone(659, now + 0.28, 0.18, "triangle", 0.06);
-    }
-
-    window.setTimeout(() => {
-      ctx.close().catch(() => {});
-    }, 700);
-  }, []);
-
   const resolveRoundIfNeeded = useCallback(async () => {
     if (!isHost) return;
     if (!bothPlayersPresent) return;
@@ -954,7 +687,23 @@ export default function PPTGame({
     await clearGameChat();
     await writeGameState(fresh);
     router.push(`/sala/${code}`);
-  }, [buildFreshState, sortedPlayers, supabase, code, clearGameChat, writeGameState, router]);
+  }, [sortedPlayers, supabase, code, clearGameChat, writeGameState, router]);
+
+  const clearGameChat = useCallback(async () => {
+    try {
+      const { error } = await supabase
+        .from("room_messages")
+        .delete()
+        .eq("room_code", code)
+        .eq("context", "game");
+
+      if (error) {
+        console.error("Error limpiando chat de partida:", error);
+      }
+    } catch (error) {
+      console.error("Error inesperado limpiando chat de partida:", error);
+    }
+  }, [supabase, code]);
 
   const handleRematch = async () => {
     if (!currentPlayerName) return;
@@ -1149,7 +898,7 @@ export default function PPTGame({
 
     if (gameState.matchOver && gameState.champion) {
       setShowChampionOverlay(true);
-      playSfx("victoria");
+      playPPTSfx("victoria");
       lastChampionRef.current = gameState.champion;
       return;
     }
@@ -1160,7 +909,7 @@ export default function PPTGame({
         title: "Empate",
         subtitle: gameState.resultDetail ?? "Ambos eligieron lo mismo.",
       });
-      playSfx("empate");
+      playPPTSfx("empate");
     } else {
       const detail = gameState.resultDetail ?? "";
       setRoundPopup({
@@ -1170,11 +919,11 @@ export default function PPTGame({
       });
 
       if (detail.toLowerCase().includes("piedra")) {
-        playSfx("piedra");
+        playPPTSfx("piedra");
       } else if (detail.toLowerCase().includes("papel")) {
-        playSfx("papel");
+        playPPTSfx("papel");
       } else if (detail.toLowerCase().includes("tijera")) {
-        playSfx("tijera");
+        playPPTSfx("tijera");
       }
     }
 
@@ -1192,12 +941,11 @@ export default function PPTGame({
     gameState.resultDetail,
     gameState.matchOver,
     gameState.champion,
-    playSfx,
   ]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center p-6">
+      <div className="flex min-h-screen items-center justify-center bg-neutral-950 p-6 text-white">
         <div className="text-center">
           <p className="text-xl font-semibold">Cargando partida...</p>
           <p className="mt-2 text-white/60">Preparando el juego...</p>
