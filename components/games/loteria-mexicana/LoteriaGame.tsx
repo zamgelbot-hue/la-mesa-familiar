@@ -69,7 +69,8 @@ const DEFAULT_DECK_SLUG = "tradicional";
 
 export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
   const router = useRouter();
-  const supabase = createClient();
+  const supabaseRef = useRef(createClient());
+  const supabase = supabaseRef.current;
 
   const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(null);
   const [room, setRoom] = useState<RoomRow | null>(null);
