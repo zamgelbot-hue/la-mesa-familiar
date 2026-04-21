@@ -32,15 +32,12 @@ import {
   sleep,
   validateLoteriaWin,
 } from "./loteriaUtils";
+import { unlockLoteriaAudio } from "./loteriaSounds";
 import {
-  playLoteriaCardVoice,
-  playLoteriaExpiredSound,
-  playLoteriaInvalidSound,
-  playLoteriaMarkSound,
-  playLoteriaStartVoice,
-  playLoteriaWinVoice,
-  unlockLoteriaAudio,
-} from "./loteriaSounds";
+  playStartVoice,
+  playCardVoice,
+  playWinVoice,
+} from "./loteriaAudioManager";
 
 type RoomRow = {
   code: string;
@@ -426,7 +423,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
     if (currentCardKey && currentCardKey !== lastCurrentCardKeyRef.current) {
       lastCurrentCardKeyRef.current = currentCardKey;
       setPhaseLabel("Carta actual");
-      void playLoteriaCardVoice(currentCardKey);
+      playCardVoice(currentCardKey);
     }
   }, [currentCardKey]);
 
@@ -434,7 +431,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
     if (winnerLabel && winnerLabel !== lastWinnerRef.current) {
       lastWinnerRef.current = winnerLabel;
       setShowWinnerOverlay(true);
-      void playLoteriaWinVoice();
+      playWinVoice();
     }
   }, [winnerLabel]);
 
@@ -468,8 +465,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
       setErrorMessage("");
       setPhaseLabel("Preparando salida");
 
-      await unlockLoteriaAudio();
-      await playLoteriaStartVoice();
+      playStartVoice();
       await sleep(LOTERIA_START_DELAY_MS);
 
       const firstCardKey = getNextCardToCall(match.draw_order ?? [], []);
@@ -1025,7 +1021,10 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
               {isHost && (
                 <button
                   type="button"
-                  onClick={() => void handleStartMatch()}
+                  onClick={async () => {
+                    await unlockLoteriaAudio();
+                    void handleStartMatch();
+                  }}
                   disabled={startingMatch || roomPlayers.length < 2}
                   className="mt-5 rounded-2xl bg-orange-500 px-5 py-3 font-extrabold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
                 >
