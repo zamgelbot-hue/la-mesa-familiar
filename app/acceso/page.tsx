@@ -2,16 +2,25 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 type AccessMode = "login" | "register" | "guest";
 
 const GUEST_STORAGE_KEY = "lmf:guest-profile";
 
+function getSafeNextPath(nextValue: string | null) {
+  if (!nextValue) return "/";
+  if (!nextValue.startsWith("/")) return "/";
+  return nextValue;
+}
+
 export default function AccesoPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
+
+  const nextPath = getSafeNextPath(searchParams.get("next"));
 
   const [mode, setMode] = useState<AccessMode>("login");
 
@@ -45,6 +54,11 @@ export default function AccesoPage() {
     setErrorMessage("");
   };
 
+  const finishAccess = () => {
+    router.push(nextPath);
+    router.refresh();
+  };
+
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     resetFeedback();
@@ -68,8 +82,7 @@ export default function AccesoPage() {
       }
 
       setMessage("Sesión iniciada correctamente.");
-      router.push("/");
-      router.refresh();
+      finishAccess();
     } finally {
       setLoading(false);
     }
@@ -140,8 +153,7 @@ export default function AccesoPage() {
       setMessage(
         "Cuenta creada correctamente. Revisa tu correo para verificarla si es necesario."
       );
-      router.push("/");
-      router.refresh();
+      finishAccess();
     } finally {
       setLoading(false);
     }
@@ -175,8 +187,7 @@ export default function AccesoPage() {
     }
 
     setMessage("Entraste como invitado.");
-    router.push("/");
-    router.refresh();
+    finishAccess();
   };
 
   return (
@@ -199,6 +210,12 @@ export default function AccesoPage() {
             <p className="mt-4 max-w-2xl text-lg leading-relaxed text-white/70">
               {subtitle}
             </p>
+
+            {nextPath !== "/" && (
+              <div className="mt-6 rounded-2xl border border-cyan-400/20 bg-cyan-500/10 px-4 py-3 text-cyan-200">
+                Después de entrar te enviaremos directo a la sala de la invitación.
+              </div>
+            )}
 
             <div className="mt-8 flex flex-wrap gap-3">
               <button
@@ -389,7 +406,7 @@ export default function AccesoPage() {
               <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
                 <p className="text-xl font-bold">Sistema de puntos</p>
                 <p className="mt-2 text-white/65">
-                  Lo dejamos preparado para futuras recompensas, progreso e historial.
+                  Guarda tus victorias, partidas jugadas y progreso real.
                 </p>
               </div>
 
@@ -406,8 +423,8 @@ export default function AccesoPage() {
                 Estado actual
               </p>
               <p className="mt-3 text-white/75">
-                En este paso dejamos listo el registro con nombre visible. En el siguiente,
-                el perfil ya permitirá elegir avatar y marco predeterminados.
+                Puedes entrar con cuenta o como invitado. Si vienes desde una invitación,
+                después te enviaremos directo a esa sala.
               </p>
             </div>
           </aside>
