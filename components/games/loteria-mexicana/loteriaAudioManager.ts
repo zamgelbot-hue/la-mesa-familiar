@@ -1,5 +1,4 @@
 let sharedAudio: HTMLAudioElement | null = null;
-let audioUnlocked = false;
 
 function getSharedAudio() {
   if (typeof window === "undefined") return null;
@@ -15,19 +14,18 @@ function getSharedAudio() {
 
 export async function unlockAudioElement() {
   const audio = getSharedAudio();
-  if (!audio || audioUnlocked) return;
+  if (!audio) return;
 
   try {
-    audio.src =
-      "data:audio/mp3;base64,//uQxAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCA...";
+    // usar un archivo REAL que sí existe
+    audio.src = "/audio/loteria/corre_y_se_va_con.mp3";
     audio.muted = true;
     await audio.play();
     audio.pause();
     audio.currentTime = 0;
     audio.muted = false;
-    audioUnlocked = true;
-  } catch {
-    // ignore
+  } catch (err) {
+    console.error("unlockAudioElement error:", err);
   }
 }
 
