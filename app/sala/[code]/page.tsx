@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
@@ -17,7 +18,7 @@ type Room = {
   game_slug: string | null;
   max_players: number | null;
   game_variant: string | null;
-  room_settings: Record<string, any> | null;
+  room_settings: Record<string, unknown> | null;
 };
 
 type RoomPlayer = {
@@ -185,6 +186,7 @@ export default function SalaPage() {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [joiningInvite, setJoiningInvite] = useState(false);
 
   const sortedPlayers = useMemo(() => {
     return [...players].sort((a, b) => {
@@ -259,36 +261,43 @@ export default function SalaPage() {
   );
 
   const resolveCurrentPlayerFromList = useCallback(
-    async (playerList: RoomPlayer[]) => {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+    (playerList: RoomPlayer[], identity: PlayerIdentity | null) => {
+      if (identity?.user_id) {
+        const authMatchedPlayer = playerList.find(
+          (player) => player.user_id === identity.user_id
+        );
 
-        if (user?.id) {
-          const authMatchedPlayer = playerList.find(
-            (player) => player.user_id === user.id
-          );
-
-          if (authMatchedPlayer) {
-            setCurrentPlayerName(authMatchedPlayer.player_name);
-            savePlayerIdentity(code, authMatchedPlayer.player_name, authMatchedPlayer.is_host);
-            return;
-          }
-        }
-
-        const storedName = readStoredPlayerName(code);
-        if (storedName && playerList.some((player) => player.player_name === storedName)) {
-          setCurrentPlayerName(storedName);
+        if (authMatchedPlayer) {
+          setCurrentPlayerName(authMatchedPlayer.player_name);
+          savePlayerIdentity(code, authMatchedPlayer.player_name, authMatchedPlayer.is_host);
           return;
         }
-
-        setCurrentPlayerName("");
-      } catch (error) {
-        console.error("Error resolviendo identidad en sala:", error);
       }
+
+      if (identity?.is_guest && identity.name) {
+        const guestMatchedPlayer = playerList.find(
+          (player) =>
+            player.is_guest &&
+            !player.user_id &&
+            player.player_name === identity.name
+        );
+
+        if (guestMatchedPlayer) {
+          setCurrentPlayerName(guestMatchedPlayer.player_name);
+          savePlayerIdentity(code, guestMatchedPlayer.player_name, guestMatchedPlayer.is_host);
+          return;
+        }
+      }
+
+      const storedName = readStoredPlayerName(code);
+      if (storedName && playerList.some((player) => player.player_name === storedName)) {
+        setCurrentPlayerName(storedName);
+        return;
+      }
+
+      setCurrentPlayerName("");
     },
-    [supabase, code]
+    [code]
   );
 
   const fetchRoom = useCallback(async () => {
@@ -325,10 +334,10 @@ export default function SalaPage() {
     const list = (data ?? []) as RoomPlayer[];
     setPlayers(list);
     await fetchProfilesForPlayers(list);
-    await resolveCurrentPlayerFromList(list);
+    resolveCurrentPlayerFromList(list, playerIdentity);
 
     return list;
-  }, [supabase, code, fetchProfilesForPlayers, resolveCurrentPlayerFromList]);
+  }, [supabase, code, fetchProfilesForPlayers, resolveCurrentPlayerFromList, playerIdentity]);
 
   const fetchGame = useCallback(
     async (gameSlug?: string | null) => {
@@ -353,6 +362,70 @@ export default function SalaPage() {
     [supabase, room?.game_slug]
   );
 
+  const autoJoinIfNeeded = useCallback(
+    async (currentRoom: Room | null, currentPlayers: RoomPlayer[], identity: PlayerIdentity | null) => {
+      if (!currentRoom) return;
+      if (!identity) return;
+      if (currentRoom.status !== "waiting") return;
+      if (joiningInvite) return;
+
+      const alreadyInRoom = currentPlayers.some((player) => {
+        if (identity.user_id && player.user_id) {
+          return player.user_id === identity.user_id;
+        }
+
+        if (identity.is_guest && !player.user_id) {
+          return player.player_name === identity.name;
+        }
+
+        return false;
+      });
+
+      if (alreadyInRoom) {
+        resolveCurrentPlayerFromList(currentPlayers, identity);
+        return;
+      }
+
+      const capacity = Number(currentRoom.max_players ?? 2);
+      if (currentPlayers.length >= capacity) return;
+
+      try {
+        setJoiningInvite(true);
+
+        let finalName = identity.name;
+        const nameAlreadyUsed = currentPlayers.some(
+          (player) => player.player_name === finalName
+        );
+
+        if (nameAlreadyUsed) {
+          finalName = `${identity.name} 2`;
+        }
+
+        const { error } = await supabase.from("room_players").insert({
+          room_code: currentRoom.code,
+          player_name: finalName,
+          is_host: false,
+          is_ready: false,
+          user_id: identity.user_id,
+          is_guest: identity.is_guest,
+        });
+
+        if (error) {
+          console.error("Error auto-uniendo jugador por invitación:", error);
+          return;
+        }
+
+        savePlayerIdentity(currentRoom.code, finalName, false);
+        setCurrentPlayerName(finalName);
+
+        await fetchPlayers();
+      } finally {
+        setJoiningInvite(false);
+      }
+    },
+    [supabase, fetchPlayers, resolveCurrentPlayerFromList, joiningInvite]
+  );
+
   useEffect(() => {
     let mounted = true;
 
@@ -360,13 +433,15 @@ export default function SalaPage() {
       setLoading(true);
 
       try {
-        await loadPlayerIdentity();
+        const identity = await loadPlayerIdentity();
         const loadedRoom = await fetchRoom();
-        await fetchPlayers();
+        const loadedPlayers = await fetchPlayers();
 
         if (loadedRoom?.game_slug) {
           await fetchGame(loadedRoom.game_slug);
         }
+
+        await autoJoinIfNeeded(loadedRoom, loadedPlayers, identity);
       } catch (error) {
         console.error("Error inicializando sala:", error);
       } finally {
@@ -383,20 +458,22 @@ export default function SalaPage() {
     return () => {
       mounted = false;
     };
-  }, [code, fetchRoom, fetchPlayers, fetchGame, loadPlayerIdentity]);
+  }, [code, fetchRoom, fetchPlayers, fetchGame, loadPlayerIdentity, autoJoinIfNeeded]);
 
   useEffect(() => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async () => {
-      await loadPlayerIdentity();
-      await fetchPlayers();
+      const identity = await loadPlayerIdentity();
+      const currentRoom = await fetchRoom();
+      const currentPlayers = await fetchPlayers();
+      await autoJoinIfNeeded(currentRoom, currentPlayers, identity);
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [supabase, loadPlayerIdentity, fetchPlayers]);
+  }, [supabase, loadPlayerIdentity, fetchRoom, fetchPlayers, autoJoinIfNeeded]);
 
   useEffect(() => {
     if (!code) return;
@@ -530,8 +607,12 @@ export default function SalaPage() {
 
   const needsIdentitySelection =
     sortedPlayers.length > 0 &&
+    !!playerIdentity &&
     (!currentPlayerName ||
       !sortedPlayers.some((player) => player.player_name === currentPlayerName));
+
+  const needsAccess =
+    !playerIdentity && !currentPlayerName;
 
   if (loading) {
     return <LoadingView />;
@@ -581,7 +662,9 @@ export default function SalaPage() {
 
               <p className="mt-3 text-base text-white/70 md:text-lg">
                 {sortedPlayers.length}/{roomMaxPlayers} jugadores —{" "}
-                {starting
+                {joiningInvite
+                  ? "Uniéndote a la sala..."
+                  : starting
                   ? "Iniciando partida..."
                   : allReady
                   ? "Todos listos"
@@ -637,6 +720,33 @@ export default function SalaPage() {
               )}
             </div>
           </div>
+
+          {needsAccess && (
+            <div className="relative mt-8 rounded-[28px] border border-cyan-400/25 bg-cyan-500/10 p-6">
+              <p className="text-lg font-semibold text-cyan-300">
+                Para unirte a esta sala primero necesitas una identidad activa
+              </p>
+              <p className="mt-1 text-white/70">
+                Puedes iniciar sesión, crear tu cuenta o entrar como invitado.
+              </p>
+
+              <div className="mt-4 flex flex-wrap gap-3">
+                <Link
+                  href={`/acceso?next=${encodeURIComponent(`/sala/${code}`)}`}
+                  className="rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black transition hover:bg-orange-400"
+                >
+                  Continuar
+                </Link>
+
+                <Link
+                  href="/"
+                  className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-bold text-white transition hover:bg-white/10"
+                >
+                  Volver al inicio
+                </Link>
+              </div>
+            </div>
+          )}
 
           {needsIdentitySelection && (
             <div className="relative mt-8 rounded-[28px] border border-cyan-400/25 bg-cyan-500/10 p-6">
@@ -825,7 +935,9 @@ export default function SalaPage() {
                         allReady ? "text-emerald-300" : "text-orange-200"
                       }`}
                     >
-                      {starting
+                      {joiningInvite
+                        ? "Uniéndote..."
+                        : starting
                         ? "Iniciando..."
                         : allReady
                         ? "Todo listo"
@@ -839,25 +951,27 @@ export default function SalaPage() {
             </div>
           </div>
 
-          <div className="relative mt-8 flex flex-col gap-3 sm:flex-row">
-            <button
-              onClick={handleToggleReady}
-              disabled={needsIdentitySelection || !currentPlayerName}
-              className="rounded-2xl bg-orange-500 px-6 py-3.5 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {players.find((p) => p.player_name === currentPlayerName)?.is_ready
-                ? "Quitar listo"
-                : "Estoy listo"}
-            </button>
+          {!needsAccess && (
+            <div className="relative mt-8 flex flex-col gap-3 sm:flex-row">
+              <button
+                onClick={handleToggleReady}
+                disabled={needsIdentitySelection || !currentPlayerName || joiningInvite}
+                className="rounded-2xl bg-orange-500 px-6 py-3.5 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {players.find((p) => p.player_name === currentPlayerName)?.is_ready
+                  ? "Quitar listo"
+                  : "Estoy listo"}
+              </button>
 
-            <button
-              onClick={handleStartGame}
-              disabled={!isHost || !allReady || sortedPlayers.length < minPlayersToStart || starting}
-              className="rounded-2xl bg-orange-900/70 px-6 py-3.5 font-bold text-orange-100 transition hover:bg-orange-800 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {starting ? "Iniciando..." : "Iniciar partida"}
-            </button>
-          </div>
+              <button
+                onClick={handleStartGame}
+                disabled={!isHost || !allReady || sortedPlayers.length < minPlayersToStart || starting}
+                className="rounded-2xl bg-orange-900/70 px-6 py-3.5 font-bold text-orange-100 transition hover:bg-orange-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {starting ? "Iniciando..." : "Iniciar partida"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
