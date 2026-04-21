@@ -190,8 +190,8 @@ export default function SalaPage() {
   const [joiningInvite, setJoiningInvite] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const playerIdentityRef = useRef<PlayerIdentity | null>(null);
   const autoJoinAttemptedRef = useRef(false);
+  const playerIdentityRef = useRef<PlayerIdentity | null>(null);
 
   const sortedPlayers = useMemo(() => {
     return [...players].sort((a, b) => {
