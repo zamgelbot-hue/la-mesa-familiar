@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -187,6 +187,9 @@ export default function SalaPage() {
   const [starting, setStarting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [joiningInvite, setJoiningInvite] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const autoJoinAttemptedRef = useRef(false);
 
   const sortedPlayers = useMemo(() => {
     return [...players].sort((a, b) => {
@@ -218,11 +221,51 @@ export default function SalaPage() {
       setPlayerIdentity(identity);
       return identity;
     } catch (error) {
-      console.error("Error cargando identidad del jugador:", error);
+      console.error("Error cargando identidad:", error);
       setPlayerIdentity(null);
       return null;
     }
   }, []);
+
+  const fetchRoom = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("rooms")
+      .select("*")
+      .eq("code", code)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error cargando room:", error);
+      return null;
+    }
+
+    const nextRoom = (data ?? null) as Room | null;
+    setRoom(nextRoom);
+    return nextRoom;
+  }, [supabase, code]);
+
+  const fetchGame = useCallback(
+    async (gameSlug?: string | null) => {
+      const slugToLoad = gameSlug ?? room?.game_slug;
+      if (!slugToLoad) return null;
+
+      const { data, error } = await supabase
+        .from("games")
+        .select("*")
+        .eq("slug", slugToLoad)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error cargando game:", error);
+        return null;
+      }
+
+      const nextGame = (data ?? null) as Game | null;
+      setGame(nextGame);
+      return nextGame;
+    },
+    [supabase, room?.game_slug]
+  );
 
   const fetchProfilesForPlayers = useCallback(
     async (playerList: RoomPlayer[]) => {
@@ -241,7 +284,7 @@ export default function SalaPage() {
         .in("id", userIds);
 
       if (error) {
-        console.error("Error cargando perfiles de jugadores:", error);
+        console.error("Error cargando perfiles:", error);
         return;
       }
 
@@ -263,111 +306,66 @@ export default function SalaPage() {
   const resolveCurrentPlayerFromList = useCallback(
     (playerList: RoomPlayer[], identity: PlayerIdentity | null) => {
       if (identity?.user_id) {
-        const authMatchedPlayer = playerList.find(
-          (player) => player.user_id === identity.user_id
-        );
-
-        if (authMatchedPlayer) {
-          setCurrentPlayerName(authMatchedPlayer.player_name);
-          savePlayerIdentity(code, authMatchedPlayer.player_name, authMatchedPlayer.is_host);
-          return;
+        const authMatched = playerList.find((p) => p.user_id === identity.user_id);
+        if (authMatched) {
+          setCurrentPlayerName(authMatched.player_name);
+          savePlayerIdentity(code, authMatched.player_name, authMatched.is_host);
+          return authMatched.player_name;
         }
       }
 
       if (identity?.is_guest && identity.name) {
-        const guestMatchedPlayer = playerList.find(
-          (player) =>
-            player.is_guest &&
-            !player.user_id &&
-            player.player_name === identity.name
+        const guestMatched = playerList.find(
+          (p) => p.is_guest && !p.user_id && p.player_name === identity.name
         );
-
-        if (guestMatchedPlayer) {
-          setCurrentPlayerName(guestMatchedPlayer.player_name);
-          savePlayerIdentity(code, guestMatchedPlayer.player_name, guestMatchedPlayer.is_host);
-          return;
+        if (guestMatched) {
+          setCurrentPlayerName(guestMatched.player_name);
+          savePlayerIdentity(code, guestMatched.player_name, guestMatched.is_host);
+          return guestMatched.player_name;
         }
       }
 
       const storedName = readStoredPlayerName(code);
-      if (storedName && playerList.some((player) => player.player_name === storedName)) {
+      if (storedName && playerList.some((p) => p.player_name === storedName)) {
         setCurrentPlayerName(storedName);
-        return;
+        return storedName;
       }
 
       setCurrentPlayerName("");
+      return "";
     },
     [code]
   );
 
-  const fetchRoom = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("rooms")
-      .select("*")
-      .eq("code", code)
-      .maybeSingle();
-
-    if (error) {
-      console.error("Error cargando room:", error);
-      return null;
-    }
-
-    if (!data) return null;
-
-    const currentRoom = data as Room;
-    setRoom(currentRoom);
-    return currentRoom;
-  }, [supabase, code]);
-
-  const fetchPlayers = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("room_players")
-      .select("*")
-      .eq("room_code", code)
-      .order("created_at", { ascending: true });
-
-    if (error) {
-      console.error("Error cargando players:", error);
-      return [];
-    }
-
-    const list = (data ?? []) as RoomPlayer[];
-    setPlayers(list);
-    await fetchProfilesForPlayers(list);
-    resolveCurrentPlayerFromList(list, playerIdentity);
-
-    return list;
-  }, [supabase, code, fetchProfilesForPlayers, resolveCurrentPlayerFromList, playerIdentity]);
-
-  const fetchGame = useCallback(
-    async (gameSlug?: string | null) => {
-      const slugToLoad = gameSlug ?? room?.game_slug;
-      if (!slugToLoad) return;
-
+  const fetchPlayers = useCallback(
+    async (identityOverride?: PlayerIdentity | null) => {
       const { data, error } = await supabase
-        .from("games")
+        .from("room_players")
         .select("*")
-        .eq("slug", slugToLoad)
-        .maybeSingle();
+        .eq("room_code", code)
+        .order("created_at", { ascending: true });
 
       if (error) {
-        console.error("Error cargando game:", error);
-        return;
+        console.error("Error cargando players:", error);
+        return [];
       }
 
-      if (data) {
-        setGame(data as Game);
-      }
+      const list = (data ?? []) as RoomPlayer[];
+      setPlayers(list);
+      await fetchProfilesForPlayers(list);
+      resolveCurrentPlayerFromList(list, identityOverride ?? playerIdentity);
+
+      return list;
     },
-    [supabase, room?.game_slug]
+    [supabase, code, fetchProfilesForPlayers, resolveCurrentPlayerFromList, playerIdentity]
   );
 
   const autoJoinIfNeeded = useCallback(
     async (currentRoom: Room | null, currentPlayers: RoomPlayer[], identity: PlayerIdentity | null) => {
-      if (!currentRoom) return;
-      if (!identity) return;
-      if (currentRoom.status !== "waiting") return;
-      if (joiningInvite) return;
+      if (!currentRoom) return false;
+      if (!identity) return false;
+      if (currentRoom.status !== "waiting") return false;
+      if (autoJoinAttemptedRef.current) return false;
 
       const alreadyInRoom = currentPlayers.some((player) => {
         if (identity.user_id && player.user_id) {
@@ -383,22 +381,25 @@ export default function SalaPage() {
 
       if (alreadyInRoom) {
         resolveCurrentPlayerFromList(currentPlayers, identity);
-        return;
+        autoJoinAttemptedRef.current = true;
+        return false;
       }
 
       const capacity = Number(currentRoom.max_players ?? 2);
-      if (currentPlayers.length >= capacity) return;
+      if (currentPlayers.length >= capacity) {
+        autoJoinAttemptedRef.current = true;
+        return false;
+      }
 
       try {
         setJoiningInvite(true);
+        autoJoinAttemptedRef.current = true;
 
         let finalName = identity.name;
-        const nameAlreadyUsed = currentPlayers.some(
-          (player) => player.player_name === finalName
-        );
-
-        if (nameAlreadyUsed) {
-          finalName = `${identity.name} 2`;
+        let suffix = 2;
+        while (currentPlayers.some((p) => p.player_name === finalName)) {
+          finalName = `${identity.name} ${suffix}`;
+          suffix += 1;
         }
 
         const { error } = await supabase.from("room_players").insert({
@@ -411,41 +412,63 @@ export default function SalaPage() {
         });
 
         if (error) {
-          console.error("Error auto-uniendo jugador por invitación:", error);
-          return;
+          console.error("Error auto-uniendo jugador:", error);
+          return false;
         }
 
         savePlayerIdentity(currentRoom.code, finalName, false);
         setCurrentPlayerName(finalName);
-
-        await fetchPlayers();
+        return true;
       } finally {
         setJoiningInvite(false);
       }
     },
-    [supabase, fetchPlayers, resolveCurrentPlayerFromList, joiningInvite]
+    [supabase, resolveCurrentPlayerFromList]
   );
 
   useEffect(() => {
-    let mounted = true;
+    let active = true;
+
+    const timeout = window.setTimeout(() => {
+      if (active) {
+        setLoading(false);
+        setErrorMessage("La sala tardó demasiado en cargar. Intenta recargar.");
+      }
+    }, 10000);
 
     const init = async () => {
       setLoading(true);
+      setErrorMessage("");
+      autoJoinAttemptedRef.current = false;
 
       try {
         const identity = await loadPlayerIdentity();
+        if (!active) return;
+
         const loadedRoom = await fetchRoom();
-        const loadedPlayers = await fetchPlayers();
+        if (!active) return;
+
+        const loadedPlayers = await fetchPlayers(identity);
+        if (!active) return;
 
         if (loadedRoom?.game_slug) {
           await fetchGame(loadedRoom.game_slug);
         }
 
-        await autoJoinIfNeeded(loadedRoom, loadedPlayers, identity);
+        const joined = await autoJoinIfNeeded(loadedRoom, loadedPlayers, identity);
+        if (!active) return;
+
+        if (joined) {
+          await fetchPlayers(identity);
+        }
       } catch (error) {
         console.error("Error inicializando sala:", error);
+        if (active) {
+          setErrorMessage("No se pudo cargar la sala correctamente.");
+        }
       } finally {
-        if (mounted) {
+        if (active) {
+          window.clearTimeout(timeout);
           setLoading(false);
         }
       }
@@ -456,24 +479,23 @@ export default function SalaPage() {
     }
 
     return () => {
-      mounted = false;
+      active = false;
+      window.clearTimeout(timeout);
     };
-  }, [code, fetchRoom, fetchPlayers, fetchGame, loadPlayerIdentity, autoJoinIfNeeded]);
+  }, [code, loadPlayerIdentity, fetchRoom, fetchPlayers, fetchGame, autoJoinIfNeeded]);
 
   useEffect(() => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async () => {
       const identity = await loadPlayerIdentity();
-      const currentRoom = await fetchRoom();
-      const currentPlayers = await fetchPlayers();
-      await autoJoinIfNeeded(currentRoom, currentPlayers, identity);
+      await fetchPlayers(identity);
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [supabase, loadPlayerIdentity, fetchRoom, fetchPlayers, autoJoinIfNeeded]);
+  }, [supabase, loadPlayerIdentity, fetchPlayers]);
 
   useEffect(() => {
     if (!code) return;
@@ -489,7 +511,7 @@ export default function SalaPage() {
           filter: `room_code=eq.${code}`,
         },
         async () => {
-          await fetchPlayers();
+          await fetchPlayers(playerIdentity);
         }
       )
       .on(
@@ -526,15 +548,13 @@ export default function SalaPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, code, fetchPlayers, fetchRoom, fetchGame, router]);
+  }, [supabase, code, fetchPlayers, fetchRoom, fetchGame, router, playerIdentity]);
 
   useEffect(() => {
-    if (!room) return;
-
-    if (room.status === "playing") {
+    if (room?.status === "playing") {
       router.replace(`/juego/${code}`);
     }
-  }, [room?.status, room, router, code]);
+  }, [room?.status, router, code]);
 
   useEffect(() => {
     if (!code || !currentPlayerName || players.length === 0) return;
@@ -568,10 +588,7 @@ export default function SalaPage() {
   };
 
   const handleStartGame = async () => {
-    if (!room) return;
-    if (!isHost) return;
-    if (!allReady) return;
-    if (sortedPlayers.length < minPlayersToStart) return;
+    if (!room || !isHost || !allReady || sortedPlayers.length < minPlayersToStart) return;
 
     try {
       setStarting(true);
@@ -605,14 +622,13 @@ export default function SalaPage() {
     }
   };
 
+  const needsAccess = !playerIdentity && !currentPlayerName;
+
   const needsIdentitySelection =
+    !needsAccess &&
     sortedPlayers.length > 0 &&
-    !!playerIdentity &&
     (!currentPlayerName ||
       !sortedPlayers.some((player) => player.player_name === currentPlayerName));
-
-  const needsAccess =
-    !playerIdentity && !currentPlayerName;
 
   if (loading) {
     return <LoadingView />;
@@ -643,6 +659,12 @@ export default function SalaPage() {
         >
           ← Volver
         </button>
+
+        {errorMessage && (
+          <div className="mb-6 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
+            {errorMessage}
+          </div>
+        )}
 
         <div className="relative overflow-hidden rounded-[34px] border border-white/10 bg-zinc-950/90 p-6 shadow-[0_0_40px_rgba(249,115,22,0.05)] md:p-8">
           <div className="pointer-events-none absolute inset-0">
@@ -701,23 +723,6 @@ export default function SalaPage() {
                   gameName={game?.name ?? "La Mesa Familiar"}
                 />
               </div>
-
-              {game && (
-                <div className="rounded-[28px] border border-orange-500/20 bg-orange-500/10 px-6 py-5 text-left shadow-[0_0_30px_rgba(249,115,22,0.06)] xl:text-right">
-                  <p className="text-xs uppercase tracking-[0.3em] text-orange-200">
-                    Juego seleccionado
-                  </p>
-                  <p className="mt-2 text-3xl font-extrabold text-white md:text-4xl">
-                    {game.name}
-                  </p>
-                  <p className="mt-2 text-sm text-white/70">
-                    Mínimo {minPlayersToStart} · Máximo {roomMaxPlayers}
-                  </p>
-                  <p className="mt-2 text-sm text-orange-200">
-                    Variante: <span className="font-bold text-white">{variantLabel}</span>
-                  </p>
-                </div>
-              )}
             </div>
           </div>
 
@@ -849,55 +854,14 @@ export default function SalaPage() {
                   Preview
                 </p>
 
-                {game?.slug === "loteria-mexicana" ? (
-                  <>
-                    <div className="mt-4 grid grid-cols-4 gap-2">
-                      {Array.from({ length: 16 }).map((_, i) => (
-                        <div
-                          key={i}
-                          className="aspect-square rounded-xl border border-white/5 bg-zinc-800/80"
-                        />
-                      ))}
-                    </div>
-
-                    <p className="mt-4 text-sm text-white/55">
-                      Vista previa decorativa del tablero de Lotería.
-                    </p>
-                    <p className="mt-2 text-sm text-orange-200">
-                      Variante: <span className="font-bold text-white">{variantLabel}</span>
-                    </p>
-                  </>
-                ) : game?.slug === "piedra-papel-o-tijera" ? (
-                  <>
-                    <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-800/60 p-6 text-center">
-                      <p className="text-lg font-bold text-white">
-                        Piedra, Papel o Tijera
-                      </p>
-                      <p className="mt-2 text-sm text-white/60">
-                        Serie activa: {variantLabel}
-                      </p>
-                    </div>
-
-                    <p className="mt-4 text-sm text-white/55">
-                      La sala está configurada para jugar en formato {variantLabel.toLowerCase()}.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-800/60 p-6 text-center">
-                      <p className="text-lg font-bold text-white">
-                        {game?.name ?? "Juego"}
-                      </p>
-                      <p className="mt-2 text-sm text-white/60">
-                        Sala lista para comenzar.
-                      </p>
-                    </div>
-
-                    <p className="mt-4 text-sm text-white/55">
-                      Vista previa disponible próximamente.
-                    </p>
-                  </>
-                )}
+                <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-800/60 p-6 text-center">
+                  <p className="text-lg font-bold text-white">
+                    {game?.name ?? "Juego"}
+                  </p>
+                  <p className="mt-2 text-sm text-white/60">
+                    Variante activa: {variantLabel}
+                  </p>
+                </div>
               </div>
 
               <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
@@ -926,25 +890,6 @@ export default function SalaPage() {
                   <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
                     <span className="text-sm text-white/60">Mínimo para iniciar</span>
                     <span className="font-bold">{minPlayersToStart}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
-                    <span className="text-sm text-white/60">Estado de sala</span>
-                    <span
-                      className={`font-bold ${
-                        allReady ? "text-emerald-300" : "text-orange-200"
-                      }`}
-                    >
-                      {joiningInvite
-                        ? "Uniéndote..."
-                        : starting
-                        ? "Iniciando..."
-                        : allReady
-                        ? "Todo listo"
-                        : sortedPlayers.length < minPlayersToStart
-                        ? "Esperando jugadores"
-                        : "Pendiente"}
-                    </span>
                   </div>
                 </div>
               </div>
