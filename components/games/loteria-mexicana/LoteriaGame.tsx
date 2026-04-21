@@ -7,6 +7,7 @@ import {
   getPlayerIdentity,
   type PlayerIdentity,
 } from "@/lib/getPlayerIdentity";
+import { applySingleWinnerMatchRewards } from "@/lib/gameRewards";
 import LoteriaBoard from "./LoteriaBoard";
 import LoteriaCalledCards from "./LoteriaCalledCards";
 import LoteriaClaimButton from "./LoteriaClaimButton";
@@ -92,6 +93,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
   const creatingMatchRef = useRef(false);
   const lastCurrentCardKeyRef = useRef<string | null>(null);
   const lastWinnerRef = useRef<string | null>(null);
+  const rewardsAppliedMatchIdRef = useRef<string | null>(null);
 
   const deckSlug = match?.deck_slug ?? DEFAULT_DECK_SLUG;
   const deck = useMemo(() => getLoteriaDeckBySlug(deckSlug), [deckSlug]);
@@ -448,6 +450,39 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
     }
   }, [winnerLabel]);
 
+  const awardLoteriaPoints = useCallback(
+    async (winnerUserId: string | null | undefined) => {
+      try {
+        if (!match?.id) return;
+        if (rewardsAppliedMatchIdRef.current === match.id) return;
+
+        const participantUserIds = roomPlayers.map((player) => player.user_id);
+
+        await applySingleWinnerMatchRewards({
+          supabase,
+          winnerUserId,
+          participantUserIds,
+          winnerPoints: 5,
+          participantPoints: 2,
+        });
+
+        rewardsAppliedMatchIdRef.current = match.id;
+      } catch (error) {
+        console.error("Error otorgando puntos de Lotería:", error);
+      }
+    },
+    [supabase, roomPlayers, match?.id]
+  );
+
+  useEffect(() => {
+    if (!match?.id) return;
+    if (match.status !== "finished") return;
+    if (!match.winner_user_id) return;
+    if (rewardsAppliedMatchIdRef.current === match.id) return;
+
+    void awardLoteriaPoints(match.winner_user_id);
+  }, [match?.id, match?.status, match?.winner_user_id, awardLoteriaPoints]);
+
   const pulseCard = useCallback((cardKey: string) => {
     setFeedbackPulseCardKey(cardKey);
     window.setTimeout(() => {
@@ -496,6 +531,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
         return;
       }
 
+      rewardsAppliedMatchIdRef.current = null;
       setMessage("");
       setPhaseLabel("Carta actual");
     } finally {
@@ -669,30 +705,26 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
         console.error("Error leyendo marked_card_keys frescos:", freshPlayerError);
       }
 
-const serverMarked = freshPlayer?.marked_card_keys ?? [];
+      const serverMarked = freshPlayer?.marked_card_keys ?? [];
 
-const mergedMarked = Array.from(
-  new Set([...(localMarkedCardKeys ?? []), ...serverMarked])
-);
+      const mergedMarked = Array.from(
+        new Set([...(localMarkedCardKeys ?? []), ...serverMarked])
+      );
 
-setLocalMarkedCardKeys(mergedMarked);
+      setLocalMarkedCardKeys(mergedMarked);
 
-const result = validateLoteriaWin(
-  currentMatchPlayer.board_card_keys ?? [],
-  mergedMarked,
-  calledCardKeys
-);
+      const result = validateLoteriaWin(
+        currentMatchPlayer.board_card_keys ?? [],
+        mergedMarked,
+        calledCardKeys
+      );
 
       if (!result.isWinner) {
         setMessage("Aún no completas una línea válida.");
-        await supabase
-          .from("loteria_match_players")
-          .update({ has_claimed: true })
-          .eq("id", currentMatchPlayer.id);
         return;
       }
 
-      const { error } = await supabase
+      const { data: updatedMatch, error } = await supabase
         .from("loteria_matches")
         .update({
           status: "finished",
@@ -702,11 +734,18 @@ const result = validateLoteriaWin(
           finished_at: new Date().toISOString(),
         })
         .eq("id", match.id)
-        .is("winner_player_name", null);
+        .is("winner_player_name", null)
+        .select("id, winner_user_id, winner_player_name")
+        .maybeSingle();
 
       if (error) {
         console.error("Error reclamando lotería:", error);
         setErrorMessage("No se pudo validar tu lotería.");
+        return;
+      }
+
+      if (!updatedMatch) {
+        setMessage("La partida ya fue cerrada por otro jugador.");
         return;
       }
 
@@ -715,11 +754,20 @@ const result = validateLoteriaWin(
         .update({ has_claimed: true })
         .eq("id", currentMatchPlayer.id);
 
+      await awardLoteriaPoints(currentMatchPlayer.user_id);
+
       setMessage("¡Lotería validada!");
     } finally {
       setClaiming(false);
     }
-  }, [match, currentMatchPlayer, localMarkedCardKeys, calledCardKeys, supabase]);
+  }, [
+    match,
+    currentMatchPlayer,
+    localMarkedCardKeys,
+    calledCardKeys,
+    supabase,
+    awardLoteriaPoints,
+  ]);
 
   const handleBackToRoom = useCallback(async () => {
     try {
@@ -829,6 +877,7 @@ const result = validateLoteriaWin(
         return;
       }
 
+      rewardsAppliedMatchIdRef.current = null;
       setLocalMarkedCardKeys([]);
       setShowWinnerOverlay(false);
       setFeedbackPulseCardKey(null);
@@ -1030,11 +1079,11 @@ const result = validateLoteriaWin(
               {isHost && (
                 <button
                   type="button"
-onClick={async () => {
-  await unlockLoteriaAudio();
-  await unlockAudioElement();
-  void handleStartMatch();
-}}
+                  onClick={async () => {
+                    await unlockLoteriaAudio();
+                    await unlockAudioElement();
+                    void handleStartMatch();
+                  }}
                   disabled={startingMatch || roomPlayers.length < 2}
                   className="mt-5 rounded-2xl bg-orange-500 px-5 py-3 font-extrabold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
                 >
