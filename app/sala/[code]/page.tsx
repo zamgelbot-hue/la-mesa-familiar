@@ -173,7 +173,8 @@ function getVariantLabel(gameSlug?: string | null, variantKey?: string | null) {
 export default function SalaPage() {
   const params = useParams();
   const router = useRouter();
-  const supabase = createClient();
+  const supabaseRef = useRef(createClient());
+  const supabase = supabaseRef.current;
 
   const code = String(params.code ?? "").toUpperCase();
 
