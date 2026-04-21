@@ -32,13 +32,12 @@ import {
   sleep,
   validateLoteriaWin,
 } from "./loteriaUtils";
-import { unlockAudioElement, playStartVoice, playCardVoice, playWinVoice } from "./loteriaAudioManager";
 import { unlockLoteriaAudio } from "./loteriaSounds";
 import {
+  unlockAudioElement,
   playStartVoice,
   playCardVoice,
   playWinVoice,
-  unlockAudioElement,
 } from "./loteriaAudioManager";
 
 type RoomRow = {
