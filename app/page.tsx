@@ -194,7 +194,8 @@ function buildRoomSettings(gameSlug: string, variantKey: string, maxPlayers: num
 
 export default function HomePage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabaseRef = useRef(createClient());
+  const supabase = supabaseRef.current;
 
   const [games, setGames] = useState<Game[]>([]);
   const [stats, setStats] = useState<HomeStats>(DEFAULT_STATS);
