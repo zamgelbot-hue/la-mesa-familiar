@@ -5,10 +5,8 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
-import Link from "next/link";
 import SiteHeader from "@/components/site/SiteHeader";
 import HomeFooter from "@/components/site/HomeFooter";
-
 
 type Game = {
   id: string;
@@ -61,52 +59,52 @@ const DEFAULT_STATS: HomeStats = {
 const getPlayerStorageKey = (roomCode: string) => `lmf:player:${roomCode}`;
 
 const GAME_CONFIGS: Record<string, GameConfig> = {
-"loteria-mexicana": {
-  maxPlayersOptions: [2, 4, 6],
-  variants: [
-    {
-      key: "clasica",
-      label: "Clásica",
-      description: "La versión tradicional de siempre.",
-      available: true,
-    },
-    {
-      key: "familia-palomares",
-      label: "Familia Palomares",
-      description: "Edición especial próximamente.",
-      available: false,
-    },
-    {
-      key: "comidas-mexicanas",
-      label: "Comidas Mexicanas",
-      description: "Nueva variante próximamente.",
-      available: false,
-    },
-  ],
-},
-"piedra-papel-o-tijera": {
-  maxPlayersOptions: [2],
-  variants: [
-    {
-      key: "bo3",
-      label: "Mejor 2 de 3",
-      description: "Gana quien consiga 2 rondas primero.",
-      available: true,
-    },
-    {
-      key: "bo5",
-      label: "Mejor 3 de 5",
-      description: "Gana quien consiga 3 rondas primero.",
-      available: true,
-    },
-    {
-      key: "bo7",
-      label: "Mejor 4 de 7",
-      description: "Gana quien consiga 4 rondas primero.",
-      available: true,
-    },
-  ],
-},
+  "loteria-mexicana": {
+    maxPlayersOptions: [2, 4, 6],
+    variants: [
+      {
+        key: "clasica",
+        label: "Clásica",
+        description: "La versión tradicional de siempre.",
+        available: true,
+      },
+      {
+        key: "familia-palomares",
+        label: "Familia Palomares",
+        description: "Edición especial próximamente.",
+        available: false,
+      },
+      {
+        key: "comidas-mexicanas",
+        label: "Comidas Mexicanas",
+        description: "Nueva variante próximamente.",
+        available: false,
+      },
+    ],
+  },
+  "piedra-papel-o-tijera": {
+    maxPlayersOptions: [2],
+    variants: [
+      {
+        key: "bo3",
+        label: "Mejor 2 de 3",
+        description: "Gana quien consiga 2 rondas primero.",
+        available: true,
+      },
+      {
+        key: "bo5",
+        label: "Mejor 3 de 5",
+        description: "Gana quien consiga 3 rondas primero.",
+        available: true,
+      },
+      {
+        key: "bo7",
+        label: "Mejor 4 de 7",
+        description: "Gana quien consiga 4 rondas primero.",
+        available: true,
+      },
+    ],
+  },
 };
 
 const savePlayerIdentity = (
@@ -194,6 +192,27 @@ function buildRoomSettings(gameSlug: string, variantKey: string, maxPlayers: num
   };
 }
 
+function getGameIcon(slug: string) {
+  switch (slug) {
+    case "piedra-papel-o-tijera":
+      return "✂️";
+    case "loteria-mexicana":
+      return "🇲🇽";
+    case "domino":
+      return "🁫";
+    case "trivia-familiar":
+      return "🧠";
+    case "pictionary":
+      return "🎨";
+    case "bingo":
+      return "🎱";
+    case "memorama":
+      return "🃏";
+    default:
+      return "🎮";
+  }
+}
+
 export default function HomePage() {
   const router = useRouter();
   const supabaseRef = useRef(createClient());
@@ -233,22 +252,35 @@ export default function HomePage() {
   const selectedAvatar = getAvatarByKey(playerIdentity?.avatar_key);
   const selectedFrame = getFrameByKey(playerIdentity?.frame_key);
 
-useEffect(() => {
-  if (!selectedGameConfig) return;
+  const visibleGames = useMemo(() => {
+    return [...games]
+      .filter((game) => game.slug !== "loteria")
+      .sort((a, b) => {
+        const aAvailable = a.status === "available" ? 0 : 1;
+        const bAvailable = b.status === "available" ? 0 : 1;
 
-  if (!selectedGameConfig.maxPlayersOptions.includes(maxPlayers)) {
-    setMaxPlayers(selectedGameConfig.maxPlayersOptions[0]);
-  }
+        if (aAvailable !== bAvailable) return aAvailable - bAvailable;
 
-  const availableVariants = selectedGameConfig.variants.filter((variant) => variant.available);
-  const currentIsValid = availableVariants.some(
-    (variant) => variant.key === selectedVariantKey
-  );
+        return a.sort_order - b.sort_order;
+      });
+  }, [games]);
 
-  if (!currentIsValid) {
-    setSelectedVariantKey(availableVariants[0]?.key ?? "default");
-  }
-}, [selectedGameConfig, maxPlayers, selectedVariantKey]);
+  useEffect(() => {
+    if (!selectedGameConfig) return;
+
+    if (!selectedGameConfig.maxPlayersOptions.includes(maxPlayers)) {
+      setMaxPlayers(selectedGameConfig.maxPlayersOptions[0]);
+    }
+
+    const availableVariants = selectedGameConfig.variants.filter((variant) => variant.available);
+    const currentIsValid = availableVariants.some(
+      (variant) => variant.key === selectedVariantKey
+    );
+
+    if (!currentIsValid) {
+      setSelectedVariantKey(availableVariants[0]?.key ?? "default");
+    }
+  }, [selectedGameConfig, maxPlayers, selectedVariantKey]);
 
   const renderProfileAvatar = (
     avatar: { emoji?: string; image?: string; label?: string },
@@ -324,7 +356,10 @@ useEffect(() => {
     const list = (data ?? []) as Game[];
     setGames(list);
 
-    const firstAvailable = list.find((game) => game.status === "available");
+    const firstAvailable = list.find(
+      (game) => game.status === "available" && game.slug !== "loteria"
+    );
+
     if (firstAvailable) {
       setSelectedGameSlug(firstAvailable.slug);
       setSelectedVariantKey(getDefaultVariantForGame(firstAvailable.slug));
@@ -619,16 +654,16 @@ useEffect(() => {
 
   return (
     <main className="min-h-screen bg-black text-white">
-<SiteHeader
-  playerIdentity={playerIdentity}
-  onSignOut={playerIdentity ? handleSignOut : undefined}
-  signingOut={signingOut}
-  showMainNav
-  showRankingButton={!!playerIdentity}
-  showProfileButton={!!playerIdentity}
-  showLoginButton={!playerIdentity}
-  showStartButton={!playerIdentity}
-/>
+      <SiteHeader
+        playerIdentity={playerIdentity}
+        onSignOut={playerIdentity ? handleSignOut : undefined}
+        signingOut={signingOut}
+        showMainNav
+        showRankingButton={!!playerIdentity}
+        showProfileButton={!!playerIdentity}
+        showLoginButton={!playerIdentity}
+        showStartButton={!playerIdentity}
+      />
 
       <section className="relative overflow-hidden px-6 pb-14 pt-16">
         <div className="absolute inset-0 opacity-30">
@@ -765,8 +800,8 @@ useEffect(() => {
               </div>
             )}
           </div>
-
-          <div className="mx-auto mt-14 grid max-w-4xl gap-6 md:grid-cols-2">
+        
+                   <div className="mx-auto mt-14 grid max-w-4xl gap-6 md:grid-cols-2">
             <div className="rounded-[30px] border border-orange-500/15 bg-zinc-950/90 p-7 shadow-[0_0_40px_rgba(249,115,22,0.05)] transition hover:border-orange-500/25 hover:shadow-[0_0_60px_rgba(249,115,22,0.08)]">
               <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-orange-500/10 text-4xl text-orange-500">
                 +
@@ -798,7 +833,7 @@ useEffect(() => {
                   }}
                   className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
                 >
-                  {games.map((game) => (
+                  {visibleGames.map((game) => (
                     <option key={game.id} value={game.slug} disabled={game.status !== "available"}>
                       {game.name} {game.status === "coming_soon" ? "— Próximamente" : ""}
                     </option>
@@ -862,42 +897,42 @@ useEffect(() => {
                         </p>
 
                         <div className="grid gap-2">
-{(selectedGameConfig?.variants ?? []).map((variant) => {
-  const isSelected = selectedVariantKey === variant.key;
-  const isAvailable = variant.available;
+                          {(selectedGameConfig?.variants ?? []).map((variant) => {
+                            const isSelected = selectedVariantKey === variant.key;
+                            const isAvailable = variant.available;
 
-  return (
-    <button
-      key={variant.key}
-      type="button"
-      onClick={() => {
-        if (!isAvailable) return;
-        setSelectedVariantKey(variant.key);
-      }}
-      disabled={!isAvailable}
-      className={`rounded-2xl border px-4 py-3 text-left transition ${
-        !isAvailable
-          ? "cursor-not-allowed border-white/10 bg-white/[0.03] opacity-60"
-          : isSelected
-          ? "border-orange-500/40 bg-orange-500/10"
-          : "border-white/10 bg-white/5 hover:bg-white/10"
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-bold text-white">{variant.label}</p>
-          <p className="mt-1 text-sm text-white/60">{variant.description}</p>
-        </div>
+                            return (
+                              <button
+                                key={variant.key}
+                                type="button"
+                                onClick={() => {
+                                  if (!isAvailable) return;
+                                  setSelectedVariantKey(variant.key);
+                                }}
+                                disabled={!isAvailable}
+                                className={`rounded-2xl border px-4 py-3 text-left transition ${
+                                  !isAvailable
+                                    ? "cursor-not-allowed border-white/10 bg-white/[0.03] opacity-60"
+                                    : isSelected
+                                    ? "border-orange-500/40 bg-orange-500/10"
+                                    : "border-white/10 bg-white/5 hover:bg-white/10"
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-bold text-white">{variant.label}</p>
+                                    <p className="mt-1 text-sm text-white/60">{variant.description}</p>
+                                  </div>
 
-        {!isAvailable && (
-          <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white/60">
-            Próximamente
-          </span>
-        )}
-      </div>
-    </button>
-  );
-})}
+                                  {!isAvailable && (
+                                    <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white/60">
+                                      Próximamente
+                                    </span>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
                     </div>
@@ -1007,57 +1042,61 @@ useEffect(() => {
           </div>
 
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {games.map((game) => (
-              <div
-                key={game.id}
-                className="group rounded-[28px] border border-orange-500/15 bg-zinc-950/90 p-6 transition hover:-translate-y-1 hover:border-orange-500/30 hover:shadow-[0_0_40px_rgba(249,115,22,0.06)]"
-              >
-                <div className="mb-4 flex items-start justify-between gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-500/10 text-orange-400">
-                    {game.status === "available" ? "▶" : "◻"}
+            {visibleGames.map((game) => {
+              const gameIcon = getGameIcon(game.slug);
+
+              return (
+                <div
+                  key={game.id}
+                  className="group rounded-[28px] border border-orange-500/15 bg-zinc-950/90 p-6 transition hover:-translate-y-1 hover:border-orange-500/30 hover:shadow-[0_0_40px_rgba(249,115,22,0.06)]"
+                >
+                  <div className="mb-4 flex items-start justify-between gap-4">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-500/10 text-xl">
+                      {gameIcon}
+                    </div>
+
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest ${
+                        game.status === "available"
+                          ? "bg-emerald-500/15 text-emerald-300"
+                          : "bg-orange-500/15 text-orange-300"
+                      }`}
+                    >
+                      {game.status === "available" ? "Disponible" : "Próximamente"}
+                    </span>
                   </div>
 
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-widest ${
-                      game.status === "available"
-                        ? "bg-emerald-500/15 text-emerald-300"
-                        : "bg-orange-500/15 text-orange-300"
-                    }`}
-                  >
-                    {game.status === "available" ? "Disponible" : "Próximamente"}
-                  </span>
-                </div>
+                  <h3 className="text-2xl font-bold">{game.name}</h3>
+                  <p className="mt-3 min-h-[52px] text-white/65">{game.description}</p>
 
-                <h3 className="text-2xl font-bold">{game.name}</h3>
-                <p className="mt-3 min-h-[52px] text-white/65">{game.description}</p>
+                  <div className="mt-4 inline-flex rounded-full bg-white/[0.04] px-3 py-1 text-sm text-white/60">
+                    {game.slug === "piedra-papel-o-tijera"
+                      ? "2 jugadores"
+                      : `${game.min_players}-${game.max_players} jugadores`}
+                  </div>
 
-                <div className="mt-4 inline-flex rounded-full bg-white/[0.04] px-3 py-1 text-sm text-white/60">
-                  {game.slug === "piedra-papel-o-tijera"
-                    ? "2 jugadores"
-                    : `${game.min_players}-${game.max_players} jugadores`}
+                  <div className="mt-6">
+                    {game.status === "available" ? (
+                      <button
+                        onClick={() => {
+                          setSelectedGameSlug(game.slug);
+                          setSelectedVariantKey(getDefaultVariantForGame(game.slug));
+                          setMaxPlayers(getDefaultMaxPlayersForGame(game.slug));
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }}
+                        className="rounded-2xl bg-orange-500 px-4 py-2.5 font-bold text-black transition hover:bg-orange-400"
+                      >
+                        Jugar ahora
+                      </button>
+                    ) : (
+                      <div className="inline-flex rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white/60">
+                        Próximamente
+                      </div>
+                    )}
+                  </div>
                 </div>
-
-                <div className="mt-6">
-                  {game.status === "available" ? (
-                    <button
-                      onClick={() => {
-                        setSelectedGameSlug(game.slug);
-                        setSelectedVariantKey(getDefaultVariantForGame(game.slug));
-                        setMaxPlayers(getDefaultMaxPlayersForGame(game.slug));
-                        window.scrollTo({ top: 0, behavior: "smooth" });
-                      }}
-                      className="rounded-2xl bg-orange-500 px-4 py-2.5 font-bold text-black transition hover:bg-orange-400"
-                    >
-                      Jugar ahora
-                    </button>
-                  ) : (
-                    <div className="inline-flex rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white/60">
-                      Próximamente
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
@@ -1075,32 +1114,45 @@ useEffect(() => {
             {[
               {
                 step: "01",
-                title: "Crea tu sala",
-                text: "Haz clic en 'Crear sala' para generar una sala privada con un código único.",
+                title: "Elige un juego",
+                text: "Selecciona entre nuestra colección de juegos clásicos y elige la experiencia que quieres jugar.",
               },
               {
                 step: "02",
-                title: "Invita a tu familia",
-                text: "Comparte el código de la sala con tu familia por mensaje, correo o WhatsApp.",
+                title: "Crea tu sala",
+                text: "Genera una sala privada con un código único para reunir a tus invitados.",
               },
               {
                 step: "03",
-                title: "Elige un juego",
-                text: "Selecciona entre nuestra colección de juegos clásicos y personaliza las opciones.",
+                title: "Invita a tu familia y amigos",
+                text: "Comparte el código de la sala por mensaje, WhatsApp o donde prefieras.",
               },
               {
                 step: "04",
                 title: "¡A jugar!",
-                text: "Disfruta tiempo de calidad con gameplay en tiempo real.",
+                text: "Entren juntos, prepárense y disfruten la partida en tiempo real.",
               },
             ].map((item) => (
               <div
                 key={item.step}
                 className="rounded-[28px] border border-white/10 bg-zinc-950/80 p-6 transition hover:border-orange-500/30"
               >
-                <div className="text-sm font-bold uppercase tracking-[0.18em] text-orange-400">
-                  {item.step}
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-bold uppercase tracking-[0.18em] text-orange-400">
+                    {item.step}
+                  </div>
+
+                  <div className="text-2xl">
+                    {item.step === "01"
+                      ? "🎮"
+                      : item.step === "02"
+                      ? "➕"
+                      : item.step === "03"
+                      ? "📩"
+                      : "🔥"}
+                  </div>
                 </div>
+
                 <h3 className="mt-4 text-2xl font-bold">{item.title}</h3>
                 <p className="mt-4 text-white/65">{item.text}</p>
               </div>
@@ -1156,9 +1208,8 @@ useEffect(() => {
           </div>
         </div>
       </section>
-      
+
       <HomeFooter />
-      
     </main>
   );
 }
