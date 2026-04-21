@@ -190,6 +190,7 @@ export default function SalaPage() {
   const [joiningInvite, setJoiningInvite] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
+  const playerIdentityRef = useRef<PlayerIdentity | null>(null);
   const autoJoinAttemptedRef = useRef(false);
 
   const sortedPlayers = useMemo(() => {
@@ -216,17 +217,19 @@ export default function SalaPage() {
     );
   }, [sortedPlayers, minPlayersToStart]);
 
-  const loadPlayerIdentity = useCallback(async () => {
-    try {
-      const identity = await getPlayerIdentity();
-      setPlayerIdentity(identity);
-      return identity;
-    } catch (error) {
-      console.error("Error cargando identidad:", error);
-      setPlayerIdentity(null);
-      return null;
-    }
-  }, []);
+const loadPlayerIdentity = useCallback(async () => {
+  try {
+    const identity = await getPlayerIdentity();
+    playerIdentityRef.current = identity;
+    setPlayerIdentity(identity);
+    return identity;
+  } catch (error) {
+    console.error("Error cargando identidad:", error);
+    playerIdentityRef.current = null;
+    setPlayerIdentity(null);
+    return null;
+  }
+}, []);
 
   const fetchRoom = useCallback(async () => {
     const { data, error } = await supabase
@@ -371,11 +374,17 @@ const fetchPlayers = useCallback(
     });
 
     await fetchProfilesForPlayers(list);
-    resolveCurrentPlayerFromList(list, identityOverride ?? playerIdentity);
+
+    const identityToUse =
+      identityOverride !== undefined
+        ? identityOverride
+        : playerIdentityRef.current;
+
+    resolveCurrentPlayerFromList(list, identityToUse);
 
     return list;
   },
-  [supabase, code, fetchProfilesForPlayers, resolveCurrentPlayerFromList, playerIdentity]
+  [supabase, code, fetchProfilesForPlayers, resolveCurrentPlayerFromList]
 );
 
   const autoJoinIfNeeded = useCallback(
@@ -502,18 +511,23 @@ const fetchPlayers = useCallback(
     };
   }, [code, loadPlayerIdentity, fetchRoom, fetchPlayers, fetchGame, autoJoinIfNeeded]);
 
-  useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async () => {
-      const identity = await loadPlayerIdentity();
-      await fetchPlayers(identity);
-    });
+useEffect(() => {
+  let active = true;
 
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [supabase, loadPlayerIdentity, fetchPlayers]);
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange(async () => {
+    if (!active) return;
+    const identity = await loadPlayerIdentity();
+    if (!active) return;
+    await fetchPlayers(identity);
+  });
+
+  return () => {
+    active = false;
+    subscription.unsubscribe();
+  };
+}, [supabase, loadPlayerIdentity, fetchPlayers]);
 
   useEffect(() => {
     if (!code) return;
@@ -529,7 +543,7 @@ const fetchPlayers = useCallback(
           filter: `room_code=eq.${code}`,
         },
         async () => {
-          await fetchPlayers(playerIdentity);
+        await fetchPlayers(playerIdentityRef.current);
         }
       )
       .on(
