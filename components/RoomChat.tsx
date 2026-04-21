@@ -29,7 +29,8 @@ export default function RoomChat({
   currentUserId = null,
   isGuest = true,
 }: RoomChatProps) {
-  const supabase = createClient();
+  const supabaseRef = useRef(createClient());
+  const supabase = supabaseRef.current;
 
   const [messages, setMessages] = useState<RoomMessage[]>([]);
   const [open, setOpen] = useState(false);
