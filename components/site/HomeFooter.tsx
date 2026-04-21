@@ -215,7 +215,7 @@ export default function HomeFooter() {
 
         <div className="mx-auto max-w-7xl px-6 py-16">
           <div className="grid gap-6 lg:grid-cols-[1.15fr_1.2fr]">
-            <div className="relative overflow-hidden rounded-3xl border border-orange-500/15 bg-gradient-to-br from-[#0a0a0a] via-[#080808] to-[#140b05] p-6 shadow-[0_0_35px_rgba(249,115,22,0.06)]">
+            <div className="relative overflow-hidden rounded-3xl border border-orange-500/15 bg-gradient-to-br from-[#0a0a0a] via-[#080808] to-[#140b05] p-6 shadow-[0_0_35px_rgba(249,115,22,0.06)] transition hover:border-orange-500/25 hover:shadow-[0_0_50px_rgba(249,115,22,0.08)]">
               <div className="absolute -left-10 -top-10 h-32 w-32 rounded-full bg-orange-500/10 blur-3xl" />
               <div className="absolute bottom-0 right-0 h-28 w-28 rounded-full bg-amber-500/10 blur-3xl" />
 
@@ -267,28 +267,28 @@ export default function HomeFooter() {
                 </div>
 
                 <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <div className="rounded-2xl border border-orange-500/10 bg-orange-500/[0.04] px-4 py-3">
+                  <div className="rounded-2xl border border-orange-500/10 bg-orange-500/[0.04] px-4 py-3 transition hover:border-orange-500/20 hover:bg-orange-500/[0.06]">
                     <p className="text-lg font-extrabold text-white">Online</p>
                     <p className="text-xs uppercase tracking-[0.15em] text-white/45">
                       Tiempo real
                     </p>
                   </div>
 
-                  <div className="rounded-2xl border border-orange-500/10 bg-orange-500/[0.04] px-4 py-3">
+                  <div className="rounded-2xl border border-orange-500/10 bg-orange-500/[0.04] px-4 py-3 transition hover:border-orange-500/20 hover:bg-orange-500/[0.06]">
                     <p className="text-lg font-extrabold text-white">Privado</p>
                     <p className="text-xs uppercase tracking-[0.15em] text-white/45">
                       Salas seguras
                     </p>
                   </div>
 
-                  <div className="rounded-2xl border border-orange-500/10 bg-orange-500/[0.04] px-4 py-3">
+                  <div className="rounded-2xl border border-orange-500/10 bg-orange-500/[0.04] px-4 py-3 transition hover:border-orange-500/20 hover:bg-orange-500/[0.06]">
                     <p className="text-lg font-extrabold text-white">Fácil</p>
                     <p className="text-xs uppercase tracking-[0.15em] text-white/45">
                       Sin descargas
                     </p>
                   </div>
 
-                  <div className="rounded-2xl border border-orange-500/10 bg-orange-500/[0.04] px-4 py-3">
+                  <div className="rounded-2xl border border-orange-500/10 bg-orange-500/[0.04] px-4 py-3 transition hover:border-orange-500/20 hover:bg-orange-500/[0.06]">
                     <p className="text-lg font-extrabold text-white">
                       Familiar
                     </p>
@@ -300,7 +300,7 @@ export default function HomeFooter() {
               </div>
             </div>
 
-            <div className="group relative overflow-hidden rounded-3xl border border-orange-500/20 bg-gradient-to-br from-[#0a0a0a] via-[#090909] to-[#140b05] p-6 shadow-[0_0_40px_rgba(249,115,22,0.08)]">
+            <div className="group relative overflow-hidden rounded-3xl border border-orange-500/20 bg-gradient-to-br from-[#0a0a0a] via-[#090909] to-[#140b05] p-6 shadow-[0_0_40px_rgba(249,115,22,0.08)] transition hover:border-orange-500/30 hover:shadow-[0_0_55px_rgba(249,115,22,0.10)]">
               <div className="absolute -right-16 -top-16 h-40 w-40 rounded-full bg-orange-500/10 blur-3xl transition duration-500 group-hover:bg-orange-500/15" />
               <div className="absolute -bottom-16 -left-16 h-40 w-40 rounded-full bg-orange-500/10 blur-3xl transition duration-500 group-hover:bg-orange-500/15" />
 
@@ -335,7 +335,34 @@ export default function HomeFooter() {
                   casa.
                 </p>
 
-                <div className="mt-6 flex flex-wrap gap-3">
+                <p className="mt-4 text-xs uppercase tracking-[0.18em] text-orange-300/65">
+                  Contenido disponible
+                </p>
+
+                <div className="mt-4 grid grid-cols-3 gap-3">
+                  <div className="rounded-2xl border border-orange-500/15 bg-orange-500/[0.05] px-4 py-3 text-center transition hover:border-orange-500/25 hover:bg-orange-500/[0.07]">
+                    <p className="text-xl font-extrabold text-white">+18K</p>
+                    <p className="text-xs uppercase tracking-[0.15em] text-white/50">
+                      Películas
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-orange-500/15 bg-orange-500/[0.05] px-4 py-3 text-center transition hover:border-orange-500/25 hover:bg-orange-500/[0.07]">
+                    <p className="text-xl font-extrabold text-white">+4.5K</p>
+                    <p className="text-xs uppercase tracking-[0.15em] text-white/50">
+                      Series
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-orange-500/15 bg-orange-500/[0.05] px-4 py-3 text-center transition hover:border-orange-500/25 hover:bg-orange-500/[0.07]">
+                    <p className="text-xl font-extrabold text-white">+3K</p>
+                    <p className="text-xs uppercase tracking-[0.15em] text-white/50">
+                      TV en vivo
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex flex-wrap justify-center gap-3">
                   <Link
                     href="https://santieltv.com"
                     target="_blank"
