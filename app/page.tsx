@@ -7,6 +7,7 @@ import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity"
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
 import Link from "next/link";
 import SiteHeader from "@/components/site/SiteHeader";
+import HomeFooter from "@/components/site/HomeFooter";
 
 
 type Game = {
