@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
 import RoomChat from "@/components/RoomChat";
 import PlayerAvatar from "@/components/PlayerAvatar";
@@ -179,6 +180,7 @@ export default function SalaPage() {
   const [players, setPlayers] = useState<RoomPlayer[]>([]);
   const [profilesMap, setProfilesMap] = useState<ProfileMap>({});
   const [game, setGame] = useState<Game | null>(null);
+  const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(null);
   const [currentPlayerName, setCurrentPlayerName] = useState("");
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
@@ -207,6 +209,12 @@ export default function SalaPage() {
       sortedPlayers.every((p) => p.is_ready)
     );
   }, [sortedPlayers, minPlayersToStart]);
+
+  const loadPlayerIdentity = useCallback(async () => {
+    const identity = await getPlayerIdentity();
+    setPlayerIdentity(identity);
+    return identity;
+  }, []);
 
   const fetchProfilesForPlayers = useCallback(
     async (playerList: RoomPlayer[]) => {
@@ -279,13 +287,33 @@ export default function SalaPage() {
     setPlayers(list);
     await fetchProfilesForPlayers(list);
 
+    const identity = playerIdentity ?? (await loadPlayerIdentity());
+
+    if (identity?.user_id) {
+      const authMatchedPlayer = list.find(
+        (player) => player.user_id === identity.user_id
+      );
+
+      if (authMatchedPlayer) {
+        setCurrentPlayerName(authMatchedPlayer.player_name);
+        savePlayerIdentity(code, authMatchedPlayer.player_name, authMatchedPlayer.is_host);
+        return list;
+      }
+    }
+
     const storedName = readStoredPlayerName(code);
     if (storedName && list.some((player) => player.player_name === storedName)) {
       setCurrentPlayerName(storedName);
     }
 
     return list;
-  }, [supabase, code, fetchProfilesForPlayers]);
+  }, [
+    supabase,
+    code,
+    fetchProfilesForPlayers,
+    playerIdentity,
+    loadPlayerIdentity,
+  ]);
 
   const fetchGame = useCallback(
     async (gameSlug?: string | null) => {
@@ -316,6 +344,7 @@ export default function SalaPage() {
     const init = async () => {
       setLoading(true);
 
+      await loadPlayerIdentity();
       const loadedRoom = await fetchRoom();
       await fetchPlayers();
 
@@ -335,7 +364,20 @@ export default function SalaPage() {
     return () => {
       mounted = false;
     };
-  }, [code, fetchRoom, fetchPlayers, fetchGame]);
+  }, [code, fetchRoom, fetchPlayers, fetchGame, loadPlayerIdentity]);
+
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async () => {
+      await loadPlayerIdentity();
+      await fetchPlayers();
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase, loadPlayerIdentity, fetchPlayers]);
 
   useEffect(() => {
     if (!code) return;
