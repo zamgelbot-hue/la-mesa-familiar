@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
+import { applyHeadToHeadMatchRewards } from "@/lib/gameRewards";
 import RoomChat from "@/components/RoomChat";
 import type { Choice, GameState, PPTGameProps, ProfileMap, RoomPlayer } from "./pptTypes";
 import {
@@ -458,91 +459,34 @@ export default function PPTGame({
     [supabase, code]
   );
 
-  const awardPoints = useCallback(
-    async (championName: string | null) => {
-      try {
-        if (!championName) return;
-        if (sortedPlayers.length < 2) return;
+const awardPoints = useCallback(
+  async (championName: string | null) => {
+    try {
+      if (!championName) return;
+      if (sortedPlayers.length < 2) return;
 
-        const winner = sortedPlayers.find(
-          (player) => player.player_name === championName
-        );
-        const loser = sortedPlayers.find(
-          (player) => player.player_name !== championName
-        );
+      const winner = sortedPlayers.find(
+        (player) => player.player_name === championName
+      );
+      const loser = sortedPlayers.find(
+        (player) => player.player_name !== championName
+      );
 
-        if (winner?.user_id) {
-          const { data: winnerProfile, error: winnerFetchError } = await supabase
-            .from("profiles")
-            .select(
-              "points, games_played, games_won, total_points_earned, current_win_streak, best_win_streak"
-            )
-            .eq("id", winner.user_id)
-            .single();
+      await applyHeadToHeadMatchRewards({
+        supabase,
+        winnerUserId: winner?.user_id,
+        loserUserId: loser?.user_id,
+        winnerPoints: 5,
+        loserPoints: 2,
+      });
 
-          if (winnerFetchError || !winnerProfile) {
-            console.error("Error leyendo perfil del ganador:", winnerFetchError);
-          } else {
-            const newCurrentStreak = (winnerProfile.current_win_streak ?? 0) + 1;
-            const newBestStreak = Math.max(
-              winnerProfile.best_win_streak ?? 0,
-              newCurrentStreak
-            );
-
-            const { error: winnerUpdateError } = await supabase
-              .from("profiles")
-              .update({
-                points: (winnerProfile.points ?? 0) + 5,
-                games_played: (winnerProfile.games_played ?? 0) + 1,
-                games_won: (winnerProfile.games_won ?? 0) + 1,
-                total_points_earned: (winnerProfile.total_points_earned ?? 0) + 5,
-                current_win_streak: newCurrentStreak,
-                best_win_streak: newBestStreak,
-              })
-              .eq("id", winner.user_id);
-
-            if (winnerUpdateError) {
-              console.error("Error actualizando ganador:", winnerUpdateError);
-            }
-          }
-        }
-
-        if (loser?.user_id) {
-          const { data: loserProfile, error: loserFetchError } = await supabase
-            .from("profiles")
-            .select(
-              "points, games_played, games_lost, total_points_earned, current_win_streak"
-            )
-            .eq("id", loser.user_id)
-            .single();
-
-          if (loserFetchError || !loserProfile) {
-            console.error("Error leyendo perfil del perdedor:", loserFetchError);
-          } else {
-            const { error: loserUpdateError } = await supabase
-              .from("profiles")
-              .update({
-                points: (loserProfile.points ?? 0) + 2,
-                games_played: (loserProfile.games_played ?? 0) + 1,
-                games_lost: (loserProfile.games_lost ?? 0) + 1,
-                total_points_earned: (loserProfile.total_points_earned ?? 0) + 2,
-                current_win_streak: 0,
-              })
-              .eq("id", loser.user_id);
-
-            if (loserUpdateError) {
-              console.error("Error actualizando perdedor:", loserUpdateError);
-            }
-          }
-        }
-
-        await fetchProfilesForPlayers(sortedPlayers);
-      } catch (error) {
-        console.error("Error general dando puntos/stats:", error);
-      }
-    },
-    [sortedPlayers, supabase, fetchProfilesForPlayers]
-  );
+      await fetchProfilesForPlayers(sortedPlayers);
+    } catch (error) {
+      console.error("Error general dando puntos/stats:", error);
+    }
+  },
+  [sortedPlayers, supabase, fetchProfilesForPlayers]
+);
 
   const clearGameChat = useCallback(async () => {
     try {
