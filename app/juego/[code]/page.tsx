@@ -17,7 +17,8 @@ type RoomRow = {
 export default function JuegoPage() {
   const params = useParams();
   const router = useRouter();
-  const supabase = createClient();
+  const supabaseRef = useRef(createClient());
+  const supabase = supabaseRef.current;
 
   const code = String(params.code ?? "").toUpperCase();
 
