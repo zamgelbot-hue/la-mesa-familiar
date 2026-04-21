@@ -32,12 +32,7 @@ import {
   sleep,
   validateLoteriaWin,
 } from "./loteriaUtils";
-import { unlockLoteriaAudio } from "./loteriaSounds";
-import {
-  playStartVoice,
-  playCardVoice,
-  playWinVoice,
-} from "./loteriaAudioManager";
+import { unlockAudioElement, playStartVoice, playCardVoice, playWinVoice } from "./loteriaAudioManager";
 
 type RoomRow = {
   code: string;
@@ -663,16 +658,19 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
         console.error("Error leyendo marked_card_keys frescos:", freshPlayerError);
       }
 
-      const freshMarked =
-        freshPlayer?.marked_card_keys ?? localMarkedCardKeys;
+const serverMarked = freshPlayer?.marked_card_keys ?? [];
 
-      setLocalMarkedCardKeys(freshMarked);
+const mergedMarked = Array.from(
+  new Set([...(localMarkedCardKeys ?? []), ...serverMarked])
+);
 
-      const result = validateLoteriaWin(
-        currentMatchPlayer.board_card_keys ?? [],
-        freshMarked,
-        calledCardKeys
-      );
+setLocalMarkedCardKeys(mergedMarked);
+
+const result = validateLoteriaWin(
+  currentMatchPlayer.board_card_keys ?? [],
+  mergedMarked,
+  calledCardKeys
+);
 
       if (!result.isWinner) {
         setMessage("Aún no completas una línea válida.");
@@ -1021,10 +1019,10 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
               {isHost && (
                 <button
                   type="button"
-                  onClick={async () => {
-                    await unlockLoteriaAudio();
-                    void handleStartMatch();
-                  }}
+onClick={async () => {
+  await unlockAudioElement();
+  void handleStartMatch();
+}}
                   disabled={startingMatch || roomPlayers.length < 2}
                   className="mt-5 rounded-2xl bg-orange-500 px-5 py-3 font-extrabold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
                 >
