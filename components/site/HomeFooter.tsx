@@ -188,6 +188,7 @@ function LegalModal({
       <div className="relative w-full max-w-3xl overflow-hidden rounded-3xl border border-orange-500/20 bg-[#060606] shadow-[0_0_40px_rgba(249,115,22,0.12)]">
         <div className="flex items-center justify-between border-b border-orange-500/10 px-6 py-4">
           <h2 className="text-xl font-bold text-white">{content.title}</h2>
+
           <button
             onClick={onClose}
             className="rounded-full border border-orange-500/20 bg-white/5 px-3 py-1.5 text-sm font-medium text-white transition hover:border-orange-500/40 hover:bg-orange-500/10"
@@ -210,44 +211,92 @@ export default function HomeFooter() {
   return (
     <>
       <footer className="relative border-t border-orange-500/10 bg-black">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(249,115,22,0.10),transparent_35%)] pointer-events-none" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_bottom,rgba(249,115,22,0.10),transparent_35%)]" />
 
         <div className="mx-auto max-w-7xl px-6 py-16">
           <div className="grid gap-6 lg:grid-cols-[1.15fr_1.2fr]">
-            <div className="rounded-3xl border border-orange-500/15 bg-white/[0.02] p-6 shadow-[0_0_30px_rgba(249,115,22,0.05)]">
-              <div className="mb-4 flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-orange-500/20 bg-orange-500/10 text-xl">
-                  🎮
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-white">
-                    La Mesa Familiar
-                  </h3>
-                  <p className="text-sm text-white/60">
-                    Juegos clásicos, experiencia moderna.
-                  </p>
-                </div>
-              </div>
+            <div className="relative overflow-hidden rounded-3xl border border-orange-500/15 bg-gradient-to-br from-[#0a0a0a] via-[#080808] to-[#140b05] p-6 shadow-[0_0_35px_rgba(249,115,22,0.06)]">
+              <div className="absolute -left-10 -top-10 h-32 w-32 rounded-full bg-orange-500/10 blur-3xl" />
+              <div className="absolute bottom-0 right-0 h-28 w-28 rounded-full bg-amber-500/10 blur-3xl" />
 
-              <p className="max-w-xl text-sm leading-7 text-white/70">
-                Una plataforma pensada para reunir a familias y amigos en salas
-                privadas, partidas en tiempo real y experiencias fáciles de
-                compartir desde cualquier lugar.
-              </p>
+              <div className="relative">
+                <div className="mb-5 flex items-center gap-4">
+                  <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-orange-500/20 bg-gradient-to-br from-orange-500/10 to-transparent shadow-[0_0_25px_rgba(249,115,22,0.10)]">
+                    <div className="absolute inset-0 rounded-2xl bg-[radial-gradient(circle,rgba(249,115,22,0.18),transparent_70%)]" />
+                    <img
+                      src="/branding/logo_icono.png"
+                      alt="Logo La Mesa Familiar"
+                      className="relative z-10 h-12 w-12 object-contain"
+                    />
+                  </div>
 
-              <div className="mt-6 flex flex-wrap gap-3">
-                <span className="rounded-full border border-orange-500/15 bg-white/[0.03] px-3 py-1 text-xs text-white/65">
-                  Salas privadas
-                </span>
-                <span className="rounded-full border border-orange-500/15 bg-white/[0.03] px-3 py-1 text-xs text-white/65">
-                  Tiempo real
-                </span>
-                <span className="rounded-full border border-orange-500/15 bg-white/[0.03] px-3 py-1 text-xs text-white/65">
-                  Sin descargas
-                </span>
-                <span className="rounded-full border border-orange-500/15 bg-white/[0.03] px-3 py-1 text-xs text-white/65">
-                  Para toda la familia
-                </span>
+                  <div>
+                    <h3 className="text-2xl font-bold text-white">
+                      La Mesa Familiar
+                    </h3>
+                    <p className="text-sm text-orange-200/80">
+                      Juegos clásicos, experiencia moderna.
+                    </p>
+                  </div>
+                </div>
+
+                <p className="max-w-xl text-sm leading-7 text-white/72">
+                  Una plataforma creada para reunir a familias y amigos en salas
+                  privadas, partidas en tiempo real y momentos especiales
+                  compartidos desde cualquier lugar.
+                </p>
+
+                <p className="mt-4 max-w-xl text-sm leading-7 text-white/50">
+                  Diseñada para que jugar en línea se sienta cercano, fácil y
+                  cálido, como una verdadera noche de juegos en familia.
+                </p>
+
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <span className="rounded-full border border-orange-500/15 bg-white/[0.03] px-3 py-1 text-xs text-white/65">
+                    Salas privadas
+                  </span>
+                  <span className="rounded-full border border-orange-500/15 bg-white/[0.03] px-3 py-1 text-xs text-white/65">
+                    Tiempo real
+                  </span>
+                  <span className="rounded-full border border-orange-500/15 bg-white/[0.03] px-3 py-1 text-xs text-white/65">
+                    Sin descargas
+                  </span>
+                  <span className="rounded-full border border-orange-500/15 bg-white/[0.03] px-3 py-1 text-xs text-white/65">
+                    Para toda la familia
+                  </span>
+                </div>
+
+                <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-2xl border border-orange-500/10 bg-orange-500/[0.04] px-4 py-3">
+                    <p className="text-lg font-extrabold text-white">Online</p>
+                    <p className="text-xs uppercase tracking-[0.15em] text-white/45">
+                      Tiempo real
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-orange-500/10 bg-orange-500/[0.04] px-4 py-3">
+                    <p className="text-lg font-extrabold text-white">Privado</p>
+                    <p className="text-xs uppercase tracking-[0.15em] text-white/45">
+                      Salas seguras
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-orange-500/10 bg-orange-500/[0.04] px-4 py-3">
+                    <p className="text-lg font-extrabold text-white">Fácil</p>
+                    <p className="text-xs uppercase tracking-[0.15em] text-white/45">
+                      Sin descargas
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-orange-500/10 bg-orange-500/[0.04] px-4 py-3">
+                    <p className="text-lg font-extrabold text-white">
+                      Familiar
+                    </p>
+                    <p className="text-xs uppercase tracking-[0.15em] text-white/45">
+                      Para todos
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -260,9 +309,13 @@ export default function HomeFooter() {
                   Patrocinador oficial
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-orange-500/20 bg-black/40 text-2xl">
-                    📺
+                <div className="flex items-center gap-4">
+                  <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-orange-500/20 bg-black/40 shadow-[0_0_25px_rgba(249,115,22,0.10)]">
+                    <img
+                      src="/branding/icon_santieltv.png"
+                      alt="Logo Santiel TV"
+                      className="h-12 w-12 rounded-xl object-contain"
+                    />
                   </div>
 
                   <div>
