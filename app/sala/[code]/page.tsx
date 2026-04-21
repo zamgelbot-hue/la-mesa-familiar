@@ -231,45 +231,56 @@ const loadPlayerIdentity = useCallback(async () => {
   }
 }, []);
 
-  const fetchRoom = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("rooms")
-      .select("*")
-      .eq("code", code)
-      .maybeSingle();
-
-    if (error) {
-      console.error("Error cargando room:", error);
-      return null;
-    }
-
-    const nextRoom = (data ?? null) as Room | null;
-    setRoom(nextRoom);
-    return nextRoom;
-  }, [supabase, code]);
-
-  const fetchGame = useCallback(
-    async (gameSlug?: string | null) => {
-      const slugToLoad = gameSlug ?? room?.game_slug;
-      if (!slugToLoad) return null;
-
+const fetchRoom = useCallback(
+  async (retries = 3, delayMs = 500) => {
+    for (let attempt = 0; attempt < retries; attempt++) {
       const { data, error } = await supabase
-        .from("games")
+        .from("rooms")
         .select("*")
-        .eq("slug", slugToLoad)
+        .eq("code", code)
         .maybeSingle();
 
       if (error) {
-        console.error("Error cargando game:", error);
-        return null;
+        console.error("Error cargando room:", error);
+      } else if (data) {
+        const nextRoom = data as Room;
+        setRoom(nextRoom);
+        return nextRoom;
       }
 
-      const nextGame = (data ?? null) as Game | null;
-      setGame(nextGame);
-      return nextGame;
-    },
-    [supabase, room?.game_slug]
-  );
+      if (attempt < retries - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+
+    setRoom(null);
+    return null;
+  },
+  [supabase, code]
+);
+
+const fetchGame = useCallback(
+  async (gameSlug?: string | null) => {
+    const slugToLoad = gameSlug ?? room?.game_slug;
+    if (!slugToLoad) return null;
+
+    const { data, error } = await supabase
+      .from("games")
+      .select("*")
+      .eq("slug", slugToLoad)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error cargando game:", error);
+      return null;
+    }
+
+    const nextGame = (data ?? null) as Game | null;
+    setGame(nextGame);
+    return nextGame;
+  },
+  [supabase, room?.game_slug]
+);
 
 const lastProfilesKeyRef = useRef("");
 
@@ -485,9 +496,10 @@ const fetchPlayers = useCallback(
         const joined = await autoJoinIfNeeded(loadedRoom, loadedPlayers, identity);
         if (!active) return;
 
-        if (joined) {
-          await fetchPlayers(identity);
-        }
+if (joined) {
+  await fetchRoom();
+  await fetchPlayers(identity);
+}
       } catch (error) {
         console.error("Error inicializando sala:", error);
         if (active) {
@@ -580,7 +592,7 @@ useEffect(() => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, code, fetchPlayers, fetchRoom, fetchGame, router, playerIdentity]);
+}, [supabase, code, fetchPlayers, fetchRoom, fetchGame, router]);
 
   useEffect(() => {
     if (room?.status === "playing") {
