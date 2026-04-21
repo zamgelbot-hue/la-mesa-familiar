@@ -1,5 +1,11 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://lamesafamiliar.net"),
@@ -41,7 +47,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body className="bg-black text-white">{children}</body>
+      <body className={`${inter.className} bg-black text-white antialiased`}>
+        {children}
+      </body>
     </html>
   );
 }
