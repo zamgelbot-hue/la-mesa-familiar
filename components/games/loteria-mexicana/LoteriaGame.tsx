@@ -775,6 +775,16 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
       setErrorMessage("");
       setMessage("");
 
+      if (match?.id && match.status === "playing") {
+        await supabase
+          .from("loteria_matches")
+          .update({
+            status: "finished",
+            finished_at: new Date().toISOString(),
+          })
+          .eq("id", match.id);
+      }
+
       await supabase
         .from("rooms")
         .update({
@@ -795,7 +805,12 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
     } finally {
       setLeavingToRoom(false);
     }
-  }, [supabase, router, roomCode]);
+  }, [supabase, router, roomCode, match?.id, match?.status]);
+
+  const handleTerminateMatch = useCallback(async () => {
+    if (!isHost) return;
+    await handleBackToRoom();
+  }, [isHost, handleBackToRoom]);
 
   const handleRematch = useCallback(async () => {
     if (!match || !currentMatchPlayer || !isHost) return;
@@ -1002,6 +1017,17 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
                 <p className="mt-1 font-bold text-white">{deck.name}</p>
               </div>
 
+              {isHost && (
+                <button
+                  type="button"
+                  onClick={() => void handleTerminateMatch()}
+                  disabled={leavingToRoom}
+                  className="rounded-2xl bg-red-500/90 px-4 py-3 font-semibold text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {leavingToRoom ? "Terminando..." : "Terminar partida"}
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => void handleBackToRoom()}
@@ -1178,6 +1204,17 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
                     className="rounded-2xl bg-emerald-500 px-5 py-3 font-bold text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {rematchLoading ? "Reiniciando..." : "Iniciar revancha"}
+                  </button>
+                )}
+
+                {isHost && (
+                  <button
+                    type="button"
+                    onClick={() => void handleTerminateMatch()}
+                    disabled={leavingToRoom}
+                    className="rounded-2xl bg-red-500/90 px-4 py-3 font-semibold text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {leavingToRoom ? "Terminando..." : "Terminar partida"}
                   </button>
                 )}
 
