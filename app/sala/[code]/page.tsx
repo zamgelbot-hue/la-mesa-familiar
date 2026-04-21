@@ -211,9 +211,15 @@ export default function SalaPage() {
   }, [sortedPlayers, minPlayersToStart]);
 
   const loadPlayerIdentity = useCallback(async () => {
-    const identity = await getPlayerIdentity();
-    setPlayerIdentity(identity);
-    return identity;
+    try {
+      const identity = await getPlayerIdentity();
+      setPlayerIdentity(identity);
+      return identity;
+    } catch (error) {
+      console.error("Error cargando identidad del jugador:", error);
+      setPlayerIdentity(null);
+      return null;
+    }
   }, []);
 
   const fetchProfilesForPlayers = useCallback(
@@ -252,6 +258,39 @@ export default function SalaPage() {
     [supabase]
   );
 
+  const resolveCurrentPlayerFromList = useCallback(
+    async (playerList: RoomPlayer[]) => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (user?.id) {
+          const authMatchedPlayer = playerList.find(
+            (player) => player.user_id === user.id
+          );
+
+          if (authMatchedPlayer) {
+            setCurrentPlayerName(authMatchedPlayer.player_name);
+            savePlayerIdentity(code, authMatchedPlayer.player_name, authMatchedPlayer.is_host);
+            return;
+          }
+        }
+
+        const storedName = readStoredPlayerName(code);
+        if (storedName && playerList.some((player) => player.player_name === storedName)) {
+          setCurrentPlayerName(storedName);
+          return;
+        }
+
+        setCurrentPlayerName("");
+      } catch (error) {
+        console.error("Error resolviendo identidad en sala:", error);
+      }
+    },
+    [supabase, code]
+  );
+
   const fetchRoom = useCallback(async () => {
     const { data, error } = await supabase
       .from("rooms")
@@ -286,34 +325,10 @@ export default function SalaPage() {
     const list = (data ?? []) as RoomPlayer[];
     setPlayers(list);
     await fetchProfilesForPlayers(list);
-
-    const identity = playerIdentity ?? (await loadPlayerIdentity());
-
-    if (identity?.user_id) {
-      const authMatchedPlayer = list.find(
-        (player) => player.user_id === identity.user_id
-      );
-
-      if (authMatchedPlayer) {
-        setCurrentPlayerName(authMatchedPlayer.player_name);
-        savePlayerIdentity(code, authMatchedPlayer.player_name, authMatchedPlayer.is_host);
-        return list;
-      }
-    }
-
-    const storedName = readStoredPlayerName(code);
-    if (storedName && list.some((player) => player.player_name === storedName)) {
-      setCurrentPlayerName(storedName);
-    }
+    await resolveCurrentPlayerFromList(list);
 
     return list;
-  }, [
-    supabase,
-    code,
-    fetchProfilesForPlayers,
-    playerIdentity,
-    loadPlayerIdentity,
-  ]);
+  }, [supabase, code, fetchProfilesForPlayers, resolveCurrentPlayerFromList]);
 
   const fetchGame = useCallback(
     async (gameSlug?: string | null) => {
@@ -344,21 +359,25 @@ export default function SalaPage() {
     const init = async () => {
       setLoading(true);
 
-      await loadPlayerIdentity();
-      const loadedRoom = await fetchRoom();
-      await fetchPlayers();
+      try {
+        await loadPlayerIdentity();
+        const loadedRoom = await fetchRoom();
+        await fetchPlayers();
 
-      if (loadedRoom?.game_slug) {
-        await fetchGame(loadedRoom.game_slug);
-      }
-
-      if (mounted) {
-        setLoading(false);
+        if (loadedRoom?.game_slug) {
+          await fetchGame(loadedRoom.game_slug);
+        }
+      } catch (error) {
+        console.error("Error inicializando sala:", error);
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
     if (code) {
-      init();
+      void init();
     }
 
     return () => {
