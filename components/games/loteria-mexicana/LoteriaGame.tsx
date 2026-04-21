@@ -33,6 +33,13 @@ import {
   validateLoteriaWin,
 } from "./loteriaUtils";
 import { unlockAudioElement, playStartVoice, playCardVoice, playWinVoice } from "./loteriaAudioManager";
+import { unlockLoteriaAudio } from "./loteriaSounds";
+import {
+  playStartVoice,
+  playCardVoice,
+  playWinVoice,
+  unlockAudioElement,
+} from "./loteriaAudioManager";
 
 type RoomRow = {
   code: string;
@@ -1020,6 +1027,7 @@ const result = validateLoteriaWin(
                 <button
                   type="button"
 onClick={async () => {
+  await unlockLoteriaAudio();
   await unlockAudioElement();
   void handleStartMatch();
 }}
