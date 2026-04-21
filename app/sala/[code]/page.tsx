@@ -268,41 +268,52 @@ export default function SalaPage() {
     [supabase, room?.game_slug]
   );
 
-  const fetchProfilesForPlayers = useCallback(
-    async (playerList: RoomPlayer[]) => {
-      const userIds = Array.from(
-        new Set(playerList.map((p) => p.user_id).filter(Boolean))
-      ) as string[];
+const lastProfilesKeyRef = useRef("");
 
-      if (userIds.length === 0) {
-        setProfilesMap({});
-        return;
-      }
+const fetchProfilesForPlayers = useCallback(
+  async (playerList: RoomPlayer[]) => {
+    const userIds = Array.from(
+      new Set(playerList.map((p) => p.user_id).filter(Boolean))
+    ) as string[];
 
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, display_name, avatar_key, frame_key, points")
-        .in("id", userIds);
+    const requestKey = userIds.sort().join("|");
 
-      if (error) {
-        console.error("Error cargando perfiles:", error);
-        return;
-      }
+    if (!requestKey) {
+      lastProfilesKeyRef.current = "";
+      setProfilesMap({});
+      return;
+    }
 
-      const nextMap: ProfileMap = {};
-      for (const profile of data ?? []) {
-        nextMap[profile.id] = {
-          display_name: profile.display_name,
-          avatar_key: profile.avatar_key,
-          frame_key: profile.frame_key,
-          points: profile.points,
-        };
-      }
+    if (lastProfilesKeyRef.current === requestKey) {
+      return;
+    }
 
-      setProfilesMap(nextMap);
-    },
-    [supabase]
-  );
+    lastProfilesKeyRef.current = requestKey;
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, display_name, avatar_key, frame_key, points")
+      .in("id", userIds);
+
+    if (error) {
+      console.error("Error cargando perfiles:", error);
+      return;
+    }
+
+    const nextMap: ProfileMap = {};
+    for (const profile of data ?? []) {
+      nextMap[profile.id] = {
+        display_name: profile.display_name,
+        avatar_key: profile.avatar_key,
+        frame_key: profile.frame_key,
+        points: profile.points,
+      };
+    }
+
+    setProfilesMap(nextMap);
+  },
+  [supabase]
+);
 
   const resolveCurrentPlayerFromList = useCallback(
     (playerList: RoomPlayer[], identity: PlayerIdentity | null) => {
@@ -338,28 +349,34 @@ export default function SalaPage() {
     [code]
   );
 
-  const fetchPlayers = useCallback(
-    async (identityOverride?: PlayerIdentity | null) => {
-      const { data, error } = await supabase
-        .from("room_players")
-        .select("*")
-        .eq("room_code", code)
-        .order("created_at", { ascending: true });
+const fetchPlayers = useCallback(
+  async (identityOverride?: PlayerIdentity | null) => {
+    const { data, error } = await supabase
+      .from("room_players")
+      .select("*")
+      .eq("room_code", code)
+      .order("created_at", { ascending: true });
 
-      if (error) {
-        console.error("Error cargando players:", error);
-        return [];
-      }
+    if (error) {
+      console.error("Error cargando players:", error);
+      return [];
+    }
 
-      const list = (data ?? []) as RoomPlayer[];
-      setPlayers(list);
-      await fetchProfilesForPlayers(list);
-      resolveCurrentPlayerFromList(list, identityOverride ?? playerIdentity);
+    const list = (data ?? []) as RoomPlayer[];
 
-      return list;
-    },
-    [supabase, code, fetchProfilesForPlayers, resolveCurrentPlayerFromList, playerIdentity]
-  );
+    setPlayers((prev) => {
+      const prevSerialized = JSON.stringify(prev);
+      const nextSerialized = JSON.stringify(list);
+      return prevSerialized === nextSerialized ? prev : list;
+    });
+
+    await fetchProfilesForPlayers(list);
+    resolveCurrentPlayerFromList(list, identityOverride ?? playerIdentity);
+
+    return list;
+  },
+  [supabase, code, fetchProfilesForPlayers, resolveCurrentPlayerFromList, playerIdentity]
+);
 
   const autoJoinIfNeeded = useCallback(
     async (currentRoom: Room | null, currentPlayers: RoomPlayer[], identity: PlayerIdentity | null) => {
