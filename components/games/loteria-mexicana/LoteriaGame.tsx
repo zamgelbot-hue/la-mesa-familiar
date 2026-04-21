@@ -591,9 +591,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
         return;
       }
 
-      if (
-        isCardExpired(calledCardKeys, localMarkedCardKeys, cardKey)
-      ) {
+      if (isCardExpired(calledCardKeys, localMarkedCardKeys, cardKey)) {
         setMessage("Esa carta ya expiró. Solo tenías 2 turnos para marcarla.");
         shakeCard(cardKey);
         void playLoteriaExpiredSound();
@@ -657,9 +655,26 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
       setMessage("");
       setErrorMessage("");
 
+      await new Promise((resolve) => setTimeout(resolve, 120));
+
+      const { data: freshPlayer, error: freshPlayerError } = await supabase
+        .from("loteria_match_players")
+        .select("marked_card_keys")
+        .eq("id", currentMatchPlayer.id)
+        .single();
+
+      if (freshPlayerError) {
+        console.error("Error leyendo marked_card_keys frescos:", freshPlayerError);
+      }
+
+      const freshMarked =
+        freshPlayer?.marked_card_keys ?? localMarkedCardKeys;
+
+      setLocalMarkedCardKeys(freshMarked);
+
       const result = validateLoteriaWin(
         currentMatchPlayer.board_card_keys ?? [],
-        localMarkedCardKeys,
+        freshMarked,
         calledCardKeys
       );
 
