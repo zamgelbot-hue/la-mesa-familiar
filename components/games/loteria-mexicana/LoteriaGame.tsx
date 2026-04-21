@@ -32,7 +32,12 @@ import {
   sleep,
   validateLoteriaWin,
 } from "./loteriaUtils";
-import { unlockLoteriaAudio } from "./loteriaSounds";
+import {
+  unlockLoteriaAudio,
+  playLoteriaMarkSound,
+  playLoteriaInvalidSound,
+  playLoteriaExpiredSound,
+} from "./loteriaSounds";
 import {
   unlockAudioElement,
   playStartVoice,
