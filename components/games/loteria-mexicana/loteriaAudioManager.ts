@@ -9,11 +9,12 @@ function playAudio(src: string) {
 
     const audio = new Audio(src);
     audio.volume = 1;
+    audio.preload = "auto";
 
     currentAudio = audio;
 
     audio.play().catch(() => {
-      // móvil puede bloquear autoplay
+      // En móvil puede bloquearse hasta interacción del usuario
     });
   } catch (err) {
     console.error("Audio error:", err);
