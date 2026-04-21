@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -15,7 +15,7 @@ function getSafeNextPath(nextValue: string | null) {
   return nextValue;
 }
 
-export default function AccesoPage() {
+function AccesoContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
@@ -431,5 +431,23 @@ export default function AccesoPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function AccesoPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-black px-6 py-10 text-white">
+          <div className="mx-auto max-w-6xl">
+            <div className="rounded-[34px] border border-orange-500/15 bg-zinc-950/90 p-10 text-center shadow-[0_0_40px_rgba(249,115,22,0.05)]">
+              <p className="text-2xl font-bold">Cargando acceso...</p>
+            </div>
+          </div>
+        </main>
+      }
+    >
+      <AccesoContent />
+    </Suspense>
   );
 }
