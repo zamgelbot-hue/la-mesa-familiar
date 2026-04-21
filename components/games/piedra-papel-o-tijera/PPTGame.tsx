@@ -23,7 +23,8 @@ export default function PPTGame({
   roomSettings,
 }: PPTGameProps) {
   const router = useRouter();
-  const supabase = createClient();
+  const supabaseRef = useRef(createClient());
+  const supabase = supabaseRef.current;
 
   const code = String(roomCode ?? "").toUpperCase();
 
