@@ -165,12 +165,14 @@ export async function submitPlayerAnswer(
     .upsert(
       {
         session_id: answer.sessionId,
+        room_id: answer.roomId,
         player_id: answer.playerId,
         round_number: answer.roundNumber,
         question_id: answer.questionId,
         selected_original_index: answer.selectedOriginalIndex,
         is_correct: answer.isCorrect,
         response_time_ms: answer.responseTimeMs,
+        answered_at: answer.answeredAt,
       },
       {
         onConflict: "session_id,round_number,player_id",
@@ -186,11 +188,18 @@ export async function submitPlayerAnswer(
   return data;
 }
 
+  if (error) {
+    throw new Error(`Error submitting answer: ${error.message}`);
+  }
+
+  return data;
+}
+
 export async function fetchRoundAnswers(
   supabase: SupabaseClient,
   sessionId: string,
   roundNumber: number,
-) {
+): Promise<PlayerRoundAnswer[]> {
   const { data, error } = await supabase
     .from("pp_answers")
     .select("*")
@@ -201,7 +210,18 @@ export async function fetchRoundAnswers(
     throw new Error(`Error fetching round answers: ${error.message}`);
   }
 
-  return data ?? [];
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    sessionId: row.session_id,
+    roomId: row.room_id ?? "",
+    roundNumber: row.round_number,
+    playerId: row.player_id,
+    questionId: row.question_id,
+    selectedOriginalIndex: row.selected_original_index,
+    isCorrect: row.is_correct,
+    responseTimeMs: row.response_time_ms,
+    answeredAt: row.answered_at ?? row.created_at ?? new Date().toISOString(),
+  }));
 }
 
 export async function updateSessionPlayerScores(
