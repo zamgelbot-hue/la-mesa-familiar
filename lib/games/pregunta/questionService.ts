@@ -188,13 +188,6 @@ export async function submitPlayerAnswer(
   return data;
 }
 
-  if (error) {
-    throw new Error(`Error submitting answer: ${error.message}`);
-  }
-
-  return data;
-}
-
 export async function fetchRoundAnswers(
   supabase: SupabaseClient,
   sessionId: string,
