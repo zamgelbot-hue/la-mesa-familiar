@@ -1,9 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { SupabaseClient } from "@supabase/supabase-js";
-
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import {
+  getPlayerIdentity,
+  type PlayerIdentity,
+} from "@/lib/getPlayerIdentity";
+import { applySingleWinnerMatchRewards } from "@/lib/gameRewards";
 import {
   buildFinalStandings,
   calculateGlobalRewards,
@@ -34,23 +38,29 @@ import type {
   QuestionRow,
 } from "@/lib/games/pregunta/questionTypes";
 
-type RoomPlayer = {
-  id: string;
-  display_name?: string | null;
-  name?: string | null;
-  avatar_url?: string | null;
-  is_host?: boolean | null;
+type QuestionGameProps = {
+  roomCode: string;
+  roomVariant?: string | null;
+  roomSettings?: Record<string, unknown> | null;
 };
 
-type QuestionGameProps = {
-  roomId: string;
-  currentPlayerId: string;
-  players: RoomPlayer[];
-  hostPlayerId: string;
-  categoryMode?: QuestionCategory;
-  totalRounds?: number;
-  answerTimeMs?: number;
-  onReturnToRoom?: () => void;
+type RoomRow = {
+  code: string;
+  status: string;
+  game_slug: string | null;
+  game_variant: string | null;
+  room_settings: Record<string, unknown> | null;
+};
+
+type RoomPlayerRow = {
+  id: string;
+  room_code: string;
+  user_id: string | null;
+  player_name: string;
+  is_host: boolean | null;
+  is_guest: boolean | null;
+  is_ready: boolean | null;
+  created_at?: string;
 };
 
 type SessionRow = {
@@ -83,20 +93,64 @@ const QUESTION_INTRO_MS = 2000;
 const REVEAL_MS = 2500;
 const SCOREBOARD_MS = 2500;
 
+function getCategoryFromVariantOrSettings(
+  roomVariant?: string | null,
+  roomSettings?: Record<string, unknown> | null,
+): QuestionCategory {
+  const raw =
+    (typeof roomSettings?.categoryMode === "string" && roomSettings.categoryMode) ||
+    roomVariant ||
+    "sabelotodo";
+
+  const allowed: QuestionCategory[] = [
+    "espanol",
+    "matematicas",
+    "ingles",
+    "geografia",
+    "ciencias",
+    "sabelotodo",
+  ];
+
+  return allowed.includes(raw as QuestionCategory)
+    ? (raw as QuestionCategory)
+    : "sabelotodo";
+}
+
+function getTotalRoundsForMode(categoryMode: QuestionCategory) {
+  return categoryMode === "sabelotodo" ? 20 : 10;
+}
+
+function getAnswerTimeForMode(categoryMode: QuestionCategory) {
+  return categoryMode === "sabelotodo" ? 4000 : 5000;
+}
+
 export default function QuestionGame({
-  roomId,
-  currentPlayerId,
-  players,
-  hostPlayerId,
-  categoryMode = "sabelotodo",
-  totalRounds = 10,
-  answerTimeMs = 5000,
-  onReturnToRoom,
+  roomCode,
+  roomVariant,
+  roomSettings,
 }: QuestionGameProps) {
-  const supabase = useMemo(() => createClientComponentClient(), []) as SupabaseClient;
+  const router = useRouter();
+  const supabaseRef = useRef(createClient());
+  const supabase = supabaseRef.current;
 
-  const isHost = currentPlayerId === hostPlayerId;
+  const categoryMode = useMemo(
+    () => getCategoryFromVariantOrSettings(roomVariant, roomSettings),
+    [roomVariant, roomSettings],
+  );
 
+  const totalRounds = useMemo(
+    () => getTotalRoundsForMode(categoryMode),
+    [categoryMode],
+  );
+
+  const answerTimeMs = useMemo(
+    () => getAnswerTimeForMode(categoryMode),
+    [categoryMode],
+  );
+
+  const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(null);
+  const [room, setRoom] = useState<RoomRow | null>(null);
+  const [roomPlayers, setRoomPlayers] = useState<RoomPlayerRow[]>([]);
   const [session, setSession] = useState<SessionRow | null>(null);
   const [sessionPlayers, setSessionPlayers] = useState<QuestionPlayerSummary[]>([]);
   const [questionBank, setQuestionBank] = useState<QuestionRow[]>([]);
@@ -104,38 +158,123 @@ export default function QuestionGame({
   const [phase, setPhase] = useState<QuestionGamePhase>("waiting");
   const [timeLeftMs, setTimeLeftMs] = useState(0);
   const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | null>(null);
-  const [roundResolved, setRoundResolved] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [leavingToRoom, setLeavingToRoom] = useState(false);
+  const [message, setMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const phaseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const initializedRef = useRef(false);
+  const phaseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const roundTransitionLockRef = useRef(false);
+  const rewardsAppliedSessionIdRef = useRef<string | null>(null);
 
-  const currentPlayer = useMemo(
-    () => players.find((p) => p.id === currentPlayerId),
-    [players, currentPlayerId],
+  const currentRoomPlayer = useMemo(() => {
+    if (!playerIdentity) return null;
+
+    return (
+      roomPlayers.find((player) => {
+        if (playerIdentity.user_id && player.user_id) {
+          return player.user_id === playerIdentity.user_id;
+        }
+
+        return !player.user_id && player.player_name === playerIdentity.name;
+      }) ?? null
+    );
+  }, [roomPlayers, playerIdentity]);
+
+  const isHost = !!currentRoomPlayer?.is_host;
+
+  const currentPlayerSessionKey = useMemo(() => {
+    if (!currentRoomPlayer) return null;
+    return currentRoomPlayer.user_id ?? `guest:${currentRoomPlayer.player_name}`;
+  }, [currentRoomPlayer]);
+
+  const hostSessionKey = useMemo(() => {
+    const host = roomPlayers.find((p) => p.is_host);
+    if (!host) return null;
+    return host.user_id ?? `guest:${host.player_name}`;
+  }, [roomPlayers]);
+
+  const currentPlayerName = currentRoomPlayer?.player_name ?? playerIdentity?.name ?? "Jugador";
+
+  const sortedPlayers = useMemo(
+    () => [...sessionPlayers].sort((a, b) => b.score - a.score),
+    [sessionPlayers],
   );
 
-  const ensureSessionPlayersExist = useCallback(
-    async (sessionId: string) => {
-      await Promise.all(
-        players.map((player) =>
-          upsertSessionPlayer(supabase, {
-            sessionId,
-            playerId: player.id,
-            displayName:
-              player.display_name || player.name || `Jugador ${player.id.slice(0, 4)}`,
-            currentScore: 0,
-            correctAnswers: 0,
-            incorrectAnswers: 0,
-          }),
-        ),
-      );
+  const loadPlayerIdentity = useCallback(async () => {
+    const identity = await getPlayerIdentity();
+    setPlayerIdentity(identity);
+  }, []);
+
+  const loadRoom = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("rooms")
+      .select("code, status, game_slug, game_variant, room_settings")
+      .eq("code", roomCode)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error cargando room:", error);
+      setErrorMessage("No se pudo cargar la sala.");
+      return;
+    }
+
+    if (!data) {
+      setErrorMessage("No encontramos esta sala.");
+      return;
+    }
+
+    setRoom(data as RoomRow);
+  }, [supabase, roomCode]);
+
+  const loadRoomPlayers = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("room_players")
+      .select("id, room_code, user_id, player_name, is_host, is_guest, is_ready, created_at")
+      .eq("room_code", roomCode)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error("Error cargando room_players:", error);
+      return;
+    }
+
+    setRoomPlayers((data ?? []) as RoomPlayerRow[]);
+  }, [supabase, roomCode]);
+
+  const loadSession = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("pp_sessions")
+      .select("*")
+      .eq("room_id", roomCode)
+      .in("status", ["waiting", "playing", "finished"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error cargando pp_sessions:", error);
+      return null;
+    }
+
+    const nextSession = (data ?? null) as SessionRow | null;
+    setSession(nextSession);
+    setPhase(nextSession?.phase ?? "waiting");
+    return nextSession;
+  }, [supabase, roomCode]);
+
+  const loadSessionPlayers = useCallback(
+    async (sessionId?: string | null) => {
+      if (!sessionId) {
+        setSessionPlayers([]);
+        return;
+      }
 
       const dbPlayers = await fetchSessionPlayers(supabase, sessionId);
 
-      const mapped: QuestionPlayerSummary[] = dbPlayers.map((p: SessionPlayerRow) => ({
+      const mapped: QuestionPlayerSummary[] = (dbPlayers as SessionPlayerRow[]).map((p) => ({
         playerId: p.player_id,
         name: p.display_name || "Jugador",
         score: p.current_score ?? 0,
@@ -146,124 +285,196 @@ export default function QuestionGame({
 
       setSessionPlayers(mapped);
     },
-    [players, supabase],
+    [supabase],
   );
 
-  const initializeGame = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const createSessionIfNeeded = useCallback(async () => {
+    if (!room || !playerIdentity || !isHost) return null;
+    if (session) return session;
+    if (room.game_slug !== "pregunta") return null;
+    if (roomPlayers.length < 2) return null;
+    if (!hostSessionKey) return null;
 
-      const { data: existingSession } = await supabase
-        .from("pp_sessions")
-        .select("*")
-        .eq("room_id", roomId)
-        .in("status", ["waiting", "playing"])
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    const fetchedQuestions = await fetchQuestionsForGame(supabase, {
+      categoryMode,
+      limit: totalRounds,
+      excludeIds: [],
+    });
 
-      let activeSession = existingSession as SessionRow | null;
-
-      if (!activeSession) {
-        if (!isHost) {
-          setLoading(false);
-          return;
-        }
-
-        const fetchedQuestions = await fetchQuestionsForGame(supabase, {
-          categoryMode,
-          limit: totalRounds,
-          excludeIds: [],
-        });
-
-        if (!fetchedQuestions.length) {
-          throw new Error("No hay preguntas disponibles para esta categoría.");
-        }
-
-        setQuestionBank(fetchedQuestions);
-
-        const created = (await createQuestionSession(supabase, {
-          roomId,
-          hostId: hostPlayerId,
-          status: "waiting",
-          phase: "waiting",
-          currentRound: 0,
-          totalRounds,
-          settings: {
-            totalRounds,
-            answerTimeMs,
-            questionRevealMs: REVEAL_MS,
-            scoreboardMs: SCOREBOARD_MS,
-            categoryMode,
-            allowExplanation: true,
-          },
-        })) as SessionRow;
-
-        activeSession = created;
-      }
-
-      setSession(activeSession);
-      setPhase(activeSession.phase);
-
-      const fetchedQuestions = await fetchQuestionsForGame(supabase, {
-        categoryMode: activeSession.category_mode,
-        limit: activeSession.total_rounds,
-        excludeIds: [],
-      });
-
-      setQuestionBank(fetchedQuestions);
-
-      await ensureSessionPlayersExist(activeSession.id);
-
-      setLoading(false);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Error inicializando partida";
-      setError(message);
-      setLoading(false);
+    if (!fetchedQuestions.length) {
+      setErrorMessage("No hay preguntas disponibles para esta categoría.");
+      return null;
     }
+
+    setQuestionBank(fetchedQuestions);
+
+    const created = (await createQuestionSession(supabase, {
+      roomId: roomCode,
+      hostId: hostSessionKey,
+      status: "waiting",
+      phase: "waiting",
+      currentRound: 0,
+      totalRounds,
+      settings: {
+        totalRounds,
+        answerTimeMs,
+        questionRevealMs: REVEAL_MS,
+        scoreboardMs: SCOREBOARD_MS,
+        categoryMode,
+        allowExplanation: true,
+      },
+    })) as SessionRow;
+
+    setSession(created);
+    setPhase(created.phase);
+
+    return created;
   }, [
     answerTimeMs,
     categoryMode,
-    ensureSessionPlayersExist,
-    hostPlayerId,
+    hostSessionKey,
     isHost,
-    roomId,
+    playerIdentity,
+    room,
+    roomCode,
+    roomPlayers.length,
+    session,
     supabase,
     totalRounds,
   ]);
 
+  const ensureSessionPlayersExist = useCallback(
+    async (sessionId: string) => {
+      const inserts = roomPlayers.map((player) => {
+        const playerKey = player.user_id ?? `guest:${player.player_name}`;
+
+        return upsertSessionPlayer(supabase, {
+          sessionId,
+          playerId: playerKey,
+          displayName: player.player_name,
+          currentScore: 0,
+          correctAnswers: 0,
+          incorrectAnswers: 0,
+        });
+      });
+
+      await Promise.all(inserts);
+      await loadSessionPlayers(sessionId);
+    },
+    [roomPlayers, supabase, loadSessionPlayers],
+  );
+
+  const loadQuestionBank = useCallback(async () => {
+    const fetchedQuestions = await fetchQuestionsForGame(supabase, {
+      categoryMode,
+      limit: totalRounds,
+      excludeIds: [],
+    });
+
+    setQuestionBank(fetchedQuestions);
+    return fetchedQuestions;
+  }, [supabase, categoryMode, totalRounds]);
+
+  const initializeGame = useCallback(async () => {
+    try {
+      setLoading(true);
+      setErrorMessage("");
+
+      await loadPlayerIdentity();
+      await Promise.all([loadRoom(), loadRoomPlayers()]);
+    } finally {
+      setLoading(false);
+    }
+  }, [loadPlayerIdentity, loadRoom, loadRoomPlayers]);
+
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
-    initializeGame();
+    void initializeGame();
   }, [initializeGame]);
 
   useEffect(() => {
-    if (!session?.id) return;
+    if (!room || !playerIdentity) return;
 
-    const sessionChannel = supabase
-      .channel(`pp_sessions_${session.id}`)
+    const boot = async () => {
+      const existing = await loadSession();
+      const activeSession = existing ?? (await createSessionIfNeeded());
+
+      if (activeSession) {
+        if (!questionBank.length) {
+          await loadQuestionBank();
+        }
+        await ensureSessionPlayersExist(activeSession.id);
+      }
+    };
+
+    void boot();
+  }, [
+    room,
+    playerIdentity,
+    loadSession,
+    createSessionIfNeeded,
+    ensureSessionPlayersExist,
+    loadQuestionBank,
+    questionBank.length,
+  ]);
+
+  useEffect(() => {
+    if (!roomCode) return;
+
+    const channel = supabase
+      .channel(`pregunta-room-${roomCode}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "rooms",
+          filter: `code=eq.${roomCode}`,
+        },
+        async () => {
+          await loadRoom();
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "room_players",
+          filter: `room_code=eq.${roomCode}`,
+        },
+        async () => {
+          await loadRoomPlayers();
+        },
+      )
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "pp_sessions",
-          filter: `id=eq.${session.id}`,
+          filter: `room_id=eq.${roomCode}`,
         },
-        (payload) => {
-          const next = payload.new as SessionRow;
-          if (!next) return;
-
-          setSession(next);
-          setPhase(next.phase);
+        async () => {
+          const fresh = await loadSession();
+          if (fresh?.id) {
+            await loadSessionPlayers(fresh.id);
+          }
         },
       )
       .subscribe();
 
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, roomCode, loadRoom, loadRoomPlayers, loadSession, loadSessionPlayers]);
+
+  useEffect(() => {
+    if (!session?.id) return;
+
     const playersChannel = supabase
-      .channel(`pp_session_players_${session.id}`)
+      .channel(`pregunta-session-players-${session.id}`)
       .on(
         "postgres_changes",
         {
@@ -273,27 +484,15 @@ export default function QuestionGame({
           filter: `session_id=eq.${session.id}`,
         },
         async () => {
-          const dbPlayers = await fetchSessionPlayers(supabase, session.id);
-
-          const mapped: QuestionPlayerSummary[] = dbPlayers.map((p: SessionPlayerRow) => ({
-            playerId: p.player_id,
-            name: p.display_name || "Jugador",
-            score: p.current_score ?? 0,
-            correctAnswers: p.correct_answers ?? 0,
-            incorrectAnswers: p.incorrect_answers ?? 0,
-            averageResponseMs: null,
-          }));
-
-          setSessionPlayers(mapped);
+          await loadSessionPlayers(session.id);
         },
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(sessionChannel);
       supabase.removeChannel(playersChannel);
     };
-  }, [session?.id, supabase]);
+  }, [supabase, session?.id, loadSessionPlayers]);
 
   const getQuestionForRound = useCallback(
     (roundNumber: number) => {
@@ -303,6 +502,12 @@ export default function QuestionGame({
     },
     [questionBank],
   );
+
+  useEffect(() => {
+    if (!session?.current_round) return;
+    const q = getQuestionForRound(session.current_round);
+    if (q) setCurrentQuestion(q);
+  }, [getQuestionForRound, session?.current_round]);
 
   const startRound = useCallback(
     async (roundNumber: number) => {
@@ -319,7 +524,8 @@ export default function QuestionGame({
 
       setCurrentQuestion(nextQuestion);
       setSelectedOptionIndex(null);
-      setRoundResolved(false);
+      setMessage("");
+      setErrorMessage("");
 
       const questionStartedAt = new Date();
       const answerEndsAt = new Date(questionStartedAt.getTime() + QUESTION_INTRO_MS + answerTimeMs);
@@ -344,8 +550,31 @@ export default function QuestionGame({
     [answerTimeMs, getQuestionForRound, isHost, session, supabase],
   );
 
+  const awardRewardsIfNeeded = useCallback(
+    async (standings: ReturnType<typeof buildFinalStandings>) => {
+      if (!session?.id) return;
+      if (rewardsAppliedSessionIdRef.current === session.id) return;
+
+      const winner = standings.find((s) => s.position === 1) ?? null;
+
+      const participantUserIds = roomPlayers.map((player) => player.user_id);
+
+      await applySingleWinnerMatchRewards({
+        supabase,
+        winnerUserId:
+          winner && winner.playerId.startsWith("guest:") ? null : winner?.playerId ?? null,
+        participantUserIds,
+        winnerPoints: 5,
+        participantPoints: 2,
+      });
+
+      rewardsAppliedSessionIdRef.current = session.id;
+    },
+    [session?.id, roomPlayers, supabase],
+  );
+
   const resolveCurrentRound = useCallback(async () => {
-    if (!session || !currentQuestion || !isHost || roundResolved) return;
+    if (!session || !currentQuestion || !isHost) return;
     if (roundTransitionLockRef.current) return;
 
     roundTransitionLockRef.current = true;
@@ -370,7 +599,12 @@ export default function QuestionGame({
       const nextPlayers = sessionPlayers.map((player) => {
         const round = resolution.results.find((r) => r.playerId === player.playerId);
 
-        if (!round) return player;
+        if (!round) {
+          return {
+            ...player,
+            incorrectAnswers: player.incorrectAnswers + 1,
+          };
+        }
 
         return {
           ...player,
@@ -381,7 +615,6 @@ export default function QuestionGame({
       });
 
       setSessionPlayers(nextPlayers);
-      setRoundResolved(true);
 
       await updateSessionPlayerScores(
         supabase,
@@ -415,12 +648,14 @@ export default function QuestionGame({
             })),
           );
 
+          await awardRewardsIfNeeded(standings);
+
+          console.log("Rewards calculadas:", rewards);
+
           await updateQuestionSession(supabase, session.id, {
             status: "finished",
             phase: "finished",
           });
-
-          console.log("Rewards calculadas:", rewards);
         } else {
           await updateQuestionSession(supabase, session.id, {
             phase: "scoreboard",
@@ -431,16 +666,16 @@ export default function QuestionGame({
           }, SCOREBOARD_MS);
         }
       }, REVEAL_MS);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Error resolviendo ronda";
-      setError(message);
+    } catch (error) {
+      console.error("Error resolviendo ronda:", error);
+      setErrorMessage("No se pudo resolver la ronda.");
     } finally {
       roundTransitionLockRef.current = false;
     }
   }, [
+    awardRewardsIfNeeded,
     currentQuestion,
     isHost,
-    roundResolved,
     session,
     sessionPlayers,
     startRound,
@@ -450,8 +685,8 @@ export default function QuestionGame({
   useEffect(() => {
     if (!session) return;
 
-    if (phase === "waiting" && isHost && session.current_round === 0) {
-      startRound(1);
+    if (phase === "waiting" && isHost && session.current_round === 0 && questionBank.length) {
+      void startRound(1);
       return;
     }
 
@@ -465,8 +700,8 @@ export default function QuestionGame({
         const ms = getRemainingMs(session.answer_ends_at);
         setTimeLeftMs(ms);
 
-        if (ms <= 0) {
-          resolveCurrentRound();
+        if (ms <= 0 && isHost) {
+          void resolveCurrentRound();
         }
       };
 
@@ -485,16 +720,14 @@ export default function QuestionGame({
       setTimeLeftMs(SCOREBOARD_MS);
       return;
     }
-  }, [isHost, phase, resolveCurrentRound, session, startRound]);
 
-  useEffect(() => {
-    if (!session?.current_round) return;
-    const q = getQuestionForRound(session.current_round);
-    if (q) setCurrentQuestion(q);
-  }, [getQuestionForRound, session?.current_round]);
+    if (phase === "finished") {
+      setTimeLeftMs(0);
+    }
+  }, [isHost, phase, questionBank.length, resolveCurrentRound, session, startRound]);
 
   const handleSelectOption = async (originalIndex: number) => {
-    if (!session || !currentQuestion) return;
+    if (!session || !currentQuestion || !currentPlayerSessionKey) return;
     if (phase !== "answer") return;
     if (selectedOptionIndex !== null) return;
 
@@ -503,232 +736,344 @@ export default function QuestionGame({
     const isCorrect = originalIndex === currentQuestion.correctOriginalIndex;
 
     setSelectedOptionIndex(originalIndex);
+    setMessage("Respuesta enviada.");
 
     try {
       await submitPlayerAnswer(supabase, {
         sessionId: session.id,
-        roomId,
+        roomId: roomCode,
         roundNumber: session.current_round,
-        playerId: currentPlayerId,
+        playerId: currentPlayerSessionKey,
         questionId: currentQuestion.id,
         selectedOriginalIndex: originalIndex,
         isCorrect,
         responseTimeMs,
         answeredAt,
       });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Error enviando respuesta";
-      setError(message);
+    } catch (error) {
+      console.error("Error enviando respuesta:", error);
+      setErrorMessage("No se pudo enviar tu respuesta.");
     }
   };
 
-  const sortedPlayers = useMemo(
-    () => [...sessionPlayers].sort((a, b) => b.score - a.score),
-    [sessionPlayers],
-  );
+  const handleBackToRoom = useCallback(async () => {
+    try {
+      setLeavingToRoom(true);
+      setErrorMessage("");
+      setMessage("");
+
+      await supabase
+        .from("rooms")
+        .update({
+          status: "waiting",
+          started_at: null,
+        })
+        .eq("code", roomCode);
+
+      await supabase
+        .from("room_players")
+        .update({ is_ready: false })
+        .eq("room_code", roomCode);
+
+      router.replace(`/sala/${roomCode}`);
+    } catch (error) {
+      console.error("Error volviendo a sala:", error);
+      setErrorMessage("No se pudo volver a la sala.");
+    } finally {
+      setLeavingToRoom(false);
+    }
+  }, [supabase, router, roomCode]);
+
+  const handleTerminateMatch = useCallback(async () => {
+    if (!isHost) return;
+    await handleBackToRoom();
+  }, [isHost, handleBackToRoom]);
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-orange-500/20 bg-neutral-900 p-6 text-white">
-        Cargando Pregunta Pregunta...
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="rounded-2xl border border-red-500/30 bg-neutral-900 p-6 text-white">
-        <p className="font-semibold text-red-400">Error</p>
-        <p className="mt-2 text-sm text-neutral-300">{error}</p>
-      </div>
-    );
-  }
-
-  if (!session) {
-    return (
-      <div className="rounded-2xl border border-orange-500/20 bg-neutral-900 p-6 text-white">
-        Esperando sesión...
-      </div>
+      <main className="min-h-screen bg-black px-6 py-12 text-white">
+        <div className="mx-auto max-w-6xl rounded-[32px] border border-orange-500/15 bg-zinc-950/90 p-10 text-center">
+          Cargando Pregunta Pregunta...
+        </div>
+      </main>
     );
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 text-white">
-      <div className="rounded-3xl border border-orange-500/20 bg-neutral-950/90 p-5 shadow-2xl">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <main className="min-h-screen bg-black px-4 py-6 text-white md:px-6 md:py-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-6 flex flex-col gap-4 rounded-[32px] border border-orange-500/15 bg-zinc-950/90 p-5 shadow-[0_0_40px_rgba(249,115,22,0.05)] md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-orange-400">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-orange-300/80">
+              La Mesa Familiar
+            </p>
+            <h1 className="mt-1 text-3xl font-extrabold text-white">
               Pregunta Pregunta
+            </h1>
+            <p className="mt-2 text-sm text-white/60">
+              Sala: <span className="font-bold text-orange-300">{roomCode}</span>
             </p>
-            <h2 className="mt-1 text-2xl font-bold">
-              Ronda {session.current_round} / {session.total_rounds}
-            </h2>
-            <p className="mt-1 text-sm text-neutral-400">
-              Fase actual: <span className="text-neutral-200">{phase}</span>
+            <p className="mt-1 text-sm text-white/60">
+              Modo: <span className="font-bold text-white">{categoryMode}</span>
+            </p>
+            <p className="mt-1 text-sm text-white/60">
+              Jugando como: <span className="font-bold text-white">{currentPlayerName}</span>
             </p>
           </div>
 
-          <div className="rounded-2xl border border-orange-500/20 bg-black/30 px-4 py-3 text-right">
-            <p className="text-xs uppercase tracking-wide text-neutral-400">Tiempo</p>
-            <p className="text-2xl font-bold text-orange-400">
-              {Math.ceil(timeLeftMs / 1000)}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-[1.4fr_0.6fr]">
-        <div className="rounded-3xl border border-orange-500/15 bg-neutral-950/90 p-6 shadow-xl">
-          {phase === "finished" ? (
-            <div className="space-y-4">
-              <h3 className="text-3xl font-bold text-orange-400">Partida terminada</h3>
-              <p className="text-neutral-300">
-                Gracias por jugar. Ya puedes volver a la sala.
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                Fase
               </p>
+              <p className="mt-1 font-bold text-white">{phase}</p>
+            </div>
 
-              <div className="space-y-3">
-                {sortedPlayers.map((player, index) => (
-                  <div
-                    key={player.playerId}
-                    className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
-                  >
-                    <div>
-                      <p className="font-semibold">
-                        #{index + 1} {player.name}
-                      </p>
-                      <p className="text-sm text-neutral-400">
-                        {player.correctAnswers} correctas · {player.incorrectAnswers} incorrectas
-                      </p>
-                    </div>
-                    <div className="text-xl font-bold text-orange-400">{player.score}</div>
-                  </div>
-                ))}
-              </div>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                Tiempo
+              </p>
+              <p className="mt-1 font-bold text-orange-300">
+                {Math.max(0, Math.ceil(timeLeftMs / 1000))}
+              </p>
+            </div>
 
+            {isHost && (
               <button
                 type="button"
-                onClick={onReturnToRoom}
-                className="rounded-2xl bg-orange-500 px-5 py-3 font-semibold text-white transition hover:bg-orange-400"
+                onClick={() => void handleTerminateMatch()}
+                disabled={leavingToRoom}
+                className="rounded-2xl bg-red-500/90 px-4 py-3 font-semibold text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Volver a sala
+                {leavingToRoom ? "Terminando..." : "Terminar partida"}
               </button>
-            </div>
-          ) : currentQuestion ? (
-            <div className="space-y-6">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs font-medium text-orange-300">
-                    {currentQuestion.category}
-                  </span>
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-neutral-300">
-                    {currentQuestion.difficulty}
-                  </span>
-                </div>
+            )}
 
-                <h3 className="mt-4 text-2xl font-bold leading-snug">
-                  {currentQuestion.questionText}
-                </h3>
-              </div>
+            <button
+              type="button"
+              onClick={() => void handleBackToRoom()}
+              disabled={leavingToRoom || starting}
+              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {leavingToRoom ? "Volviendo..." : "Volver a sala"}
+            </button>
+          </div>
+        </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                {currentQuestion.options.map((option) => {
-                  const isSelected = selectedOptionIndex === option.originalIndex;
-                  const isCorrect =
-                    phase === "reveal" || phase === "scoreboard" || phase === "finished"
-                      ? option.originalIndex === currentQuestion.correctOriginalIndex
-                      : false;
+        <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+              Ronda
+            </p>
+            <p className="mt-1 text-lg font-bold text-white">
+              {session?.current_round ?? 0}/{session?.total_rounds ?? totalRounds}
+            </p>
+          </div>
 
-                  const isWrongSelected =
-                    (phase === "reveal" || phase === "scoreboard" || phase === "finished") &&
-                    isSelected &&
-                    !isCorrect;
+          <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+              Jugadores
+            </p>
+            <p className="mt-1 text-lg font-bold text-white">{sessionPlayers.length}</p>
+          </div>
 
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      disabled={phase !== "answer" || selectedOptionIndex !== null}
-                      onClick={() => handleSelectOption(option.originalIndex)}
-                      className={[
-                        "min-h-[90px] rounded-2xl border px-4 py-4 text-left transition",
-                        "disabled:cursor-not-allowed",
-                        isCorrect
-                          ? "border-emerald-400/40 bg-emerald-500/20"
-                          : isWrongSelected
-                            ? "border-red-400/40 bg-red-500/20"
-                            : isSelected
+          <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+              Estado
+            </p>
+            <p className="mt-1 text-lg font-bold text-white">
+              {session?.status ?? "preparando"}
+            </p>
+          </div>
+
+          <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+              Respuesta
+            </p>
+            <p className="mt-1 text-lg font-bold text-orange-300">
+              {selectedOptionIndex !== null ? "Enviada" : "Pendiente"}
+            </p>
+          </div>
+        </div>
+
+        {errorMessage && (
+          <div className="mb-5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
+            {errorMessage}
+          </div>
+        )}
+
+        {message && (
+          <div className="mb-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-emerald-300">
+            {message}
+          </div>
+        )}
+
+        <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+          <div className="space-y-6">
+            <div className="rounded-[30px] border border-orange-500/15 bg-zinc-950/90 p-6">
+              {!currentQuestion ? (
+                <div className="text-white/60">Esperando pregunta...</div>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs font-medium text-orange-300">
+                      {currentQuestion.category}
+                    </span>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-neutral-300">
+                      {currentQuestion.difficulty}
+                    </span>
+                  </div>
+
+                  <h2 className="mt-4 text-2xl font-bold leading-snug">
+                    {currentQuestion.questionText}
+                  </h2>
+
+                  <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                    {currentQuestion.options.map((option) => {
+                      const isSelected = selectedOptionIndex === option.originalIndex;
+                      const isRevealPhase =
+                        phase === "reveal" || phase === "scoreboard" || phase === "finished";
+                      const isCorrect =
+                        isRevealPhase &&
+                        option.originalIndex === currentQuestion.correctOriginalIndex;
+                      const isWrongSelected =
+                        isRevealPhase && isSelected && !isCorrect;
+
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          disabled={phase !== "answer" || selectedOptionIndex !== null}
+                          onClick={() => void handleSelectOption(option.originalIndex)}
+                          className={[
+                            "min-h-[92px] rounded-2xl border px-4 py-4 text-left transition disabled:cursor-not-allowed",
+                            isCorrect
+                              ? "border-emerald-400/40 bg-emerald-500/20"
+                              : isWrongSelected
+                              ? "border-red-400/40 bg-red-500/20"
+                              : isSelected
                               ? "border-orange-400/40 bg-orange-500/20"
                               : "border-white/10 bg-white/5 hover:border-orange-400/30 hover:bg-orange-500/10",
-                      ].join(" ")}
+                          ].join(" ")}
+                        >
+                          <span className="text-base font-medium">{option.text}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {phase === "question" && (
+                    <div className="mt-5 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-sm text-orange-200">
+                      Prepárate… las respuestas aparecen enseguida.
+                    </div>
+                  )}
+
+                  {phase === "answer" && (
+                    <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+                      Elige una opción antes de que termine el tiempo.
+                    </div>
+                  )}
+
+                  {phase === "reveal" && (
+                    <div className="mt-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                      Respuesta correcta revelada.
+                    </div>
+                  )}
+
+                  {phase === "scoreboard" && (
+                    <div className="mt-5 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-sm text-orange-200">
+                      Preparando siguiente ronda...
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="rounded-[30px] border border-white/10 bg-zinc-950/90 p-5">
+              <p className="text-xs font-bold uppercase tracking-[0.25em] text-orange-200">
+                Marcador
+              </p>
+
+              <div className="mt-4 space-y-3">
+                {sortedPlayers.map((player, index) => {
+                  const isMe = player.playerId === currentPlayerSessionKey;
+
+                  return (
+                    <div
+                      key={player.playerId}
+                      className={`rounded-2xl border px-4 py-3 ${
+                        isMe
+                          ? "border-orange-400/30 bg-orange-500/10"
+                          : "border-white/10 bg-white/5"
+                      }`}
                     >
-                      <span className="text-base font-medium">{option.text}</span>
-                    </button>
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold">
+                            #{index + 1} {player.name} {isMe ? "· Tú" : ""}
+                          </p>
+                          <p className="text-xs text-neutral-400">
+                            {player.correctAnswers} correctas · {player.incorrectAnswers} incorrectas
+                          </p>
+                        </div>
+                        <div className="text-lg font-bold text-orange-400">
+                          {player.score}
+                        </div>
+                      </div>
+                    </div>
                   );
                 })}
-              </div>
 
-              {phase === "reveal" && (
-                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-                  Respuesta correcta revelada.
-                </div>
-              )}
-
-              {phase === "scoreboard" && (
-                <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-sm text-orange-200">
-                  Preparando siguiente ronda...
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="text-neutral-400">Esperando pregunta...</div>
-          )}
-        </div>
-
-        <div className="rounded-3xl border border-orange-500/15 bg-neutral-950/90 p-5 shadow-xl">
-          <div className="mb-4">
-            <p className="text-xs uppercase tracking-[0.25em] text-neutral-500">Marcador</p>
-            <h3 className="mt-1 text-xl font-bold text-white">Jugadores</h3>
-          </div>
-
-          <div className="space-y-3">
-            {sortedPlayers.map((player, index) => {
-              const isMe = player.playerId === currentPlayerId;
-              return (
-                <div
-                  key={player.playerId}
-                  className={[
-                    "rounded-2xl border px-4 py-3",
-                    isMe
-                      ? "border-orange-400/30 bg-orange-500/10"
-                      : "border-white/10 bg-white/5",
-                  ].join(" ")}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-semibold">
-                        #{index + 1} {player.name} {isMe ? "· Tú" : ""}
-                      </p>
-                      <p className="text-xs text-neutral-400">
-                        {player.correctAnswers} correctas · {player.incorrectAnswers} incorrectas
-                      </p>
-                    </div>
-                    <div className="text-lg font-bold text-orange-400">{player.score}</div>
+                {sortedPlayers.length === 0 && (
+                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white/60">
+                    Esperando jugadores...
                   </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {currentPlayer && (
-            <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-neutral-300">
-              Jugando como:{" "}
-              <span className="font-semibold text-white">
-                {currentPlayer.display_name || currentPlayer.name || "Jugador"}
-              </span>
+                )}
+              </div>
             </div>
-          )}
+
+            {phase === "finished" && (
+              <div className="rounded-[30px] border border-emerald-500/20 bg-emerald-500/10 p-6">
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                  Resultado final
+                </p>
+
+                <h2 className="mt-2 text-3xl font-extrabold text-white">
+                  {sortedPlayers[0] ? `${sortedPlayers[0].name} ganó la partida` : "Partida terminada"}
+                </h2>
+
+                <p className="mt-3 text-white/65">
+                  Ya puedes volver a la sala o iniciar otra partida.
+                </p>
+
+                <div className="mt-5 flex flex-wrap gap-3">
+                  {isHost && (
+                    <button
+                      type="button"
+                      onClick={() => void handleTerminateMatch()}
+                      disabled={leavingToRoom}
+                      className="rounded-2xl bg-red-500/90 px-4 py-3 font-semibold text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {leavingToRoom ? "Terminando..." : "Terminar partida"}
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => void handleBackToRoom()}
+                    disabled={leavingToRoom}
+                    className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {leavingToRoom ? "Volviendo..." : "Volver a sala"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
