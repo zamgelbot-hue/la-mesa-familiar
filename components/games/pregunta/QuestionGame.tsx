@@ -9,6 +9,7 @@ import {
 } from "@/lib/getPlayerIdentity";
 import { applySingleWinnerMatchRewards } from "@/lib/gameRewards";
 import {
+  applyRoundResultsToPlayers,
   buildFinalStandings,
   calculateGlobalRewards,
   resolveRound,
@@ -573,114 +574,114 @@ export default function QuestionGame({
     [session?.id, roomPlayers, supabase],
   );
 
-  const resolveCurrentRound = useCallback(async () => {
-    if (!session || !currentQuestion || !isHost) return;
-    if (roundTransitionLockRef.current) return;
+const resolveCurrentRound = useCallback(async () => {
+  if (!session || !currentQuestion || !isHost) return;
+  if (roundTransitionLockRef.current) return;
 
-    roundTransitionLockRef.current = true;
+  roundTransitionLockRef.current = true;
 
-    try {
-      const answers = (await fetchRoundAnswers(
-        supabase,
-        session.id,
-        session.current_round,
-      )) as PlayerRoundAnswer[];
+  try {
+    const answers = await fetchRoundAnswers(
+      supabase,
+      session.id,
+      session.current_round,
+    );
 
-      const resolution = resolveRound({
-        answers,
-        players: sessionPlayers,
-        answerTimeMs: session.answer_time_ms,
-        difficulty: currentQuestion.difficulty,
-        roundNumber: session.current_round,
-        questionId: currentQuestion.id,
-        correctOriginalIndex: currentQuestion.correctOriginalIndex,
-      });
+    const resolution = resolveRound({
+      answers,
+      players: sessionPlayers,
+      answerTimeMs: session.answer_time_ms,
+      difficulty: currentQuestion.difficulty,
+      roundNumber: session.current_round,
+      questionId: currentQuestion.id,
+      correctOriginalIndex: currentQuestion.correctOriginalIndex,
+    });
 
-      const nextPlayers = sessionPlayers.map((player) => {
-        const round = resolution.results.find((r) => r.playerId === player.playerId);
+    const answeredPlayerIds = new Set(answers.map((a) => a.playerId));
 
-        if (!round) {
-          return {
-            ...player,
-            incorrectAnswers: player.incorrectAnswers + 1,
-          };
-        }
+    let nextPlayers = applyRoundResultsToPlayers(
+      sessionPlayers,
+      resolution.results,
+    );
 
-        return {
-          ...player,
-          score: round.totalScore,
-          correctAnswers: player.correctAnswers + (round.isCorrect ? 1 : 0),
-          incorrectAnswers: player.incorrectAnswers + (round.isCorrect ? 0 : 1),
-        };
-      });
+    nextPlayers = nextPlayers.map((player) => {
+      if (answeredPlayerIds.has(player.playerId)) {
+        return player;
+      }
 
-      setSessionPlayers(nextPlayers);
+      return {
+        ...player,
+        incorrectAnswers: player.incorrectAnswers + 1,
+      };
+    });
 
-      await updateSessionPlayerScores(
-        supabase,
-        nextPlayers.map((player) => ({
-          sessionId: session.id,
-          playerId: player.playerId,
-          currentScore: player.score,
-          correctAnswers: player.correctAnswers,
-          incorrectAnswers: player.incorrectAnswers,
-        })),
-      );
+    setSessionPlayers(nextPlayers);
 
-      await updateQuestionSession(supabase, session.id, {
-        phase: "reveal",
-      });
+    await updateSessionPlayerScores(
+      supabase,
+      nextPlayers.map((player) => ({
+        sessionId: session.id,
+        playerId: player.playerId,
+        currentScore: player.score,
+        correctAnswers: player.correctAnswers,
+        incorrectAnswers: player.incorrectAnswers,
+      })),
+    );
 
-      setTimeout(async () => {
-        const isLastRound = session.current_round >= session.total_rounds;
+    await updateQuestionSession(supabase, session.id, {
+      phase: "reveal",
+    });
 
-        if (isLastRound) {
-          const standings = buildFinalStandings(nextPlayers);
-          const rewards = calculateGlobalRewards(standings);
+    setTimeout(async () => {
+      const isLastRound = session.current_round >= session.total_rounds;
 
-          await saveFinalResults(
-            supabase,
-            standings.map((standing) => ({
-              session_id: session.id,
-              player_id: standing.playerId,
-              final_score: standing.score,
-              position: standing.position,
-            })),
-          );
+      if (isLastRound) {
+        const standings = buildFinalStandings(nextPlayers);
+        const rewards = calculateGlobalRewards(standings);
 
-          await awardRewardsIfNeeded(standings);
+        await saveFinalResults(
+          supabase,
+          standings.map((standing) => ({
+            session_id: session.id,
+            player_id: standing.playerId,
+            final_score: standing.score,
+            position: standing.position,
+          })),
+        );
 
-          console.log("Rewards calculadas:", rewards);
+        await awardRewardsIfNeeded(standings);
 
-          await updateQuestionSession(supabase, session.id, {
-            status: "finished",
-            phase: "finished",
-          });
-        } else {
-          await updateQuestionSession(supabase, session.id, {
-            phase: "scoreboard",
-          });
+        console.log("Rewards calculadas:", rewards);
 
-          setTimeout(async () => {
-            await startRound(session.current_round + 1);
-          }, SCOREBOARD_MS);
-        }
-      }, REVEAL_MS);
-    } catch (error) {
-      console.error("Error resolviendo ronda:", error);
-      setErrorMessage("No se pudo resolver la ronda.");
-    } finally {
-      roundTransitionLockRef.current = false;
-    }
-  }, [
-    awardRewardsIfNeeded,
-    currentQuestion,
-    isHost,
-    session,
-    sessionPlayers,
-    startRound,
-    supabase,
-  ]);
+        await updateQuestionSession(supabase, session.id, {
+          status: "finished",
+          phase: "finished",
+        });
+      } else {
+        await updateQuestionSession(supabase, session.id, {
+          phase: "scoreboard",
+        });
+
+        setTimeout(async () => {
+          await startRound(session.current_round + 1);
+        }, SCOREBOARD_MS);
+      }
+    }, REVEAL_MS);
+  } catch (error) {
+    console.error("Error resolviendo ronda:", error);
+    setErrorMessage("No se pudo resolver la ronda.");
+  } finally {
+    roundTransitionLockRef.current = false;
+  }
+}, [
+  awardRewardsIfNeeded,
+  currentQuestion,
+  isHost,
+  session,
+  sessionPlayers,
+  startRound,
+  supabase,
+]);
 
   useEffect(() => {
     if (!session) return;
