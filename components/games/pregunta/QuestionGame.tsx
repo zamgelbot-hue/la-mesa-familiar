@@ -89,9 +89,9 @@ type SessionPlayerRow = {
   created_at?: string;
 };
 
-const QUESTION_INTRO_MS = 2000;
-const REVEAL_MS = 2500;
-const SCOREBOARD_MS = 2500;
+const QUESTION_INTRO_MS = 3000;
+const REVEAL_MS = 3000;
+const SCOREBOARD_MS = 3000;
 
 function getCategoryFromVariantOrSettings(
   roomVariant?: string | null,
@@ -121,7 +121,7 @@ function getTotalRoundsForMode(categoryMode: QuestionCategory) {
 }
 
 function getAnswerTimeForMode(categoryMode: QuestionCategory) {
-  return categoryMode === "sabelotodo" ? 4000 : 5000;
+  return categoryMode === "sabelotodo" ? 6000 : 8000;
 }
 
 export default function QuestionGame({
