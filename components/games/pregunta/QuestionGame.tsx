@@ -134,20 +134,22 @@ export default function QuestionGame({
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
 
-  const categoryMode = useMemo(
-    () => getCategoryFromVariantOrSettings(roomVariant, roomSettings),
-    [roomVariant, roomSettings],
-  );
+const categoryMode = useMemo(
+  () => getCategoryFromVariantOrSettings(roomVariant, roomSettings),
+  [roomVariant, roomSettings],
+);
 
-  const totalRounds = useMemo(
-    () => getTotalRoundsForMode(categoryMode),
-    [categoryMode],
-  );
+const totalRounds = useMemo(() => {
+  const fromSettings = Number(roomSettings?.totalRounds ?? 0);
+  if (fromSettings > 0) return fromSettings;
+  return getTotalRoundsForMode(categoryMode);
+}, [roomSettings, categoryMode]);
 
-  const answerTimeMs = useMemo(
-    () => getAnswerTimeForMode(categoryMode),
-    [categoryMode],
-  );
+const answerTimeMs = useMemo(() => {
+  const fromSettings = Number(roomSettings?.answerTimeMs ?? 0);
+  if (fromSettings > 0) return fromSettings;
+  return getAnswerTimeForMode(categoryMode);
+}, [roomSettings, categoryMode]);
 
   const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(null);
   const [room, setRoom] = useState<RoomRow | null>(null);
