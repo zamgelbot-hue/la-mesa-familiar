@@ -7,19 +7,31 @@ import {
   RoundResolution,
   RoundScoreResult,
 } from "./questionTypes";
-import { clamp, difficultyWeight } from "./questionUtils";
+import { clamp } from "./questionUtils";
 
-const BASE_POINTS = 100;
-const MAX_SPEED_BONUS = 50;
+const BASE_POINTS_BY_DIFFICULTY: Record<QuestionDifficulty, number> = {
+  facil: 10,
+  media: 12,
+  dificil: 14,
+};
+
+const MAX_SPEED_BONUS_BY_DIFFICULTY: Record<QuestionDifficulty, number> = {
+  facil: 3,
+  media: 4,
+  dificil: 5,
+};
 
 export function calculateSpeedBonus(
   responseTimeMs: number,
   answerTimeMs: number,
+  difficulty: QuestionDifficulty,
 ): number {
   if (answerTimeMs <= 0) return 0;
 
   const normalized = 1 - clamp(responseTimeMs / answerTimeMs, 0, 1);
-  return Math.round(normalized * MAX_SPEED_BONUS);
+  const maxBonus = MAX_SPEED_BONUS_BY_DIFFICULTY[difficulty] ?? 4;
+
+  return Math.round(normalized * maxBonus);
 }
 
 export function calculateRoundPoints(params: {
@@ -37,11 +49,11 @@ export function calculateRoundPoints(params: {
     };
   }
 
-  const speedBonus = calculateSpeedBonus(responseTimeMs, answerTimeMs);
-  const weightedBase = Math.round(BASE_POINTS * difficultyWeight(difficulty));
+  const basePoints = BASE_POINTS_BY_DIFFICULTY[difficulty] ?? 10;
+  const speedBonus = calculateSpeedBonus(responseTimeMs, answerTimeMs, difficulty);
 
   return {
-    roundPoints: weightedBase + speedBonus,
+    roundPoints: basePoints + speedBonus,
     speedBonus,
   };
 }
