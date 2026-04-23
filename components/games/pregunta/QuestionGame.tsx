@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { applyQuestionGameProfileRewards } from "@/lib/games/pregunta/questionProfileRewards";
 import {
   getPlayerIdentity,
   type PlayerIdentity,
 } from "@/lib/getPlayerIdentity";
-import { applySingleWinnerMatchRewards } from "@/lib/gameRewards";
 import {
   applyRoundResultsToPlayers,
   buildFinalStandings,
@@ -618,26 +618,16 @@ const answerTimeMs = useMemo(() => {
   );
 
   const awardRewardsIfNeeded = useCallback(
-    async (standings: ReturnType<typeof buildFinalStandings>) => {
-      if (!session?.id) return;
-      if (rewardsAppliedSessionIdRef.current === session.id) return;
+  async (standings: ReturnType<typeof buildFinalStandings>) => {
+    if (!session?.id) return;
+    if (rewardsAppliedSessionIdRef.current === session.id) return;
 
-      const winner = standings.find((s) => s.position === 1) ?? null;
-      const participantUserIds = roomPlayers.map((player) => player.user_id);
+    await applyQuestionGameProfileRewards(supabase, standings);
 
-      await applySingleWinnerMatchRewards({
-        supabase,
-        winnerUserId:
-          winner && winner.playerId.startsWith("guest:") ? null : winner?.playerId ?? null,
-        participantUserIds,
-        winnerPoints: 5,
-        participantPoints: 2,
-      });
-
-      rewardsAppliedSessionIdRef.current = session.id;
-    },
-    [session?.id, roomPlayers, supabase],
-  );
+    rewardsAppliedSessionIdRef.current = session.id;
+  },
+  [session?.id, supabase],
+);
 
   const resolveCurrentRound = useCallback(async () => {
     if (!session || !currentQuestion || !isHost) return;
