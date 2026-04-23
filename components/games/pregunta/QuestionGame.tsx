@@ -155,17 +155,18 @@ export default function QuestionGame({
   const [session, setSession] = useState<SessionRow | null>(null);
   const [sessionPlayers, setSessionPlayers] = useState<QuestionPlayerSummary[]>([]);
   const [questionBank, setQuestionBank] = useState<QuestionRow[]>([]);
+  const [roundQuestions, setRoundQuestions] = useState<QuestionForRound[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState<QuestionForRound | null>(null);
   const [phase, setPhase] = useState<QuestionGamePhase>("waiting");
   const [timeLeftMs, setTimeLeftMs] = useState(0);
   const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [starting, setStarting] = useState(false);
   const [leavingToRoom, setLeavingToRoom] = useState(false);
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
   const initializedRef = useRef(false);
+  const sessionBootstrapRef = useRef(false);
   const phaseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const roundTransitionLockRef = useRef(false);
   const rewardsAppliedSessionIdRef = useRef<string | null>(null);
@@ -200,7 +201,11 @@ export default function QuestionGame({
   const currentPlayerName = currentRoomPlayer?.player_name ?? playerIdentity?.name ?? "Jugador";
 
   const sortedPlayers = useMemo(
-    () => [...sessionPlayers].sort((a, b) => b.score - a.score),
+    () =>
+      [...sessionPlayers].sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.name.localeCompare(b.name);
+      }),
     [sessionPlayers],
   );
 
@@ -245,27 +250,6 @@ export default function QuestionGame({
     setRoomPlayers((data ?? []) as RoomPlayerRow[]);
   }, [supabase, roomCode]);
 
-  const loadSession = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("pp_sessions")
-      .select("*")
-      .eq("room_id", roomCode)
-      .in("status", ["waiting", "playing", "finished"])
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      console.error("Error cargando pp_sessions:", error);
-      return null;
-    }
-
-    const nextSession = (data ?? null) as SessionRow | null;
-    setSession(nextSession);
-    setPhase(nextSession?.phase ?? "waiting");
-    return nextSession;
-  }, [supabase, roomCode]);
-
   const loadSessionPlayers = useCallback(
     async (sessionId?: string | null) => {
       if (!sessionId) {
@@ -289,6 +273,47 @@ export default function QuestionGame({
     [supabase],
   );
 
+  const loadSession = useCallback(async () => {
+    if (session?.id) return session;
+
+    const { data, error } = await supabase
+      .from("pp_sessions")
+      .select("*")
+      .eq("room_id", roomCode)
+      .in("status", ["waiting", "playing", "finished"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error cargando pp_sessions:", error);
+      return null;
+    }
+
+    const nextSession = (data ?? null) as SessionRow | null;
+    setSession(nextSession);
+    setPhase(nextSession?.phase ?? "waiting");
+    return nextSession;
+  }, [supabase, roomCode, session]);
+
+  const loadQuestionBank = useCallback(async () => {
+    const fetchedQuestions = await fetchQuestionsForGame(supabase, {
+      categoryMode,
+      limit: totalRounds,
+      excludeIds: [],
+    });
+
+    setQuestionBank(fetchedQuestions);
+
+    const stableRoundQuestions = fetchedQuestions
+      .slice(0, totalRounds)
+      .map((row) => mapQuestionRowToRoundQuestion(row));
+
+    setRoundQuestions(stableRoundQuestions);
+
+    return fetchedQuestions;
+  }, [supabase, categoryMode, totalRounds]);
+
   const createSessionIfNeeded = useCallback(async () => {
     if (!room || !playerIdentity || !isHost) return null;
     if (session) return session;
@@ -308,6 +333,12 @@ export default function QuestionGame({
     }
 
     setQuestionBank(fetchedQuestions);
+
+    const stableRoundQuestions = fetchedQuestions
+      .slice(0, totalRounds)
+      .map((row) => mapQuestionRowToRoundQuestion(row));
+
+    setRoundQuestions(stableRoundQuestions);
 
     const created = (await createQuestionSession(supabase, {
       roomId: roomCode,
@@ -346,41 +377,44 @@ export default function QuestionGame({
 
   const ensureSessionPlayersExist = useCallback(
     async (sessionId: string) => {
-      const inserts = roomPlayers.map((player) => {
-        const playerKey = player.user_id ?? `guest:${player.player_name}`;
+      if (!roomPlayers.length) return;
 
-        return upsertSessionPlayer(supabase, {
-          sessionId,
-          playerId: playerKey,
-          displayName: player.player_name,
-          currentScore: 0,
-          correctAnswers: 0,
-          incorrectAnswers: 0,
-        });
+      const current = await fetchSessionPlayers(supabase, sessionId);
+      const existingIds = new Set(
+        (current as SessionPlayerRow[]).map((p) => p.player_id),
+      );
+
+      const missingPlayers = roomPlayers.filter((player) => {
+        const playerKey = player.user_id ?? `guest:${player.player_name}`;
+        return !existingIds.has(playerKey);
       });
 
-      await Promise.all(inserts);
+      if (missingPlayers.length > 0) {
+        await Promise.all(
+          missingPlayers.map((player) => {
+            const playerKey = player.user_id ?? `guest:${player.player_name}`;
+
+            return upsertSessionPlayer(supabase, {
+              sessionId,
+              playerId: playerKey,
+              displayName: player.player_name,
+              currentScore: 0,
+              correctAnswers: 0,
+              incorrectAnswers: 0,
+            });
+          }),
+        );
+      }
+
       await loadSessionPlayers(sessionId);
     },
     [roomPlayers, supabase, loadSessionPlayers],
   );
 
-  const loadQuestionBank = useCallback(async () => {
-    const fetchedQuestions = await fetchQuestionsForGame(supabase, {
-      categoryMode,
-      limit: totalRounds,
-      excludeIds: [],
-    });
-
-    setQuestionBank(fetchedQuestions);
-    return fetchedQuestions;
-  }, [supabase, categoryMode, totalRounds]);
-
   const initializeGame = useCallback(async () => {
     try {
       setLoading(true);
       setErrorMessage("");
-
       await loadPlayerIdentity();
       await Promise.all([loadRoom(), loadRoomPlayers()]);
     } finally {
@@ -395,17 +429,29 @@ export default function QuestionGame({
   }, [initializeGame]);
 
   useEffect(() => {
+    sessionBootstrapRef.current = false;
+  }, [roomCode]);
+
+  useEffect(() => {
     if (!room || !playerIdentity) return;
+    if (sessionBootstrapRef.current) return;
+
+    sessionBootstrapRef.current = true;
 
     const boot = async () => {
-      const existing = await loadSession();
-      const activeSession = existing ?? (await createSessionIfNeeded());
+      try {
+        const existing = await loadSession();
+        const activeSession = existing ?? (await createSessionIfNeeded());
 
-      if (activeSession) {
-        if (!questionBank.length) {
-          await loadQuestionBank();
+        if (activeSession) {
+          if (!questionBank.length) {
+            await loadQuestionBank();
+          }
+          await ensureSessionPlayersExist(activeSession.id);
         }
-        await ensureSessionPlayersExist(activeSession.id);
+      } catch (error) {
+        console.error("Error bootstrapping Pregunta Pregunta:", error);
+        setErrorMessage("No se pudo preparar la partida.");
       }
     };
 
@@ -457,11 +503,10 @@ export default function QuestionGame({
           table: "pp_sessions",
           filter: `room_id=eq.${roomCode}`,
         },
-        async () => {
-          const fresh = await loadSession();
-          if (fresh?.id) {
-            await loadSessionPlayers(fresh.id);
-          }
+        (payload) => {
+          const next = (payload.new ?? null) as SessionRow | null;
+          setSession(next);
+          setPhase(next?.phase ?? "waiting");
         },
       )
       .subscribe();
@@ -469,45 +514,33 @@ export default function QuestionGame({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, roomCode, loadRoom, loadRoomPlayers, loadSession, loadSessionPlayers]);
+  }, [supabase, roomCode, loadRoom, loadRoomPlayers]);
 
   useEffect(() => {
     if (!session?.id) return;
 
-    const playersChannel = supabase
-      .channel(`pregunta-session-players-${session.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "pp_session_players",
-          filter: `session_id=eq.${session.id}`,
-        },
-        async () => {
-          await loadSessionPlayers(session.id);
-        },
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(playersChannel);
-    };
-  }, [supabase, session?.id, loadSessionPlayers]);
+    if (phase === "reveal" || phase === "scoreboard" || phase === "finished") {
+      void loadSessionPlayers(session.id);
+    }
+  }, [session?.id, phase, loadSessionPlayers]);
 
   const getQuestionForRound = useCallback(
-    (roundNumber: number) => {
-      const row = questionBank[roundNumber - 1];
-      if (!row) return null;
-      return mapQuestionRowToRoundQuestion(row);
-    },
-    [questionBank],
+    (roundNumber: number) => roundQuestions[roundNumber - 1] ?? null,
+    [roundQuestions],
   );
 
   useEffect(() => {
     if (!session?.current_round) return;
+
     const q = getQuestionForRound(session.current_round);
-    if (q) setCurrentQuestion(q);
+    if (!q) return;
+
+    setCurrentQuestion((prev) => {
+      if (prev?.id === q.id) return prev;
+      return q;
+    });
+
+    setSelectedOptionIndex(null);
   }, [getQuestionForRound, session?.current_round]);
 
   const startRound = useCallback(
@@ -524,12 +557,15 @@ export default function QuestionGame({
       }
 
       setCurrentQuestion(nextQuestion);
+      setPhase("question");
       setSelectedOptionIndex(null);
       setMessage("");
       setErrorMessage("");
 
       const questionStartedAt = new Date();
-      const answerEndsAt = new Date(questionStartedAt.getTime() + QUESTION_INTRO_MS + answerTimeMs);
+      const answerEndsAt = new Date(
+        questionStartedAt.getTime() + QUESTION_INTRO_MS + answerTimeMs,
+      );
 
       await updateQuestionSession(supabase, session.id, {
         status: "playing",
@@ -540,9 +576,13 @@ export default function QuestionGame({
         answerEndsAt: answerEndsAt.toISOString(),
       });
 
-      if (phaseTimeoutRef.current) clearTimeout(phaseTimeoutRef.current);
+      if (phaseTimeoutRef.current) {
+        clearTimeout(phaseTimeoutRef.current);
+      }
 
       phaseTimeoutRef.current = setTimeout(async () => {
+        setPhase("answer");
+
         await updateQuestionSession(supabase, session.id, {
           phase: "answer",
         });
@@ -557,7 +597,6 @@ export default function QuestionGame({
       if (rewardsAppliedSessionIdRef.current === session.id) return;
 
       const winner = standings.find((s) => s.position === 1) ?? null;
-
       const participantUserIds = roomPlayers.map((player) => player.user_id);
 
       await applySingleWinnerMatchRewards({
@@ -574,114 +613,113 @@ export default function QuestionGame({
     [session?.id, roomPlayers, supabase],
   );
 
-const resolveCurrentRound = useCallback(async () => {
-  if (!session || !currentQuestion || !isHost) return;
-  if (roundTransitionLockRef.current) return;
+  const resolveCurrentRound = useCallback(async () => {
+    if (!session || !currentQuestion || !isHost) return;
+    if (roundTransitionLockRef.current) return;
 
-  roundTransitionLockRef.current = true;
+    roundTransitionLockRef.current = true;
 
-  try {
-    const answers = await fetchRoundAnswers(
-      supabase,
-      session.id,
-      session.current_round,
-    );
+    try {
+      const answers = await fetchRoundAnswers(
+        supabase,
+        session.id,
+        session.current_round,
+      );
 
-    const resolution = resolveRound({
-      answers,
-      players: sessionPlayers,
-      answerTimeMs: session.answer_time_ms,
-      difficulty: currentQuestion.difficulty,
-      roundNumber: session.current_round,
-      questionId: currentQuestion.id,
-      correctOriginalIndex: currentQuestion.correctOriginalIndex,
-    });
+      const resolution = resolveRound({
+        answers,
+        players: sessionPlayers,
+        answerTimeMs: session.answer_time_ms,
+        difficulty: currentQuestion.difficulty,
+        roundNumber: session.current_round,
+        questionId: currentQuestion.id,
+        correctOriginalIndex: currentQuestion.correctOriginalIndex,
+      });
 
-    const answeredPlayerIds = new Set(answers.map((a) => a.playerId));
+      const answeredPlayerIds = new Set(answers.map((a) => a.playerId));
 
-    let nextPlayers = applyRoundResultsToPlayers(
-      sessionPlayers,
-      resolution.results,
-    );
+      let nextPlayers = applyRoundResultsToPlayers(
+        sessionPlayers,
+        resolution.results,
+      );
 
-    nextPlayers = nextPlayers.map((player) => {
-      if (answeredPlayerIds.has(player.playerId)) {
-        return player;
-      }
+      nextPlayers = nextPlayers.map((player) => {
+        if (answeredPlayerIds.has(player.playerId)) {
+          return player;
+        }
 
-      return {
-        ...player,
-        incorrectAnswers: player.incorrectAnswers + 1,
-      };
-    });
+        return {
+          ...player,
+          incorrectAnswers: player.incorrectAnswers + 1,
+        };
+      });
 
-    setSessionPlayers(nextPlayers);
+      setSessionPlayers(nextPlayers);
 
-    await updateSessionPlayerScores(
-      supabase,
-      nextPlayers.map((player) => ({
-        sessionId: session.id,
-        playerId: player.playerId,
-        currentScore: player.score,
-        correctAnswers: player.correctAnswers,
-        incorrectAnswers: player.incorrectAnswers,
-      })),
-    );
+      await updateSessionPlayerScores(
+        supabase,
+        nextPlayers.map((player) => ({
+          sessionId: session.id,
+          playerId: player.playerId,
+          currentScore: player.score,
+          correctAnswers: player.correctAnswers,
+          incorrectAnswers: player.incorrectAnswers,
+        })),
+      );
 
-    await updateQuestionSession(supabase, session.id, {
-      phase: "reveal",
-    });
+      await updateQuestionSession(supabase, session.id, {
+        phase: "reveal",
+      });
 
-    setTimeout(async () => {
-      const isLastRound = session.current_round >= session.total_rounds;
+      setTimeout(async () => {
+        const isLastRound = session.current_round >= session.total_rounds;
 
-      if (isLastRound) {
-        const standings = buildFinalStandings(nextPlayers);
-        const rewards = calculateGlobalRewards(standings);
+        if (isLastRound) {
+          const standings = buildFinalStandings(nextPlayers);
+          const rewards = calculateGlobalRewards(standings);
 
-        await saveFinalResults(
-          supabase,
-          standings.map((standing) => ({
-            session_id: session.id,
-            player_id: standing.playerId,
-            final_score: standing.score,
-            position: standing.position,
-          })),
-        );
+          await saveFinalResults(
+            supabase,
+            standings.map((standing) => ({
+              session_id: session.id,
+              player_id: standing.playerId,
+              final_score: standing.score,
+              position: standing.position,
+            })),
+          );
 
-        await awardRewardsIfNeeded(standings);
+          await awardRewardsIfNeeded(standings);
+          console.log("Rewards calculadas:", rewards);
 
-        console.log("Rewards calculadas:", rewards);
+          await updateQuestionSession(supabase, session.id, {
+            status: "finished",
+            phase: "finished",
+          });
+        } else {
+          await updateQuestionSession(supabase, session.id, {
+            phase: "scoreboard",
+          });
 
-        await updateQuestionSession(supabase, session.id, {
-          status: "finished",
-          phase: "finished",
-        });
-      } else {
-        await updateQuestionSession(supabase, session.id, {
-          phase: "scoreboard",
-        });
-
-        setTimeout(async () => {
-          await startRound(session.current_round + 1);
-        }, SCOREBOARD_MS);
-      }
-    }, REVEAL_MS);
-  } catch (error) {
-    console.error("Error resolviendo ronda:", error);
-    setErrorMessage("No se pudo resolver la ronda.");
-  } finally {
-    roundTransitionLockRef.current = false;
-  }
-}, [
-  awardRewardsIfNeeded,
-  currentQuestion,
-  isHost,
-  session,
-  sessionPlayers,
-  startRound,
-  supabase,
-]);
+          setTimeout(async () => {
+            await startRound(session.current_round + 1);
+          }, SCOREBOARD_MS);
+        }
+      }, REVEAL_MS);
+    } catch (error) {
+      console.error("Error resolviendo ronda:", error);
+      setErrorMessage("No se pudo resolver la ronda.");
+    } finally {
+      roundTransitionLockRef.current = false;
+    }
+  }, [
+    awardRewardsIfNeeded,
+    currentQuestion,
+    isHost,
+    session,
+    sessionPlayers,
+    startRound,
+    supabase,
+  ]);
 
   useEffect(() => {
     if (!session) return;
@@ -692,8 +730,20 @@ const resolveCurrentRound = useCallback(async () => {
     }
 
     if (phase === "question") {
-      setTimeLeftMs(QUESTION_INTRO_MS);
-      return;
+      const questionEndsAt =
+        session?.round_started_at
+          ? new Date(session.round_started_at).getTime() + QUESTION_INTRO_MS
+          : Date.now() + QUESTION_INTRO_MS;
+
+      const tick = () => {
+        const ms = Math.max(0, questionEndsAt - Date.now());
+        setTimeLeftMs(ms);
+      };
+
+      tick();
+      const interval = setInterval(tick, 100);
+
+      return () => clearInterval(interval);
     }
 
     if (phase === "answer") {
@@ -738,6 +788,7 @@ const resolveCurrentRound = useCallback(async () => {
 
     setSelectedOptionIndex(originalIndex);
     setMessage("Respuesta enviada.");
+    setErrorMessage("");
 
     try {
       await submitPlayerAnswer(supabase, {
@@ -763,6 +814,13 @@ const resolveCurrentRound = useCallback(async () => {
       setErrorMessage("");
       setMessage("");
 
+      if (session?.id) {
+        await updateQuestionSession(supabase, session.id, {
+          status: "finished",
+          phase: "finished",
+        });
+      }
+
       await supabase
         .from("rooms")
         .update({
@@ -783,7 +841,7 @@ const resolveCurrentRound = useCallback(async () => {
     } finally {
       setLeavingToRoom(false);
     }
-  }, [supabase, router, roomCode]);
+  }, [supabase, router, roomCode, session?.id]);
 
   const handleTerminateMatch = useCallback(async () => {
     if (!isHost) return;
@@ -853,7 +911,7 @@ const resolveCurrentRound = useCallback(async () => {
             <button
               type="button"
               onClick={() => void handleBackToRoom()}
-              disabled={leavingToRoom || starting}
+              disabled={leavingToRoom}
               className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {leavingToRoom ? "Volviendo..." : "Volver a sala"}
@@ -951,10 +1009,10 @@ const resolveCurrentRound = useCallback(async () => {
                             isCorrect
                               ? "border-emerald-400/40 bg-emerald-500/20"
                               : isWrongSelected
-                              ? "border-red-400/40 bg-red-500/20"
-                              : isSelected
-                              ? "border-orange-400/40 bg-orange-500/20"
-                              : "border-white/10 bg-white/5 hover:border-orange-400/30 hover:bg-orange-500/10",
+                                ? "border-red-400/40 bg-red-500/20"
+                                : isSelected
+                                  ? "border-orange-400/40 bg-orange-500/20"
+                                  : "border-white/10 bg-white/5 hover:border-orange-400/30 hover:bg-orange-500/10",
                           ].join(" ")}
                         >
                           <span className="text-base font-medium">{option.text}</span>
@@ -965,7 +1023,7 @@ const resolveCurrentRound = useCallback(async () => {
 
                   {phase === "question" && (
                     <div className="mt-5 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-sm text-orange-200">
-                      Prepárate… las respuestas aparecen enseguida.
+                      Prepárate... las respuestas aparecen enseguida.
                     </div>
                   )}
 
