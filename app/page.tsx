@@ -105,6 +105,47 @@ const GAME_CONFIGS: Record<string, GameConfig> = {
       },
     ],
   },
+  "pregunta": {
+  maxPlayersOptions: [2, 4, 6, 8],
+  variants: [
+    {
+      key: "espanol",
+      label: "Español",
+      description: "Ortografía, gramática y comprensión.",
+      available: true,
+    },
+    {
+      key: "matematicas",
+      label: "Matemáticas",
+      description: "Operaciones, lógica y cálculo rápido.",
+      available: true,
+    },
+    {
+      key: "ingles",
+      label: "Inglés",
+      description: "Vocabulario y comprensión básica.",
+      available: true,
+    },
+    {
+      key: "geografia",
+      label: "Geografía",
+      description: "Países, capitales y lugares del mundo.",
+      available: true,
+    },
+    {
+      key: "ciencias",
+      label: "Ciencias",
+      description: "Preguntas básicas de ciencia y naturaleza.",
+      available: true,
+    },
+    {
+      key: "sabelotodo",
+      label: "Sabelotodo",
+      description: "Mezcla de todas las categorías.",
+      available: true,
+    },
+  ],
+},
 };
 
 const savePlayerIdentity = (
@@ -170,6 +211,30 @@ function buildRoomSettings(gameSlug: string, variantKey: string, maxPlayers: num
     };
   }
 
+  if (gameSlug === "pregunta") {
+  const variantMap: Record<
+    string,
+    { categoryMode: string; totalRounds: number; answerTimeMs: number; max_players: number }
+  > = {
+    espanol: { categoryMode: "espanol", totalRounds: 10, answerTimeMs: 8000, max_players: maxPlayers },
+    matematicas: { categoryMode: "matematicas", totalRounds: 10, answerTimeMs: 10000, max_players: maxPlayers },
+    ingles: { categoryMode: "ingles", totalRounds: 10, answerTimeMs: 8000, max_players: maxPlayers },
+    geografia: { categoryMode: "geografia", totalRounds: 10, answerTimeMs: 8000, max_players: maxPlayers },
+    ciencias: { categoryMode: "ciencias", totalRounds: 10, answerTimeMs: 8000, max_players: maxPlayers },
+    sabelotodo: { categoryMode: "sabelotodo", totalRounds: 15, answerTimeMs: 6000, max_players: maxPlayers },
+  };
+
+  const selected = variantMap[variantKey] ?? variantMap.sabelotodo;
+
+  return {
+    mode: "quiz",
+    categoryMode: selected.categoryMode,
+    totalRounds: selected.totalRounds,
+    answerTimeMs: selected.answerTimeMs,
+    max_players: selected.max_players,
+  };
+}
+  
   if (gameSlug === "piedra-papel-o-tijera") {
     const variantMap: Record<string, { best_of: number; rounds_to_win: number }> = {
       bo3: { best_of: 3, rounds_to_win: 2 },
