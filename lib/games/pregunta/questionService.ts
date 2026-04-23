@@ -262,7 +262,9 @@ export async function saveFinalResults(
 ) {
   const { data, error } = await supabase
     .from("pp_results")
-    .insert(rows)
+    .upsert(rows, {
+      onConflict: "session_id,player_id",
+    })
     .select();
 
   if (error) {
