@@ -26,9 +26,9 @@ import {
   upsertSessionPlayer,
 } from "@/lib/games/pregunta/questionService";
 import {
+  buildRoundQuestionSet,
   calculateResponseTimeMs,
   getRemainingMs,
-  mapQuestionRowToRoundQuestion,
 } from "@/lib/games/pregunta/questionUtils";
 import type {
   PlayerRoundAnswer,
@@ -299,7 +299,7 @@ const answerTimeMs = useMemo(() => {
     return nextSession;
   }, [supabase, roomCode, session]);
 
-  const loadQuestionBank = useCallback(async () => {
+    const loadQuestionBank = useCallback(async () => {
     const fetchedQuestions = await fetchQuestionsForGame(supabase, {
       categoryMode,
       limit: totalRounds,
@@ -308,9 +308,10 @@ const answerTimeMs = useMemo(() => {
 
     setQuestionBank(fetchedQuestions);
 
-    const stableRoundQuestions = fetchedQuestions
-      .slice(0, totalRounds)
-      .map((row) => mapQuestionRowToRoundQuestion(row));
+    const stableRoundQuestions = buildRoundQuestionSet(
+      fetchedQuestions,
+      totalRounds,
+    );
 
     setRoundQuestions(stableRoundQuestions);
 
@@ -337,9 +338,10 @@ const answerTimeMs = useMemo(() => {
 
     setQuestionBank(fetchedQuestions);
 
-    const stableRoundQuestions = fetchedQuestions
-      .slice(0, totalRounds)
-      .map((row) => mapQuestionRowToRoundQuestion(row));
+        const stableRoundQuestions = buildRoundQuestionSet(
+      fetchedQuestions,
+      totalRounds,
+    );
 
     setRoundQuestions(stableRoundQuestions);
 
@@ -656,23 +658,10 @@ const answerTimeMs = useMemo(() => {
         correctOriginalIndex: currentQuestion.correctOriginalIndex,
       });
 
-      const answeredPlayerIds = new Set(answers.map((a) => a.playerId));
-
-      let nextPlayers = applyRoundResultsToPlayers(
+      const nextPlayers = applyRoundResultsToPlayers(
         sessionPlayers,
         resolution.results,
       );
-
-      nextPlayers = nextPlayers.map((player) => {
-        if (answeredPlayerIds.has(player.playerId)) {
-          return player;
-        }
-
-        return {
-          ...player,
-          incorrectAnswers: player.incorrectAnswers + 1,
-        };
-      });
 
       setSessionPlayers(nextPlayers);
 
