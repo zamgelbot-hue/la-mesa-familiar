@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { createGameSounds } from "@/lib/audio/useGameSounds";
 import { applyQuestionGameProfileRewards } from "@/lib/games/pregunta/questionProfileRewards";
 import {
   getPlayerIdentity,
@@ -31,7 +32,6 @@ import {
   getRemainingMs,
 } from "@/lib/games/pregunta/questionUtils";
 import type {
-  PlayerRoundAnswer,
   QuestionCategory,
   QuestionForRound,
   QuestionGamePhase,
@@ -133,23 +133,24 @@ export default function QuestionGame({
   const router = useRouter();
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
+  const soundsRef = useRef(createGameSounds({ baseVolume: 0.7 }));
 
-const categoryMode = useMemo(
-  () => getCategoryFromVariantOrSettings(roomVariant, roomSettings),
-  [roomVariant, roomSettings],
-);
+  const categoryMode = useMemo(
+    () => getCategoryFromVariantOrSettings(roomVariant, roomSettings),
+    [roomVariant, roomSettings],
+  );
 
-const totalRounds = useMemo(() => {
-  const fromSettings = Number(roomSettings?.totalRounds ?? 0);
-  if (fromSettings > 0) return fromSettings;
-  return getTotalRoundsForMode(categoryMode);
-}, [roomSettings, categoryMode]);
+  const totalRounds = useMemo(() => {
+    const fromSettings = Number(roomSettings?.totalRounds ?? 0);
+    if (fromSettings > 0) return fromSettings;
+    return getTotalRoundsForMode(categoryMode);
+  }, [roomSettings, categoryMode]);
 
-const answerTimeMs = useMemo(() => {
-  const fromSettings = Number(roomSettings?.answerTimeMs ?? 0);
-  if (fromSettings > 0) return fromSettings;
-  return getAnswerTimeForMode(categoryMode);
-}, [roomSettings, categoryMode]);
+  const answerTimeMs = useMemo(() => {
+    const fromSettings = Number(roomSettings?.answerTimeMs ?? 0);
+    if (fromSettings > 0) return fromSettings;
+    return getAnswerTimeForMode(categoryMode);
+  }, [roomSettings, categoryMode]);
 
   const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(null);
   const [room, setRoom] = useState<RoomRow | null>(null);
@@ -173,6 +174,8 @@ const answerTimeMs = useMemo(() => {
   const roundTransitionLockRef = useRef(false);
   const rewardsAppliedSessionIdRef = useRef<string | null>(null);
   const resolvedRoundKeyRef = useRef<string | null>(null);
+  const warningPlayedRef = useRef<string | null>(null);
+  const phaseSoundKeyRef = useRef<string | null>(null);
 
   const currentRoomPlayer = useMemo(() => {
     if (!playerIdentity) return null;
@@ -299,7 +302,7 @@ const answerTimeMs = useMemo(() => {
     return nextSession;
   }, [supabase, roomCode, session]);
 
-    const loadQuestionBank = useCallback(async () => {
+  const loadQuestionBank = useCallback(async () => {
     const fetchedQuestions = await fetchQuestionsForGame(supabase, {
       categoryMode,
       limit: totalRounds,
@@ -338,7 +341,7 @@ const answerTimeMs = useMemo(() => {
 
     setQuestionBank(fetchedQuestions);
 
-        const stableRoundQuestions = buildRoundQuestionSet(
+    const stableRoundQuestions = buildRoundQuestionSet(
       fetchedQuestions,
       totalRounds,
     );
@@ -426,6 +429,10 @@ const answerTimeMs = useMemo(() => {
       setLoading(false);
     }
   }, [loadPlayerIdentity, loadRoom, loadRoomPlayers]);
+
+  useEffect(() => {
+    soundsRef.current.preloadAll();
+  }, []);
 
   useEffect(() => {
     if (initializedRef.current) return;
@@ -570,6 +577,31 @@ const answerTimeMs = useMemo(() => {
     setSelectedOptionIndex(null);
   }, [getQuestionForRound, session?.current_round]);
 
+  useEffect(() => {
+    if (!session?.id) return;
+
+    const soundPhaseKey = `${session.id}:${session.current_round}:${phase}`;
+
+    if (phaseSoundKeyRef.current === soundPhaseKey) return;
+
+    if (phase === "question") {
+      soundsRef.current.play("round_start");
+      phaseSoundKeyRef.current = soundPhaseKey;
+      return;
+    }
+
+    if (phase === "reveal") {
+      soundsRef.current.play("reveal");
+      phaseSoundKeyRef.current = soundPhaseKey;
+      return;
+    }
+
+    if (phase === "finished") {
+      soundsRef.current.play("victory");
+      phaseSoundKeyRef.current = soundPhaseKey;
+    }
+  }, [phase, session?.id, session?.current_round]);
+
   const startRound = useCallback(
     async (roundNumber: number) => {
       if (!session || !isHost) return;
@@ -584,6 +616,7 @@ const answerTimeMs = useMemo(() => {
       }
 
       resolvedRoundKeyRef.current = null;
+      warningPlayedRef.current = null;
       setCurrentQuestion(nextQuestion);
       setPhase("question");
       setSelectedOptionIndex(null);
@@ -620,16 +653,16 @@ const answerTimeMs = useMemo(() => {
   );
 
   const awardRewardsIfNeeded = useCallback(
-  async (standings: ReturnType<typeof buildFinalStandings>) => {
-    if (!session?.id) return;
-    if (rewardsAppliedSessionIdRef.current === session.id) return;
+    async (standings: ReturnType<typeof buildFinalStandings>) => {
+      if (!session?.id) return;
+      if (rewardsAppliedSessionIdRef.current === session.id) return;
 
-    await applyQuestionGameProfileRewards(supabase, standings);
+      await applyQuestionGameProfileRewards(supabase, standings);
 
-    rewardsAppliedSessionIdRef.current = session.id;
-  },
-  [session?.id, supabase],
-);
+      rewardsAppliedSessionIdRef.current = session.id;
+    },
+    [session?.id, supabase],
+  );
 
   const resolveCurrentRound = useCallback(async () => {
     if (!session || !currentQuestion || !isHost) return;
@@ -741,7 +774,7 @@ const answerTimeMs = useMemo(() => {
 
     if (phase === "question") {
       const questionEndsAt =
-        session?.round_started_at
+        session.round_started_at
           ? new Date(session.round_started_at).getTime() + QUESTION_INTRO_MS
           : Date.now() + QUESTION_INTRO_MS;
 
@@ -760,6 +793,12 @@ const answerTimeMs = useMemo(() => {
       const tick = () => {
         const ms = getRemainingMs(session.answer_ends_at);
         setTimeLeftMs(ms);
+
+        const warningKey = `${session.id}:${session.current_round}`;
+        if (ms <= 3000 && ms > 2000 && warningPlayedRef.current !== warningKey) {
+          soundsRef.current.play("timer_warning");
+          warningPlayedRef.current = warningKey;
+        }
 
         if (ms <= 0 && isHost) {
           void resolveCurrentRound();
@@ -800,6 +839,8 @@ const answerTimeMs = useMemo(() => {
     setMessage("Respuesta enviada.");
     setErrorMessage("");
 
+    soundsRef.current.play(isCorrect ? "correct" : "wrong");
+
     try {
       await submitPlayerAnswer(supabase, {
         sessionId: session.id,
@@ -830,6 +871,8 @@ const answerTimeMs = useMemo(() => {
           phase: "finished",
         });
       }
+
+      soundsRef.current.stopAll();
 
       await supabase
         .from("rooms")
