@@ -10,20 +10,48 @@ type ProfileRewardSnapshot = {
   best_win_streak: number | null;
 };
 
+export type RewardGameType =
+  | "ppt_human"
+  | "ppt_bot"
+  | "pregunta"
+  | "loteria";
+
+type RewardConfig = {
+  winnerPoints: number;
+  loserPoints: number;
+};
+
+const REWARD_TABLE: Record<RewardGameType, RewardConfig> = {
+  ppt_human: {
+    winnerPoints: 6,
+    loserPoints: 2,
+  },
+  ppt_bot: {
+    winnerPoints: 2,
+    loserPoints: 1,
+  },
+  pregunta: {
+    winnerPoints: 10,
+    loserPoints: 4,
+  },
+  loteria: {
+    winnerPoints: 7,
+    loserPoints: 3,
+  },
+};
+
 type ApplyHeadToHeadMatchRewardsParams = {
   supabase: SupabaseClient;
   winnerUserId: string | null | undefined;
   loserUserId: string | null | undefined;
-  winnerPoints?: number;
-  loserPoints?: number;
+  gameType: RewardGameType;
 };
 
 type ApplySingleWinnerMatchRewardsParams = {
   supabase: SupabaseClient;
   winnerUserId: string | null | undefined;
   participantUserIds: Array<string | null | undefined>;
-  winnerPoints?: number;
-  participantPoints?: number;
+  gameType: RewardGameType;
 };
 
 async function readProfileRewardSnapshot(
@@ -46,24 +74,32 @@ async function readProfileRewardSnapshot(
   return data as ProfileRewardSnapshot;
 }
 
+function getStreakBonus(nextWinStreak: number): number {
+  if (nextWinStreak >= 5) return 2;
+  if (nextWinStreak >= 3) return 1;
+  return 0;
+}
+
 async function applyWinnerReward(
   supabase: SupabaseClient,
   userId: string,
-  rewardPoints: number
+  baseRewardPoints: number
 ) {
   const snapshot = await readProfileRewardSnapshot(supabase, userId);
   if (!snapshot) return;
 
   const newCurrentStreak = (snapshot.current_win_streak ?? 0) + 1;
   const newBestStreak = Math.max(snapshot.best_win_streak ?? 0, newCurrentStreak);
+  const streakBonus = getStreakBonus(newCurrentStreak);
+  const finalRewardPoints = baseRewardPoints + streakBonus;
 
   const { error } = await supabase
     .from("profiles")
     .update({
-      points: (snapshot.points ?? 0) + rewardPoints,
+      points: (snapshot.points ?? 0) + finalRewardPoints,
       games_played: (snapshot.games_played ?? 0) + 1,
       games_won: (snapshot.games_won ?? 0) + 1,
-      total_points_earned: (snapshot.total_points_earned ?? 0) + rewardPoints,
+      total_points_earned: (snapshot.total_points_earned ?? 0) + finalRewardPoints,
       current_win_streak: newCurrentStreak,
       best_win_streak: newBestStreak,
     })
@@ -102,15 +138,21 @@ export async function applyHeadToHeadMatchRewards({
   supabase,
   winnerUserId,
   loserUserId,
-  winnerPoints = 5,
-  loserPoints = 2,
+  gameType,
 }: ApplyHeadToHeadMatchRewardsParams) {
+  const rewardConfig = REWARD_TABLE[gameType];
+
+  if (!rewardConfig) {
+    console.error("Tipo de juego no configurado en recompensas:", gameType);
+    return;
+  }
+
   if (winnerUserId) {
-    await applyWinnerReward(supabase, winnerUserId, winnerPoints);
+    await applyWinnerReward(supabase, winnerUserId, rewardConfig.winnerPoints);
   }
 
   if (loserUserId) {
-    await applyNonWinnerReward(supabase, loserUserId, loserPoints);
+    await applyNonWinnerReward(supabase, loserUserId, rewardConfig.loserPoints);
   }
 }
 
@@ -118,20 +160,26 @@ export async function applySingleWinnerMatchRewards({
   supabase,
   winnerUserId,
   participantUserIds,
-  winnerPoints = 5,
-  participantPoints = 2,
+  gameType,
 }: ApplySingleWinnerMatchRewardsParams) {
+  const rewardConfig = REWARD_TABLE[gameType];
+
+  if (!rewardConfig) {
+    console.error("Tipo de juego no configurado en recompensas:", gameType);
+    return;
+  }
+
   const uniqueParticipants = Array.from(
     new Set((participantUserIds ?? []).filter(Boolean))
   ) as string[];
 
   if (winnerUserId) {
-    await applyWinnerReward(supabase, winnerUserId, winnerPoints);
+    await applyWinnerReward(supabase, winnerUserId, rewardConfig.winnerPoints);
   }
 
   const losers = uniqueParticipants.filter((userId) => userId !== winnerUserId);
 
   for (const loserUserId of losers) {
-    await applyNonWinnerReward(supabase, loserUserId, participantPoints);
+    await applyNonWinnerReward(supabase, loserUserId, rewardConfig.loserPoints);
   }
 }
