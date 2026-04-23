@@ -1,15 +1,17 @@
 import { supabase } from "@/lib/supabase/client";
+import { applyHeadToHeadMatchRewards } from "@/lib/gameRewards";
 
 export async function resolveGame({
   gameId,
   winnerId,
   loserId,
+  gameType = "ppt_human",
 }: {
   gameId: string;
   winnerId: string;
   loserId: string;
+  gameType?: "ppt_human" | "ppt_bot";
 }) {
-  // 1. Revisar si ya se resolvió
   const { data: game, error: gameError } = await supabase
     .from("games")
     .select("is_resolved")
@@ -26,40 +28,22 @@ export async function resolveGame({
     return;
   }
 
-  // 2. Obtener perfiles
-  const { data: profiles, error: profilesError } = await supabase
-    .from("profiles")
-    .select("id, points, games_played, games_won, games_lost")
-    .in("id", [winnerId, loserId]);
+  await applyHeadToHeadMatchRewards({
+    supabase,
+    winnerUserId: winnerId,
+    loserUserId: loserId,
+    gameType,
+  });
 
-  if (profilesError) {
-    console.error("Error obteniendo profiles:", profilesError);
+  const { error: resolveError } = await supabase
+    .from("games")
+    .update({ is_resolved: true })
+    .eq("id", gameId);
+
+  if (resolveError) {
+    console.error("Error marcando game como resuelto:", resolveError);
     return;
   }
-
-  const winner = profiles.find(p => p.id === winnerId);
-  const loser = profiles.find(p => p.id === loserId);
-
-  if (!winner || !loser) return;
-
-  // 3. Actualizar ganador
-  await supabase.from("profiles").update({
-    points: (winner.points || 0) + 10,
-    games_played: (winner.games_played || 0) + 1,
-    games_won: (winner.games_won || 0) + 1,
-  }).eq("id", winnerId);
-
-  // 4. Actualizar perdedor
-  await supabase.from("profiles").update({
-    points: (loser.points || 0) + 3,
-    games_played: (loser.games_played || 0) + 1,
-    games_lost: (loser.games_lost || 0) + 1,
-  }).eq("id", loserId);
-
-  // 5. Marcar partida como resuelta
-  await supabase.from("games").update({
-    is_resolved: true,
-  }).eq("id", gameId);
 
   console.log("✅ Game resuelto correctamente");
 }
