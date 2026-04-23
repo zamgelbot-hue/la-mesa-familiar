@@ -280,7 +280,7 @@ export default function QuestionGame({
       .from("pp_sessions")
       .select("*")
       .eq("room_id", roomCode)
-      .in("status", ["waiting", "playing", "finished"])
+      .in("status", ["waiting", "playing"])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -432,39 +432,51 @@ export default function QuestionGame({
     sessionBootstrapRef.current = false;
   }, [roomCode]);
 
-  useEffect(() => {
-    if (!room || !playerIdentity) return;
-    if (sessionBootstrapRef.current) return;
+useEffect(() => {
+  if (!room || !playerIdentity) return;
+  if (room.game_slug !== "pregunta") return;
+  if (roomPlayers.length < 2) return;
+  if (!hostSessionKey) return;
+  if (sessionBootstrapRef.current) return;
 
-    sessionBootstrapRef.current = true;
+  sessionBootstrapRef.current = true;
 
-    const boot = async () => {
-      try {
-        const existing = await loadSession();
-        const activeSession = existing ?? (await createSessionIfNeeded());
+  const boot = async () => {
+    try {
+      const existing = await loadSession();
+      const activeSession = existing ?? (await createSessionIfNeeded());
 
-        if (activeSession) {
-          if (!questionBank.length) {
-            await loadQuestionBank();
-          }
-          await ensureSessionPlayersExist(activeSession.id);
+      if (activeSession) {
+        if (!questionBank.length) {
+          await loadQuestionBank();
         }
-      } catch (error) {
-        console.error("Error bootstrapping Pregunta Pregunta:", error);
-        setErrorMessage("No se pudo preparar la partida.");
+        await ensureSessionPlayersExist(activeSession.id);
       }
-    };
+    } catch (error) {
+      console.error("Error bootstrapping Pregunta Pregunta:", error);
+      setErrorMessage("No se pudo preparar la partida.");
+      sessionBootstrapRef.current = false;
+    }
+  };
 
-    void boot();
-  }, [
-    room,
-    playerIdentity,
-    loadSession,
-    createSessionIfNeeded,
-    ensureSessionPlayersExist,
-    loadQuestionBank,
-    questionBank.length,
-  ]);
+  void boot();
+}, [
+  room,
+  playerIdentity,
+  roomPlayers.length,
+  hostSessionKey,
+  loadSession,
+  createSessionIfNeeded,
+  ensureSessionPlayersExist,
+  loadQuestionBank,
+  questionBank.length,
+]);
+
+  useEffect(() => {
+  if (!session?.id) {
+    sessionBootstrapRef.current = false;
+  }
+}, [roomPlayers.length, session?.id]);
 
   useEffect(() => {
     if (!roomCode) return;
