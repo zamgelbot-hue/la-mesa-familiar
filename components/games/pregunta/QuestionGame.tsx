@@ -170,6 +170,7 @@ export default function QuestionGame({
   const phaseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const roundTransitionLockRef = useRef(false);
   const rewardsAppliedSessionIdRef = useRef<string | null>(null);
+  const resolvedRoundKeyRef = useRef<string | null>(null);
 
   const currentRoomPlayer = useMemo(() => {
     if (!playerIdentity) return null;
@@ -432,51 +433,51 @@ export default function QuestionGame({
     sessionBootstrapRef.current = false;
   }, [roomCode]);
 
-useEffect(() => {
-  if (!room || !playerIdentity) return;
-  if (room.game_slug !== "pregunta") return;
-  if (roomPlayers.length < 2) return;
-  if (!hostSessionKey) return;
-  if (sessionBootstrapRef.current) return;
+  useEffect(() => {
+    if (!room || !playerIdentity) return;
+    if (room.game_slug !== "pregunta") return;
+    if (roomPlayers.length < 2) return;
+    if (!hostSessionKey) return;
+    if (sessionBootstrapRef.current) return;
 
-  sessionBootstrapRef.current = true;
+    sessionBootstrapRef.current = true;
 
-  const boot = async () => {
-    try {
-      const existing = await loadSession();
-      const activeSession = existing ?? (await createSessionIfNeeded());
+    const boot = async () => {
+      try {
+        const existing = await loadSession();
+        const activeSession = existing ?? (await createSessionIfNeeded());
 
-      if (activeSession) {
-        if (!questionBank.length) {
-          await loadQuestionBank();
+        if (activeSession) {
+          if (!questionBank.length) {
+            await loadQuestionBank();
+          }
+          await ensureSessionPlayersExist(activeSession.id);
         }
-        await ensureSessionPlayersExist(activeSession.id);
+      } catch (error) {
+        console.error("Error bootstrapping Pregunta Pregunta:", error);
+        setErrorMessage("No se pudo preparar la partida.");
+        sessionBootstrapRef.current = false;
       }
-    } catch (error) {
-      console.error("Error bootstrapping Pregunta Pregunta:", error);
-      setErrorMessage("No se pudo preparar la partida.");
-      sessionBootstrapRef.current = false;
-    }
-  };
+    };
 
-  void boot();
-}, [
-  room,
-  playerIdentity,
-  roomPlayers.length,
-  hostSessionKey,
-  loadSession,
-  createSessionIfNeeded,
-  ensureSessionPlayersExist,
-  loadQuestionBank,
-  questionBank.length,
-]);
+    void boot();
+  }, [
+    room,
+    playerIdentity,
+    roomPlayers.length,
+    hostSessionKey,
+    loadSession,
+    createSessionIfNeeded,
+    ensureSessionPlayersExist,
+    loadQuestionBank,
+    questionBank.length,
+  ]);
 
   useEffect(() => {
-  if (!session?.id) {
-    sessionBootstrapRef.current = false;
-  }
-}, [roomPlayers.length, session?.id]);
+    if (!session?.id) {
+      sessionBootstrapRef.current = false;
+    }
+  }, [roomPlayers.length, session?.id]);
 
   useEffect(() => {
     if (!roomCode) return;
@@ -491,8 +492,18 @@ useEffect(() => {
           table: "rooms",
           filter: `code=eq.${roomCode}`,
         },
-        async () => {
-          await loadRoom();
+        async (payload) => {
+          const nextRoom = (payload.new ?? null) as RoomRow | null;
+
+          if (nextRoom) {
+            setRoom(nextRoom);
+
+            if (nextRoom.status === "waiting") {
+              router.replace(`/sala/${roomCode}`);
+            }
+          } else {
+            await loadRoom();
+          }
         },
       )
       .on(
@@ -526,7 +537,7 @@ useEffect(() => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, roomCode, loadRoom, loadRoomPlayers]);
+  }, [supabase, roomCode, loadRoom, loadRoomPlayers, router]);
 
   useEffect(() => {
     if (!session?.id) return;
@@ -568,6 +579,7 @@ useEffect(() => {
         return;
       }
 
+      resolvedRoundKeyRef.current = null;
       setCurrentQuestion(nextQuestion);
       setPhase("question");
       setSelectedOptionIndex(null);
@@ -627,9 +639,13 @@ useEffect(() => {
 
   const resolveCurrentRound = useCallback(async () => {
     if (!session || !currentQuestion || !isHost) return;
+
+    const roundKey = `${session.id}:${session.current_round}`;
+    if (resolvedRoundKeyRef.current === roundKey) return;
     if (roundTransitionLockRef.current) return;
 
     roundTransitionLockRef.current = true;
+    resolvedRoundKeyRef.current = roundKey;
 
     try {
       const answers = await fetchRoundAnswers(
@@ -720,6 +736,7 @@ useEffect(() => {
     } catch (error) {
       console.error("Error resolviendo ronda:", error);
       setErrorMessage("No se pudo resolver la ronda.");
+      resolvedRoundKeyRef.current = null;
     } finally {
       roundTransitionLockRef.current = false;
     }
@@ -999,43 +1016,43 @@ useEffect(() => {
                     {currentQuestion.questionText}
                   </h2>
 
-                  <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                    {currentQuestion.options.map((option) => {
-                      const isSelected = selectedOptionIndex === option.originalIndex;
-                      const isRevealPhase =
-                        phase === "reveal" || phase === "scoreboard" || phase === "finished";
-                      const isCorrect =
-                        isRevealPhase &&
-                        option.originalIndex === currentQuestion.correctOriginalIndex;
-                      const isWrongSelected =
-                        isRevealPhase && isSelected && !isCorrect;
+                  {phase === "question" ? (
+                    <div className="mt-6 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-6 text-center text-orange-200">
+                      Prepárate... las respuestas aparecerán en un momento.
+                    </div>
+                  ) : (
+                    <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                      {currentQuestion.options.map((option) => {
+                        const isSelected = selectedOptionIndex === option.originalIndex;
+                        const isRevealPhase =
+                          phase === "reveal" || phase === "scoreboard" || phase === "finished";
+                        const isCorrect =
+                          isRevealPhase &&
+                          option.originalIndex === currentQuestion.correctOriginalIndex;
+                        const isWrongSelected =
+                          isRevealPhase && isSelected && !isCorrect;
 
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          disabled={phase !== "answer" || selectedOptionIndex !== null}
-                          onClick={() => void handleSelectOption(option.originalIndex)}
-                          className={[
-                            "min-h-[92px] rounded-2xl border px-4 py-4 text-left transition disabled:cursor-not-allowed",
-                            isCorrect
-                              ? "border-emerald-400/40 bg-emerald-500/20"
-                              : isWrongSelected
-                                ? "border-red-400/40 bg-red-500/20"
-                                : isSelected
-                                  ? "border-orange-400/40 bg-orange-500/20"
-                                  : "border-white/10 bg-white/5 hover:border-orange-400/30 hover:bg-orange-500/10",
-                          ].join(" ")}
-                        >
-                          <span className="text-base font-medium">{option.text}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {phase === "question" && (
-                    <div className="mt-5 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-sm text-orange-200">
-                      Prepárate... las respuestas aparecen enseguida.
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            disabled={phase !== "answer" || selectedOptionIndex !== null}
+                            onClick={() => void handleSelectOption(option.originalIndex)}
+                            className={[
+                              "min-h-[92px] rounded-2xl border px-4 py-4 text-left transition disabled:cursor-not-allowed",
+                              isCorrect
+                                ? "border-emerald-400/40 bg-emerald-500/20"
+                                : isWrongSelected
+                                  ? "border-red-400/40 bg-red-500/20"
+                                  : isSelected
+                                    ? "border-orange-400/40 bg-orange-500/20"
+                                    : "border-white/10 bg-white/5 hover:border-orange-400/30 hover:bg-orange-500/10",
+                            ].join(" ")}
+                          >
+                            <span className="text-base font-medium">{option.text}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
 
