@@ -188,16 +188,23 @@ export function buildFinalStandings(players: QuestionPlayerSummary[]): FinalStan
 export function calculateGlobalRewards(
   standings: FinalStanding[],
 ): GlobalRewardBreakdown[] {
+  const totalPlayers = standings.length;
+
   return standings.map((player) => {
     let placementPoints = 0;
 
-    if (player.position === 1) placementPoints = 20;
-    else if (player.position === 2) placementPoints = 10;
-    else if (player.position === 3) placementPoints = 5;
+    if (player.position === 1) {
+      placementPoints = totalPlayers >= 4 ? 6 : 4;
+    } else if (player.position === 2) {
+      placementPoints = totalPlayers >= 4 ? 2 : 1;
+    } else if (player.position === 3 && totalPlayers >= 4) {
+      placementPoints = 1;
+    }
 
-    const participationPoints = 2;
-    const accuracyBonus = player.accuracy >= 80 ? 5 : 0;
-    const streakBonus = player.correctAnswers > 0 && player.incorrectAnswers === 0 ? 5 : 0;
+    const participationPoints = 4;
+    const accuracyBonus = player.accuracy >= 90 ? 1 : 0;
+    const streakBonus =
+      player.correctAnswers > 0 && player.incorrectAnswers === 0 ? 1 : 0;
 
     return {
       playerId: player.playerId,
@@ -205,7 +212,8 @@ export function calculateGlobalRewards(
       participationPoints,
       accuracyBonus,
       streakBonus,
-      totalReward: placementPoints + participationPoints + accuracyBonus + streakBonus,
+      totalReward:
+        participationPoints + placementPoints + accuracyBonus + streakBonus,
     };
   });
 }
