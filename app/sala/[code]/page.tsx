@@ -6,11 +6,10 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
-import { getVariantLabel } from "@/lib/games/gameCatalog";
+import { GAME_CONFIGS, getVariantLabel } from "@/lib/games/gameCatalog";
 import RoomChat from "@/components/RoomChat";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import ShareRoomButton from "@/components/room/ShareRoomButton";
-
 
 type Room = {
   id: string;
@@ -60,7 +59,7 @@ const getPlayerStorageKey = (roomCode: string) => `lmf:player:${roomCode}`;
 const savePlayerIdentity = (
   roomCode: string,
   playerName: string,
-  isHost: boolean
+  isHost: boolean,
 ) => {
   if (typeof window === "undefined") return;
 
@@ -168,6 +167,7 @@ export default function SalaPage() {
 
   const autoJoinAttemptedRef = useRef(false);
   const playerIdentityRef = useRef<PlayerIdentity | null>(null);
+  const lastProfilesKeyRef = useRef("");
 
   const sortedPlayers = useMemo(() => {
     return [...players].sort((a, b) => {
@@ -186,6 +186,11 @@ export default function SalaPage() {
   const minPlayersToStart = game?.min_players ?? 2;
   const variantLabel = getVariantLabel(room?.game_slug, room?.game_variant);
 
+  const tutorialSteps = useMemo(() => {
+    if (!room?.game_slug) return [];
+    return GAME_CONFIGS[room.game_slug]?.tutorial ?? [];
+  }, [room?.game_slug]);
+
   const allReady = useMemo(() => {
     return (
       sortedPlayers.length >= minPlayersToStart &&
@@ -193,117 +198,113 @@ export default function SalaPage() {
     );
   }, [sortedPlayers, minPlayersToStart]);
 
-const loadPlayerIdentity = useCallback(async () => {
-  try {
-    const identity = await getPlayerIdentity();
-    playerIdentityRef.current = identity;
-    setPlayerIdentity(identity);
-    return identity;
-  } catch (error) {
-    console.error("Error cargando identidad:", error);
-    playerIdentityRef.current = null;
-    setPlayerIdentity(null);
-    return null;
-  }
-}, []);
+  const loadPlayerIdentity = useCallback(async () => {
+    try {
+      const identity = await getPlayerIdentity();
+      playerIdentityRef.current = identity;
+      setPlayerIdentity(identity);
+      return identity;
+    } catch (error) {
+      console.error("Error cargando identidad:", error);
+      playerIdentityRef.current = null;
+      setPlayerIdentity(null);
+      return null;
+    }
+  }, []);
 
-const fetchRoom = useCallback(
-  async (retries = 3, delayMs = 500) => {
-    for (let attempt = 0; attempt < retries; attempt++) {
+  const fetchRoom = useCallback(
+    async (retries = 3, delayMs = 500) => {
+      for (let attempt = 0; attempt < retries; attempt++) {
+        const { data, error } = await supabase
+          .from("rooms")
+          .select("*")
+          .eq("code", code)
+          .maybeSingle();
+
+        if (error) {
+          console.error("Error cargando room:", error);
+        } else if (data) {
+          const nextRoom = data as Room;
+          setRoom(nextRoom);
+          return nextRoom;
+        }
+
+        if (attempt < retries - 1) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+      }
+
+      setRoom(null);
+      return null;
+    },
+    [supabase, code],
+  );
+
+  const fetchGame = useCallback(
+    async (gameSlug?: string | null) => {
+      const slugToLoad = gameSlug ?? room?.game_slug;
+      if (!slugToLoad) return null;
+
       const { data, error } = await supabase
-        .from("rooms")
+        .from("games")
         .select("*")
-        .eq("code", code)
+        .eq("slug", slugToLoad)
         .maybeSingle();
 
       if (error) {
-        console.error("Error cargando room:", error);
-      } else if (data) {
-        const nextRoom = data as Room;
-        setRoom(nextRoom);
-        return nextRoom;
+        console.error("Error cargando game:", error);
+        return null;
       }
 
-      if (attempt < retries - 1) {
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      const nextGame = (data ?? null) as Game | null;
+      setGame(nextGame);
+      return nextGame;
+    },
+    [supabase, room?.game_slug],
+  );
+
+  const fetchProfilesForPlayers = useCallback(
+    async (playerList: RoomPlayer[]) => {
+      const userIds = Array.from(
+        new Set(playerList.map((p) => p.user_id).filter(Boolean)),
+      ) as string[];
+
+      const requestKey = userIds.sort().join("|");
+
+      if (!requestKey) {
+        lastProfilesKeyRef.current = "";
+        setProfilesMap({});
+        return;
       }
-    }
 
-    setRoom(null);
-    return null;
-  },
-  [supabase, code]
-);
+      if (lastProfilesKeyRef.current === requestKey) return;
 
-const fetchGame = useCallback(
-  async (gameSlug?: string | null) => {
-    const slugToLoad = gameSlug ?? room?.game_slug;
-    if (!slugToLoad) return null;
+      lastProfilesKeyRef.current = requestKey;
 
-    const { data, error } = await supabase
-      .from("games")
-      .select("*")
-      .eq("slug", slugToLoad)
-      .maybeSingle();
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, display_name, avatar_key, frame_key, points")
+        .in("id", userIds);
 
-    if (error) {
-      console.error("Error cargando game:", error);
-      return null;
-    }
+      if (error) {
+        console.error("Error cargando perfiles:", error);
+        return;
+      }
 
-    const nextGame = (data ?? null) as Game | null;
-    setGame(nextGame);
-    return nextGame;
-  },
-  [supabase, room?.game_slug]
-);
+      const nextMap: ProfileMap = {};
+      for (const profile of data ?? []) {
+        nextMap[profile.id] = {
+          display_name: profile.display_name,
+          avatar_key: profile.avatar_key,
+          frame_key: profile.frame_key,
+          points: profile.points,
+        };
+      }
 
-const lastProfilesKeyRef = useRef("");
-
-const fetchProfilesForPlayers = useCallback(
-  async (playerList: RoomPlayer[]) => {
-    const userIds = Array.from(
-      new Set(playerList.map((p) => p.user_id).filter(Boolean))
-    ) as string[];
-
-    const requestKey = userIds.sort().join("|");
-
-    if (!requestKey) {
-      lastProfilesKeyRef.current = "";
-      setProfilesMap({});
-      return;
-    }
-
-    if (lastProfilesKeyRef.current === requestKey) {
-      return;
-    }
-
-    lastProfilesKeyRef.current = requestKey;
-
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, display_name, avatar_key, frame_key, points")
-      .in("id", userIds);
-
-    if (error) {
-      console.error("Error cargando perfiles:", error);
-      return;
-    }
-
-    const nextMap: ProfileMap = {};
-    for (const profile of data ?? []) {
-      nextMap[profile.id] = {
-        display_name: profile.display_name,
-        avatar_key: profile.avatar_key,
-        frame_key: profile.frame_key,
-        points: profile.points,
-      };
-    }
-
-    setProfilesMap(nextMap);
-  },
-  [supabase]
-);
+      setProfilesMap(nextMap);
+    },
+    [supabase],
+  );
 
   const resolveCurrentPlayerFromList = useCallback(
     (playerList: RoomPlayer[], identity: PlayerIdentity | null) => {
@@ -318,8 +319,9 @@ const fetchProfilesForPlayers = useCallback(
 
       if (identity?.is_guest && identity.name) {
         const guestMatched = playerList.find(
-          (p) => p.is_guest && !p.user_id && p.player_name === identity.name
+          (p) => p.is_guest && !p.user_id && p.player_name === identity.name,
         );
+
         if (guestMatched) {
           setCurrentPlayerName(guestMatched.player_name);
           savePlayerIdentity(code, guestMatched.player_name, guestMatched.is_host);
@@ -336,46 +338,48 @@ const fetchProfilesForPlayers = useCallback(
       setCurrentPlayerName("");
       return "";
     },
-    [code]
+    [code],
   );
 
-const fetchPlayers = useCallback(
-  async (identityOverride?: PlayerIdentity | null) => {
-    const { data, error } = await supabase
-      .from("room_players")
-      .select("*")
-      .eq("room_code", code)
-      .order("created_at", { ascending: true });
+  const fetchPlayers = useCallback(
+    async (identityOverride?: PlayerIdentity | null) => {
+      const { data, error } = await supabase
+        .from("room_players")
+        .select("*")
+        .eq("room_code", code)
+        .order("created_at", { ascending: true });
 
-    if (error) {
-      console.error("Error cargando players:", error);
-      return [];
-    }
+      if (error) {
+        console.error("Error cargando players:", error);
+        return [];
+      }
 
-    const list = (data ?? []) as RoomPlayer[];
+      const list = (data ?? []) as RoomPlayer[];
 
-    setPlayers((prev) => {
-      const prevSerialized = JSON.stringify(prev);
-      const nextSerialized = JSON.stringify(list);
-      return prevSerialized === nextSerialized ? prev : list;
-    });
+      setPlayers((prev) => {
+        const prevSerialized = JSON.stringify(prev);
+        const nextSerialized = JSON.stringify(list);
+        return prevSerialized === nextSerialized ? prev : list;
+      });
 
-    await fetchProfilesForPlayers(list);
+      await fetchProfilesForPlayers(list);
 
-    const identityToUse =
-      identityOverride !== undefined
-        ? identityOverride
-        : playerIdentityRef.current;
+      const identityToUse =
+        identityOverride !== undefined ? identityOverride : playerIdentityRef.current;
 
-    resolveCurrentPlayerFromList(list, identityToUse);
+      resolveCurrentPlayerFromList(list, identityToUse);
 
-    return list;
-  },
-  [supabase, code, fetchProfilesForPlayers, resolveCurrentPlayerFromList]
-);
+      return list;
+    },
+    [supabase, code, fetchProfilesForPlayers, resolveCurrentPlayerFromList],
+  );
 
   const autoJoinIfNeeded = useCallback(
-    async (currentRoom: Room | null, currentPlayers: RoomPlayer[], identity: PlayerIdentity | null) => {
+    async (
+      currentRoom: Room | null,
+      currentPlayers: RoomPlayer[],
+      identity: PlayerIdentity | null,
+    ) => {
       if (!currentRoom) return false;
       if (!identity) return false;
       if (currentRoom.status !== "waiting") return false;
@@ -411,6 +415,7 @@ const fetchPlayers = useCallback(
 
         let finalName = identity.name;
         let suffix = 2;
+
         while (currentPlayers.some((p) => p.player_name === finalName)) {
           finalName = `${identity.name} ${suffix}`;
           suffix += 1;
@@ -437,7 +442,7 @@ const fetchPlayers = useCallback(
         setJoiningInvite(false);
       }
     },
-    [supabase, resolveCurrentPlayerFromList]
+    [supabase, resolveCurrentPlayerFromList],
   );
 
   useEffect(() => {
@@ -472,10 +477,10 @@ const fetchPlayers = useCallback(
         const joined = await autoJoinIfNeeded(loadedRoom, loadedPlayers, identity);
         if (!active) return;
 
-if (joined) {
-  await fetchRoom();
-  await fetchPlayers(identity);
-}
+        if (joined) {
+          await fetchRoom();
+          await fetchPlayers(identity);
+        }
       } catch (error) {
         console.error("Error inicializando sala:", error);
         if (active) {
@@ -497,25 +502,34 @@ if (joined) {
       active = false;
       window.clearTimeout(timeout);
     };
-  }, [code, loadPlayerIdentity, fetchRoom, fetchPlayers, fetchGame, autoJoinIfNeeded]);
+  }, [
+    code,
+    loadPlayerIdentity,
+    fetchRoom,
+    fetchPlayers,
+    fetchGame,
+    autoJoinIfNeeded,
+  ]);
 
-useEffect(() => {
-  let active = true;
+  useEffect(() => {
+    let active = true;
 
-  const {
-    data: { subscription },
-  } = supabase.auth.onAuthStateChange(async () => {
-    if (!active) return;
-    const identity = await loadPlayerIdentity();
-    if (!active) return;
-    await fetchPlayers(identity);
-  });
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async () => {
+      if (!active) return;
 
-  return () => {
-    active = false;
-    subscription.unsubscribe();
-  };
-}, [supabase, loadPlayerIdentity, fetchPlayers]);
+      const identity = await loadPlayerIdentity();
+      if (!active) return;
+
+      await fetchPlayers(identity);
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [supabase, loadPlayerIdentity, fetchPlayers]);
 
   useEffect(() => {
     if (!code) return;
@@ -531,8 +545,8 @@ useEffect(() => {
           filter: `room_code=eq.${code}`,
         },
         async () => {
-        await fetchPlayers(playerIdentityRef.current);
-        }
+          await fetchPlayers(playerIdentityRef.current);
+        },
       )
       .on(
         "postgres_changes",
@@ -557,18 +571,19 @@ useEffect(() => {
             }
           } else {
             const freshRoom = await fetchRoom();
+
             if (freshRoom?.game_slug) {
               await fetchGame(freshRoom.game_slug);
             }
           }
-        }
+        },
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-}, [supabase, code, fetchPlayers, fetchRoom, fetchGame, router]);
+  }, [supabase, code, fetchPlayers, fetchRoom, fetchGame, router]);
 
   useEffect(() => {
     if (room?.status === "playing") {
@@ -608,7 +623,9 @@ useEffect(() => {
   };
 
   const handleStartGame = async () => {
-    if (!room || !isHost || !allReady || sortedPlayers.length < minPlayersToStart) return;
+    if (!room || !isHost || !allReady || sortedPlayers.length < minPlayersToStart) {
+      return;
+    }
 
     try {
       setStarting(true);
@@ -650,15 +667,14 @@ useEffect(() => {
     (!currentPlayerName ||
       !sortedPlayers.some((player) => player.player_name === currentPlayerName));
 
-  if (loading) {
-    return <LoadingView />;
-  }
+  if (loading) return <LoadingView />;
 
   if (!room) {
     return (
       <main className="min-h-screen bg-black px-6 py-8 text-white">
         <div className="mx-auto max-w-6xl rounded-[34px] border border-red-500/20 bg-red-500/10 p-10 text-center">
           <p className="text-3xl font-bold text-red-300">No encontramos esta sala.</p>
+
           <button
             onClick={() => router.push("/")}
             className="mt-5 rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black"
@@ -707,16 +723,17 @@ useEffect(() => {
                 {joiningInvite
                   ? "Uniéndote a la sala..."
                   : starting
-                  ? "Iniciando partida..."
-                  : allReady
-                  ? "Todos listos"
-                  : sortedPlayers.length < minPlayersToStart
-                  ? "Esperando jugadores..."
-                  : "Esperando confirmación"}
+                    ? "Iniciando partida..."
+                    : allReady
+                      ? "Todos listos"
+                      : sortedPlayers.length < minPlayersToStart
+                        ? "Esperando jugadores..."
+                        : "Esperando confirmación"}
               </p>
 
               <p className="mt-2 text-sm text-orange-200">
-                Variante activa: <span className="font-bold text-white">{variantLabel}</span>
+                Variante activa:{" "}
+                <span className="font-bold text-white">{variantLabel}</span>
               </p>
             </div>
 
@@ -751,6 +768,7 @@ useEffect(() => {
               <p className="text-lg font-semibold text-cyan-300">
                 Para unirte a esta sala primero necesitas una identidad activa
               </p>
+
               <p className="mt-1 text-white/70">
                 Puedes iniciar sesión, crear tu cuenta o entrar como invitado.
               </p>
@@ -778,6 +796,7 @@ useEffect(() => {
               <p className="text-lg font-semibold text-cyan-300">
                 Este navegador todavía no sabe qué jugador eres
               </p>
+
               <p className="mt-1 text-white/70">
                 Selecciona tu identidad una sola vez en este navegador.
               </p>
@@ -792,6 +811,7 @@ useEffect(() => {
                     <p className="text-lg font-bold">
                       {player.player_name} {player.is_host ? "👑" : ""}
                     </p>
+
                     <p className="text-sm text-white/60">
                       Usar esta identidad en este navegador
                     </p>
@@ -807,10 +827,10 @@ useEffect(() => {
                 const isMe = player.player_name === currentPlayerName;
                 const profile = player.user_id ? profilesMap[player.user_id] : null;
                 const avatar = getAvatarByKey(
-                  player.is_guest ? "avatar_guest" : profile?.avatar_key ?? "avatar_sun"
+                  player.is_guest ? "avatar_guest" : profile?.avatar_key ?? "avatar_sun",
                 );
                 const frame = getFrameByKey(
-                  player.is_guest ? "frame_guest" : profile?.frame_key ?? "frame_orange"
+                  player.is_guest ? "frame_guest" : profile?.frame_key ?? "frame_orange",
                 );
 
                 return (
@@ -820,8 +840,8 @@ useEffect(() => {
                       player.is_ready
                         ? "border-orange-400/30 bg-orange-500/10 shadow-[0_0_25px_rgba(249,115,22,0.12)]"
                         : isMe
-                        ? "border-emerald-400/35 bg-emerald-500/10 shadow-[0_0_25px_rgba(16,185,129,0.08)]"
-                        : "border-white/10 bg-white/[0.03]"
+                          ? "border-emerald-400/35 bg-emerald-500/10 shadow-[0_0_25px_rgba(16,185,129,0.08)]"
+                          : "border-white/10 bg-white/[0.03]"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-4">
@@ -832,12 +852,13 @@ useEffect(() => {
                           <p className="truncate text-2xl font-extrabold md:text-3xl">
                             {player.player_name} {player.is_host ? "👑" : ""}
                           </p>
+
                           <p className="mt-1 text-sm text-white/60 md:text-base">
                             {isMe
                               ? "Tú"
                               : player.is_guest
-                              ? "Invitado en sala"
-                              : "Jugador registrado"}
+                                ? "Invitado en sala"
+                                : "Jugador registrado"}
                           </p>
                         </div>
                       </div>
@@ -878,6 +899,7 @@ useEffect(() => {
                   <p className="text-lg font-bold text-white">
                     {game?.name ?? "Juego"}
                   </p>
+
                   <p className="mt-2 text-sm text-white/60">
                     Variante activa: {variantLabel}
                   </p>
@@ -913,6 +935,25 @@ useEffect(() => {
                   </div>
                 </div>
               </div>
+
+              {tutorialSteps.length > 0 && (
+                <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
+                  <p className="text-xs font-bold uppercase tracking-[0.25em] text-orange-200">
+                    Cómo jugar
+                  </p>
+
+                  <ul className="mt-4 space-y-2">
+                    {tutorialSteps.map((step, index) => (
+                      <li
+                        key={index}
+                        className="rounded-xl bg-white/5 px-4 py-3 text-sm text-white/80"
+                      >
+                        {index + 1}. {step}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
 
@@ -930,7 +971,12 @@ useEffect(() => {
 
               <button
                 onClick={handleStartGame}
-                disabled={!isHost || !allReady || sortedPlayers.length < minPlayersToStart || starting}
+                disabled={
+                  !isHost ||
+                  !allReady ||
+                  sortedPlayers.length < minPlayersToStart ||
+                  starting
+                }
                 className="rounded-2xl bg-orange-900/70 px-6 py-3.5 font-bold text-orange-100 transition hover:bg-orange-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {starting ? "Iniciando..." : "Iniciar partida"}
