@@ -6,9 +6,11 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
+import { getVariantLabel } from "@/lib/games/gameCatalog";
 import RoomChat from "@/components/RoomChat";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import ShareRoomButton from "@/components/room/ShareRoomButton";
+
 
 type Room = {
   id: string;
@@ -142,32 +144,6 @@ function LoadingView() {
       </div>
     </main>
   );
-}
-
-function getVariantLabel(gameSlug?: string | null, variantKey?: string | null) {
-  if (!variantKey) return "Sin variante";
-
-  if (gameSlug === "loteria-mexicana") {
-    const loteriaMap: Record<string, string> = {
-      clasica: "Clásica",
-      "familia-palomares": "Familia Palomares",
-      "comidas-mexicanas": "Comidas Mexicanas",
-    };
-
-    return loteriaMap[variantKey] ?? variantKey;
-  }
-
-  if (gameSlug === "piedra-papel-o-tijera") {
-    const pptMap: Record<string, string> = {
-      bo3: "Mejor 2 de 3",
-      bo5: "Mejor 3 de 5",
-      bo7: "Mejor 4 de 7",
-    };
-
-    return pptMap[variantKey] ?? variantKey;
-  }
-
-  return variantKey;
 }
 
 export default function SalaPage() {
