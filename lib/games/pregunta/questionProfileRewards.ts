@@ -3,6 +3,31 @@ import { applyRewardsEngine } from "@/lib/rewards/rewardEngine";
 import type { FinalStanding, GlobalRewardBreakdown } from "./questionTypes";
 import { calculateGlobalRewards } from "./scoring";
 
+function calculateSmartPreguntaReward(
+  player: FinalStanding,
+  reward: GlobalRewardBreakdown,
+) {
+  const correctAnswers = player.correctAnswers ?? 0;
+  const incorrectAnswers = player.incorrectAnswers ?? 0;
+  const totalAnswers = correctAnswers + incorrectAnswers;
+
+  const accuracy = totalAnswers > 0 ? correctAnswers / totalAnswers : 0;
+
+  const accuracyMultiplier =
+    accuracy >= 0.8 ? 1.3 :
+    accuracy >= 0.6 ? 1.15 :
+    1;
+
+  const placementMultiplier =
+    player.position === 1 ? 1.2 :
+    player.position === 2 ? 1.1 :
+    1;
+
+  return Math.round(
+    reward.totalReward * accuracyMultiplier * placementMultiplier
+  );
+}
+
 export async function applyQuestionGameProfileRewards(
   supabase: SupabaseClient,
   standings: FinalStanding[],
@@ -28,10 +53,12 @@ export async function applyQuestionGameProfileRewards(
         const reward = rewardMap.get(player.playerId);
         if (!reward) return null;
 
+        const finalPoints = calculateSmartPreguntaReward(player, reward);
+
         return {
           userId: player.playerId,
           placement: player.position,
-          basePoints: reward.totalReward,
+          basePoints: finalPoints,
         };
       })
       .filter(Boolean) as {
