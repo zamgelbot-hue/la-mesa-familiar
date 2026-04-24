@@ -460,12 +460,11 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
         const participantUserIds = roomPlayers.map((player) => player.user_id);
 
         await applySingleWinnerMatchRewards({
-          supabase,
-          winnerUserId,
-          participantUserIds,
-          winnerPoints: 5,
-          participantPoints: 2,
-        });
+  supabase,
+  winnerUserId,
+  participantUserIds,
+  gameType: "loteria",
+});
 
         rewardsAppliedMatchIdRef.current = match.id;
       } catch (error) {
