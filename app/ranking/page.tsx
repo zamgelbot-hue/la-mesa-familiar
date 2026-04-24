@@ -9,10 +9,13 @@ import SiteHeader from "@/components/site/SiteHeader";
 
 type LeaderboardTab =
   | "points"
-  | "weekly_points"
   | "total_points_earned"
   | "best_win_streak"
-  | "win_rate";
+  | "weekly_points"
+  | "win_rate"
+  | "pregunta"
+  | "loteria"
+  | "ppt";
 
 type LeaderboardProfile = {
   id: string;
@@ -32,6 +35,9 @@ type RankedPlayer = {
   display_name: string;
   points: number;
   weekly_points: number;
+  pregunta_points: number;
+  loteria_points: number;
+  ppt_points: number;
   games_played: number;
   games_won: number;
   games_lost: number;
@@ -46,21 +52,24 @@ const WIN_RATE_MIN_GAMES = 10;
 
 const TAB_LABELS: Record<LeaderboardTab, string> = {
   points: "Puntos",
-  weekly_points: "Semanal",
   total_points_earned: "Acumulado",
   best_win_streak: "Racha",
+  weekly_points: "Semanal",
   win_rate: "Win Rate",
+  pregunta: "Pregunta",
+  loteria: "Lotería",
+  ppt: "PPT",
 };
 
 function normalizeProfiles(
   list: LeaderboardProfile[],
   weeklyPointsMap: Map<string, number> = new Map(),
+  preguntaMap: Map<string, number> = new Map(),
+  loteriaMap: Map<string, number> = new Map(),
+  pptMap: Map<string, number> = new Map(),
 ): RankedPlayer[] {
   return list
-    .filter((player) => {
-      const hasName = !!player.display_name && player.display_name.trim().length > 0;
-      return hasName;
-    })
+    .filter((player) => !!player.display_name && player.display_name.trim().length > 0)
     .map((player) => {
       const gamesPlayed = player.games_played ?? 0;
       const gamesWon = player.games_won ?? 0;
@@ -75,6 +84,9 @@ function normalizeProfiles(
         display_name: player.display_name?.trim() || "Jugador",
         points,
         weekly_points: weeklyPointsMap.get(player.id) ?? 0,
+        pregunta_points: preguntaMap.get(player.id) ?? 0,
+        loteria_points: loteriaMap.get(player.id) ?? 0,
+        ppt_points: pptMap.get(player.id) ?? 0,
         games_played: gamesPlayed,
         games_won: gamesWon,
         games_lost: gamesLost,
@@ -101,14 +113,6 @@ function sortPlayers(players: RankedPlayer[], tab: LeaderboardTab) {
           a.display_name.localeCompare(b.display_name, "es")
         );
 
-      case "weekly_points":
-        return (
-          b.weekly_points - a.weekly_points ||
-          b.points - a.points ||
-          b.games_won - a.games_won ||
-          a.display_name.localeCompare(b.display_name, "es")
-        );
-
       case "total_points_earned":
         return (
           b.total_points_earned - a.total_points_earned ||
@@ -127,12 +131,44 @@ function sortPlayers(players: RankedPlayer[], tab: LeaderboardTab) {
           a.display_name.localeCompare(b.display_name, "es")
         );
 
+      case "weekly_points":
+        return (
+          b.weekly_points - a.weekly_points ||
+          b.points - a.points ||
+          b.games_won - a.games_won ||
+          a.display_name.localeCompare(b.display_name, "es")
+        );
+
       case "win_rate":
         return (
           b.win_rate - a.win_rate ||
           b.games_played - a.games_played ||
           b.games_won - a.games_won ||
           b.points - a.points ||
+          a.display_name.localeCompare(b.display_name, "es")
+        );
+
+      case "pregunta":
+        return (
+          b.pregunta_points - a.pregunta_points ||
+          b.points - a.points ||
+          b.games_won - a.games_won ||
+          a.display_name.localeCompare(b.display_name, "es")
+        );
+
+      case "loteria":
+        return (
+          b.loteria_points - a.loteria_points ||
+          b.points - a.points ||
+          b.games_won - a.games_won ||
+          a.display_name.localeCompare(b.display_name, "es")
+        );
+
+      case "ppt":
+        return (
+          b.ppt_points - a.ppt_points ||
+          b.points - a.points ||
+          b.games_won - a.games_won ||
           a.display_name.localeCompare(b.display_name, "es")
         );
 
@@ -148,14 +184,18 @@ function getPrimaryStatLabel(tab: LeaderboardTab) {
   switch (tab) {
     case "points":
       return "pts";
-    case "weekly_points":
-      return "semana";
     case "total_points_earned":
       return "acum";
     case "best_win_streak":
       return "racha";
+    case "weekly_points":
+      return "semana";
     case "win_rate":
       return "% WR";
+    case "pregunta":
+    case "loteria":
+    case "ppt":
+      return "pts";
     default:
       return "";
   }
@@ -165,32 +205,29 @@ function getPrimaryStatValue(player: RankedPlayer, tab: LeaderboardTab) {
   switch (tab) {
     case "points":
       return `${player.points}`;
-    case "weekly_points":
-      return `${player.weekly_points}`;
     case "total_points_earned":
       return `${player.total_points_earned}`;
     case "best_win_streak":
       return `${player.best_win_streak}`;
+    case "weekly_points":
+      return `${player.weekly_points}`;
     case "win_rate":
       return `${player.win_rate.toFixed(1)}%`;
+    case "pregunta":
+      return `${player.pregunta_points}`;
+    case "loteria":
+      return `${player.loteria_points}`;
+    case "ppt":
+      return `${player.ppt_points}`;
     default:
       return "0";
   }
 }
 
 function getPodiumStyles(position: number) {
-  if (position === 1) {
-    return "border-yellow-400/40 bg-yellow-500/10 shadow-[0_0_40px_rgba(250,204,21,0.12)]";
-  }
-
-  if (position === 2) {
-    return "border-slate-300/20 bg-slate-200/5 shadow-[0_0_30px_rgba(226,232,240,0.08)]";
-  }
-
-  if (position === 3) {
-    return "border-orange-400/30 bg-orange-500/10 shadow-[0_0_30px_rgba(251,146,60,0.08)]";
-  }
-
+  if (position === 1) return "border-yellow-400/40 bg-yellow-500/10 shadow-[0_0_40px_rgba(250,204,21,0.12)]";
+  if (position === 2) return "border-slate-300/20 bg-slate-200/5 shadow-[0_0_30px_rgba(226,232,240,0.08)]";
+  if (position === 3) return "border-orange-400/30 bg-orange-500/10 shadow-[0_0_30px_rgba(251,146,60,0.08)]";
   return "border-white/10 bg-white/[0.03]";
 }
 
@@ -235,30 +272,48 @@ export default function RankingPage() {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-      const { data: weeklyEvents, error: weeklyError } = await supabase
+      const { data: rewardEvents, error: rewardEventsError } = await supabase
         .from("reward_events")
-        .select("user_id, points_awarded")
-        .gte("created_at", sevenDaysAgo.toISOString());
+        .select("user_id, points_awarded, game_type, created_at");
 
-      if (weeklyError) {
-        console.error("Error cargando reward_events semanales:", weeklyError);
+      if (rewardEventsError) {
+        console.error("Error cargando reward_events:", rewardEventsError);
       }
 
       const weeklyPointsMap = new Map<string, number>();
+      const preguntaMap = new Map<string, number>();
+      const loteriaMap = new Map<string, number>();
+      const pptMap = new Map<string, number>();
 
-      for (const event of weeklyEvents ?? []) {
+      for (const event of rewardEvents ?? []) {
         const userId = event.user_id as string;
         const pointsAwarded = Number(event.points_awarded ?? 0);
+        const gameType = String(event.game_type ?? "");
+        const createdAt = event.created_at ? new Date(event.created_at).getTime() : 0;
 
-        weeklyPointsMap.set(
-          userId,
-          (weeklyPointsMap.get(userId) ?? 0) + pointsAwarded,
-        );
+        if (createdAt >= sevenDaysAgo.getTime()) {
+          weeklyPointsMap.set(userId, (weeklyPointsMap.get(userId) ?? 0) + pointsAwarded);
+        }
+
+        if (gameType === "pregunta") {
+          preguntaMap.set(userId, (preguntaMap.get(userId) ?? 0) + pointsAwarded);
+        }
+
+        if (gameType === "loteria") {
+          loteriaMap.set(userId, (loteriaMap.get(userId) ?? 0) + pointsAwarded);
+        }
+
+        if (gameType === "ppt_human" || gameType === "ppt_bot") {
+          pptMap.set(userId, (pptMap.get(userId) ?? 0) + pointsAwarded);
+        }
       }
 
       const normalized = normalizeProfiles(
         (data ?? []) as LeaderboardProfile[],
         weeklyPointsMap,
+        preguntaMap,
+        loteriaMap,
+        pptMap,
       );
 
       setPlayers(normalized);
@@ -294,12 +349,22 @@ export default function RankingPage() {
       return players.filter((player) => player.weekly_points > 0);
     }
 
+    if (tab === "pregunta") {
+      return players.filter((player) => player.pregunta_points > 0);
+    }
+
+    if (tab === "loteria") {
+      return players.filter((player) => player.loteria_points > 0);
+    }
+
+    if (tab === "ppt") {
+      return players.filter((player) => player.ppt_points > 0);
+    }
+
     return players;
   }, [players, tab]);
 
-  const rankedPlayers = useMemo(() => {
-    return sortPlayers(filteredPlayers, tab);
-  }, [filteredPlayers, tab]);
+  const rankedPlayers = useMemo(() => sortPlayers(filteredPlayers, tab), [filteredPlayers, tab]);
 
   const currentUserRank = useMemo(() => {
     if (!playerIdentity?.user_id) return null;
@@ -380,12 +445,15 @@ export default function RankingPage() {
               <div className="flex flex-wrap gap-3">
                 {(
                   [
-  "points",
-  "total_points_earned",
-  "best_win_streak",
-  "weekly_points",
-  "win_rate",
-] as LeaderboardTab[]
+                    "points",
+                    "total_points_earned",
+                    "best_win_streak",
+                    "weekly_points",
+                    "win_rate",
+                    "pregunta",
+                    "loteria",
+                    "ppt",
+                  ] as LeaderboardTab[]
                 ).map((item) => {
                   const active = tab === item;
 
@@ -418,6 +486,12 @@ export default function RankingPage() {
                   {WIN_RATE_MIN_GAMES} partidas.
                 </div>
               )}
+
+              {(tab === "pregunta" || tab === "loteria" || tab === "ppt") && (
+                <div className="mt-4 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-sm text-orange-200">
+                  Este ranking cuenta solo puntos ganados en este juego.
+                </div>
+              )}
             </div>
 
             <div className="mt-6 rounded-[30px] border border-orange-500/15 bg-zinc-950/90 p-5 shadow-[0_0_40px_rgba(249,115,22,0.05)]">
@@ -426,13 +500,13 @@ export default function RankingPage() {
                   <h2 className="text-2xl font-bold">{TAB_LABELS[tab]}</h2>
                   <p className="mt-1 text-white/60">
                     {tab === "points" && "Ranking principal por puntos actuales."}
-                    {tab === "weekly_points" &&
-                      "Jugadores con más puntos ganados en los últimos 7 días."}
-                    {tab === "total_points_earned" &&
-                      "Jugadores con mayor progreso acumulado."}
+                    {tab === "total_points_earned" && "Jugadores con mayor progreso acumulado."}
                     {tab === "best_win_streak" && "Las mejores rachas de victorias."}
-                    {tab === "win_rate" &&
-                      "La mejor efectividad entre jugadores clasificados."}
+                    {tab === "weekly_points" && "Jugadores con más puntos ganados en los últimos 7 días."}
+                    {tab === "win_rate" && "La mejor efectividad entre jugadores clasificados."}
+                    {tab === "pregunta" && "Ranking exclusivo de Pregunta Pregunta."}
+                    {tab === "loteria" && "Ranking exclusivo de Lotería Mexicana."}
+                    {tab === "ppt" && "Ranking exclusivo de Piedra, Papel o Tijera."}
                   </p>
                 </div>
 
