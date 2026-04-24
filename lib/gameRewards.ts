@@ -60,6 +60,7 @@ export async function applyHeadToHeadMatchRewards({
 
   await applyRewardsEngine({
     supabase,
+    gameType,
     players: [
       {
         userId: winnerUserId,
@@ -94,6 +95,7 @@ export async function applySingleWinnerMatchRewards({
 
   await applyRewardsEngine({
     supabase,
+    gameType,
     players: uniqueParticipants.map((userId) => ({
       userId,
       placement: userId === winnerUserId ? 1 : 2,
