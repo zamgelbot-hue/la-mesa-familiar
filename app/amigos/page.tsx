@@ -200,7 +200,7 @@ export default function AmigosPage() {
     return { accepted, received, sent };
   }, [friendships, profilesMap, currentUserId]);
 
-  const handleSearch = async () => {
+  const handleSearch = useCallback(async () => {
     const term = query.trim();
 
     setMessage("");
@@ -212,7 +212,7 @@ export default function AmigosPage() {
     }
 
     if (term.length < 2) {
-      setErrorMessage("Escribe al menos 2 caracteres para buscar.");
+      setSearchResults([]);
       return;
     }
 
@@ -238,7 +238,23 @@ export default function AmigosPage() {
     } finally {
       setSearching(false);
     }
-  };
+  }, [query, currentUserId, supabase]);
+
+  useEffect(() => {
+    const term = query.trim();
+
+    if (term.length < 2) {
+      setSearchResults([]);
+      setSearching(false);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void handleSearch();
+    }, 450);
+
+    return () => window.clearTimeout(timer);
+  }, [query, handleSearch]);
 
   const sendRequest = async (targetUserId: string) => {
     if (!currentUserId) return;
@@ -269,6 +285,7 @@ export default function AmigosPage() {
 
       setMessage("Solicitud enviada.");
       await loadFriendships(currentUserId);
+      await handleSearch();
     } finally {
       setWorkingId(null);
     }
@@ -298,6 +315,7 @@ export default function AmigosPage() {
 
       setMessage("Solicitud aceptada.");
       await loadFriendships(currentUserId);
+      await handleSearch();
     } finally {
       setWorkingId(null);
     }
@@ -324,9 +342,78 @@ export default function AmigosPage() {
 
       setMessage("Actualizado correctamente.");
       await loadFriendships(currentUserId);
+      await handleSearch();
     } finally {
       setWorkingId(null);
     }
+  };
+
+  const getSearchAction = (player: ProfileRow) => {
+    const existing = friendshipByUserId.get(player.id);
+
+    if (!existing) {
+      return (
+        <button
+          type="button"
+          onClick={() => void sendRequest(player.id)}
+          disabled={workingId === player.id}
+          className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-4 py-2 font-bold text-orange-200 transition hover:bg-orange-500/20 disabled:opacity-60"
+        >
+          {workingId === player.id ? "Enviando..." : "Agregar"}
+        </button>
+      );
+    }
+
+    if (existing.status === "accepted") {
+      return (
+        <span className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-bold text-emerald-300">
+          Ya son amigos
+        </span>
+      );
+    }
+
+    if (existing.status === "pending" && existing.requester_id === currentUserId) {
+      return (
+        <button
+          type="button"
+          onClick={() => void deleteFriendship(existing.id)}
+          disabled={workingId === existing.id}
+          className="rounded-2xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-2 font-bold text-yellow-300 transition hover:bg-yellow-500/20 disabled:opacity-60"
+        >
+          {workingId === existing.id ? "Cancelando..." : "Solicitud enviada"}
+        </button>
+      );
+    }
+
+    if (existing.status === "pending" && existing.addressee_id === currentUserId) {
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() => void acceptRequest(existing.id)}
+            disabled={workingId === existing.id}
+            className="rounded-2xl bg-emerald-500 px-4 py-2 font-bold text-black transition hover:bg-emerald-400 disabled:opacity-60"
+          >
+            Aceptar
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void deleteFriendship(existing.id)}
+            disabled={workingId === existing.id}
+            className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-2 font-bold text-red-300 transition hover:bg-red-500/20 disabled:opacity-60"
+          >
+            Rechazar
+          </button>
+        </>
+      );
+    }
+
+    return (
+      <span className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white/70">
+        No disponible
+      </span>
+    );
   };
 
   const renderPlayerCard = (
@@ -458,7 +545,7 @@ export default function AmigosPage() {
             <section className="rounded-[34px] border border-orange-500/15 bg-zinc-950/90 p-6">
               <h2 className="text-2xl font-bold">Buscar jugadores</h2>
               <p className="mt-2 text-white/60">
-                Busca por nombre visible o username.
+                Escribe al menos 2 letras. La búsqueda se actualiza sola.
               </p>
 
               <div className="mt-5 flex gap-3">
@@ -475,44 +562,30 @@ export default function AmigosPage() {
                 <button
                   type="button"
                   onClick={() => void handleSearch()}
-                  disabled={searching}
-                  className="rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black transition hover:bg-orange-400 disabled:opacity-60"
+                  disabled={searching || query.trim().length < 2}
+                  className="rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {searching ? "Buscando..." : "Buscar"}
                 </button>
               </div>
 
               <div className="mt-6 space-y-4">
-                {searchResults.length === 0 ? (
+                {query.trim().length < 2 ? (
                   <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 text-white/60">
-                    Busca jugadores para enviar solicitud.
+                    Empieza a escribir para buscar jugadores.
+                  </div>
+                ) : searching ? (
+                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 text-white/60">
+                    Buscando jugadores...
+                  </div>
+                ) : searchResults.length === 0 ? (
+                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 text-white/60">
+                    No encontramos jugadores con ese nombre.
                   </div>
                 ) : (
-                  searchResults.map((player) => {
-                    const existing = friendshipByUserId.get(player.id);
-
-                    return renderPlayerCard(
-                      player,
-                      existing ? (
-                        <span className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white/70">
-                          {existing.status === "accepted"
-                            ? "Ya son amigos"
-                            : existing.requester_id === currentUserId
-                              ? "Solicitud enviada"
-                              : "Solicitud recibida"}
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => void sendRequest(player.id)}
-                          disabled={workingId === player.id}
-                          className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-4 py-2 font-bold text-orange-200 transition hover:bg-orange-500/20 disabled:opacity-60"
-                        >
-                          {workingId === player.id ? "Enviando..." : "Agregar"}
-                        </button>
-                      )
-                    );
-                  })
+                  searchResults.map((player) =>
+                    renderPlayerCard(player, getSearchAction(player))
+                  )
                 )}
               </div>
             </section>
