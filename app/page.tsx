@@ -544,6 +544,7 @@ export default function HomePage() {
         signingOut={signingOut}
         showMainNav
         showRankingButton={!!playerIdentity}
+        showFriendsButton={!!playerIdentity && !playerIdentity.is_guest}
         showProfileButton={!!playerIdentity}
         showLoginButton={!playerIdentity}
         showStartButton={!playerIdentity}
