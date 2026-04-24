@@ -13,6 +13,7 @@ type PlayerRewardInput = {
 
 type RewardEngineInput = {
   supabase: SupabaseClient;
+  gameType: string;
   players: PlayerRewardInput[];
 };
 
@@ -34,12 +35,13 @@ async function readProfile(
   const { data, error } = await supabase
     .from("profiles")
     .select(
-  "points, games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak, last_reward_at"
-)
+      "points, games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak, last_reward_at"
+    )
     .eq("id", userId)
     .single();
 
   if (error || !data) return null;
+
   return data as ProfileRewardSnapshot;
 }
 
@@ -60,6 +62,7 @@ function isOnCooldown(lastRewardAt: string | null | undefined) {
 
 export async function applyRewardsEngine({
   supabase,
+  gameType,
   players,
 }: RewardEngineInput) {
   for (const player of players) {
@@ -68,10 +71,10 @@ export async function applyRewardsEngine({
 
     const snapshot = await readProfile(supabase, player.userId);
     if (!snapshot) continue;
-    
+
     if (isOnCooldown(snapshot.last_reward_at)) {
-  continue; // 🚫 evita farming
-}
+      continue; // evita farming
+    }
 
     const isWinner = player.placement === 1;
 
@@ -79,16 +82,12 @@ export async function applyRewardsEngine({
       ? (snapshot.current_win_streak ?? 0) + 1
       : 0;
 
-    const bestStreak = Math.max(
-      snapshot.best_win_streak ?? 0,
-      nextStreak
-    );
-
+    const bestStreak = Math.max(snapshot.best_win_streak ?? 0, nextStreak);
     const streakBonus = isWinner ? getStreakBonus(nextStreak) : 0;
-
     const finalPoints = player.basePoints + streakBonus;
+    const rewardedAt = new Date().toISOString();
 
-    await supabase
+    const { error: updateError } = await supabase
       .from("profiles")
       .update({
         points: (snapshot.points ?? 0) + finalPoints,
@@ -103,8 +102,25 @@ export async function applyRewardsEngine({
           (snapshot.total_points_earned ?? 0) + finalPoints,
         current_win_streak: nextStreak,
         best_win_streak: bestStreak,
-        last_reward_at: new Date().toISOString(),
+        last_reward_at: rewardedAt,
       })
       .eq("id", player.userId);
+
+    if (updateError) {
+      console.error("Error actualizando rewards en profile:", updateError);
+      continue;
+    }
+
+    const { error: eventError } = await supabase.from("reward_events").insert({
+      user_id: player.userId,
+      game_type: gameType,
+      points_awarded: finalPoints,
+      placement: player.placement,
+      created_at: rewardedAt,
+    });
+
+    if (eventError) {
+      console.error("Error guardando reward_event:", eventError);
+    }
   }
 }
