@@ -474,12 +474,11 @@ const awardPoints = useCallback(
       );
 
       await applyHeadToHeadMatchRewards({
-        supabase,
-        winnerUserId: winner?.user_id,
-        loserUserId: loser?.user_id,
-        winnerPoints: 5,
-        loserPoints: 2,
-      });
+  supabase,
+  winnerUserId: winner?.user_id,
+  loserUserId: loser?.user_id,
+  gameType: "ppt_human",
+});
 
       await fetchProfilesForPlayers(sortedPlayers);
     } catch (error) {
