@@ -8,6 +8,7 @@ import ShareRoomButton from "@/components/room/ShareRoomButton";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
+import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
 import {
   GAME_CONFIGS,
   buildRoomSettings,
