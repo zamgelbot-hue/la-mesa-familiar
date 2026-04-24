@@ -580,10 +580,13 @@ export default function SalaPage() {
   const me = players.find((p) => p.player_name === currentPlayerName);
 
   if (!me?.is_host) {
-    setErrorMessage("El host cerró la sala");
+    window.alert("El host cerró la sala. Serás enviado al inicio.");
   }
 
-  router.replace("/");
+  setTimeout(() => {
+    router.replace("/");
+  }, 100);
+
   return;
 }
 
@@ -604,7 +607,16 @@ if (nextRoom.status === "playing") {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, code, fetchPlayers, fetchRoom, fetchGame, router, isHost]);
+  }, [
+  supabase,
+  code,
+  fetchPlayers,
+  fetchRoom,
+  fetchGame,
+  router,
+  players,
+  currentPlayerName,
+]);
 
   useEffect(() => {
     if (room?.status === "playing") {
@@ -634,14 +646,22 @@ if (nextRoom.status === "playing") {
   }
 
   try {
-    const me = players.find((p) => p.player_name === currentPlayerName);
+    const me =
+      currentPlayer ??
+      players.find((p) => p.player_name === currentPlayerName) ??
+      players.find(
+        (p) =>
+          playerIdentity?.is_guest &&
+          p.is_guest &&
+          !p.user_id &&
+          p.player_name === playerIdentity.name,
+      ) ??
+      null;
 
     if (isHost) {
       await supabase
         .from("rooms")
-        .update({
-          status: "closed",
-        })
+        .update({ status: "closed" })
         .eq("code", code);
 
       await supabase
@@ -653,11 +673,14 @@ if (nextRoom.status === "playing") {
       return;
     }
 
-    if (me) {
+    if (me?.id) {
+      await supabase.from("room_players").delete().eq("id", me.id);
+    } else if (currentPlayerName) {
       await supabase
         .from("room_players")
         .delete()
-        .eq("id", me.id);
+        .eq("room_code", code)
+        .eq("player_name", currentPlayerName);
     }
 
     router.push("/");
