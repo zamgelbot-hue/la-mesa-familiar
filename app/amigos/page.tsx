@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import SiteHeader from "@/components/site/SiteHeader";
+import { buildRoomSettings } from "@/lib/games/gameCatalog";
 
 type ProfileRow = {
   id: string;
@@ -14,6 +16,10 @@ type ProfileRow = {
   points: number | null;
   games_played: number | null;
   games_won: number | null;
+  games_lost: number | null;
+  total_points_earned: number | null;
+  current_win_streak: number | null;
+  best_win_streak: number | null;
   avatar_key: string | null;
   frame_key: string | null;
 };
@@ -27,13 +33,69 @@ type FriendshipRow = {
   updated_at: string;
 };
 
+type RoomInvitationRow = {
+  id: string;
+  room_code: string;
+  sender_id: string;
+  receiver_id: string;
+  status: "pending" | "accepted" | "declined" | "expired";
+  message: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type FriendProfile = ProfileRow & {
   friendshipId: string;
   status: "pending" | "accepted" | "blocked";
   direction: "sent" | "received" | "friend";
 };
 
+const getPlayerStorageKey = (roomCode: string) => `lmf:player:${roomCode}`;
+
+function generateRoomCode(length = 6) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let result = "";
+
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+
+  return result;
+}
+
+function savePlayerIdentity(roomCode: string, playerName: string, isHost: boolean) {
+  if (typeof window === "undefined") return;
+
+  const payload = JSON.stringify({
+    roomCode,
+    playerName,
+    isHost,
+    savedAt: new Date().toISOString(),
+  });
+
+  localStorage.setItem(getPlayerStorageKey(roomCode), payload);
+  sessionStorage.setItem(getPlayerStorageKey(roomCode), payload);
+
+  const legacyKeys = [
+    `la-mesa-player-name-${roomCode}`,
+    `mesa-player-name-${roomCode}`,
+    `player_name_${roomCode}`,
+    `playerName_${roomCode}`,
+    `room_player_name_${roomCode}`,
+    `roomPlayerName_${roomCode}`,
+    "player_name",
+    "playerName",
+    "nombreJugador",
+  ];
+
+  for (const key of legacyKeys) {
+    localStorage.setItem(key, playerName);
+    sessionStorage.setItem(key, playerName);
+  }
+}
+
 export default function AmigosPage() {
+  const router = useRouter();
   const supabase = createClient();
 
   const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(null);
@@ -43,10 +105,15 @@ export default function AmigosPage() {
   const [searchResults, setSearchResults] = useState<ProfileRow[]>([]);
   const [friendships, setFriendships] = useState<FriendshipRow[]>([]);
   const [profilesMap, setProfilesMap] = useState<Record<string, ProfileRow>>({});
+  const [roomInvitations, setRoomInvitations] = useState<RoomInvitationRow[]>([]);
+  const [invitationProfilesMap, setInvitationProfilesMap] = useState<Record<string, ProfileRow>>({});
+
+  const [selectedStatsPlayer, setSelectedStatsPlayer] = useState<ProfileRow | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [workingId, setWorkingId] = useState<string | null>(null);
+  const [invitingId, setInvitingId] = useState<string | null>(null);
 
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -101,7 +168,7 @@ export default function AmigosPage() {
       const { data: profileData, error: profilesError } = await supabase
         .from("profiles")
         .select(
-          "id, display_name, username, points, games_played, games_won, avatar_key, frame_key"
+          "id, display_name, username, points, games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak, avatar_key, frame_key"
         )
         .in("id", otherIds);
 
@@ -120,6 +187,64 @@ export default function AmigosPage() {
     [supabase]
   );
 
+  const loadRoomInvitations = useCallback(
+    async (userId?: string | null) => {
+      if (!userId) {
+        setRoomInvitations([]);
+        setInvitationProfilesMap({});
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("room_invitations")
+        .select("*")
+        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Error cargando invitaciones:", error);
+        return;
+      }
+
+      const rows = (data ?? []) as RoomInvitationRow[];
+      setRoomInvitations(rows);
+
+      const otherIds = Array.from(
+        new Set(
+          rows.map((row) =>
+            row.sender_id === userId ? row.receiver_id : row.sender_id
+          )
+        )
+      );
+
+      if (!otherIds.length) {
+        setInvitationProfilesMap({});
+        return;
+      }
+
+      const { data: profileData, error: profilesError } = await supabase
+        .from("profiles")
+        .select(
+          "id, display_name, username, points, games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak, avatar_key, frame_key"
+        )
+        .in("id", otherIds);
+
+      if (profilesError) {
+        console.error("Error cargando perfiles de invitaciones:", profilesError);
+        return;
+      }
+
+      const map: Record<string, ProfileRow> = {};
+      for (const profile of profileData ?? []) {
+        map[profile.id] = profile as ProfileRow;
+      }
+
+      setInvitationProfilesMap(map);
+    },
+    [supabase]
+  );
+
   const loadAll = useCallback(async () => {
     try {
       setLoading(true);
@@ -131,11 +256,14 @@ export default function AmigosPage() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      await loadFriendships(user?.id ?? null);
+      await Promise.all([
+        loadFriendships(user?.id ?? null),
+        loadRoomInvitations(user?.id ?? null),
+      ]);
     } finally {
       setLoading(false);
     }
-  }, [loadIdentity, loadFriendships, supabase]);
+  }, [loadIdentity, loadFriendships, loadRoomInvitations, supabase]);
 
   useEffect(() => {
     void loadAll();
@@ -200,6 +328,16 @@ export default function AmigosPage() {
     return { accepted, received, sent };
   }, [friendships, profilesMap, currentUserId]);
 
+  const receivedRoomInvitations = useMemo(() => {
+    if (!currentUserId) return [];
+    return roomInvitations.filter((invite) => invite.receiver_id === currentUserId);
+  }, [roomInvitations, currentUserId]);
+
+  const sentRoomInvitations = useMemo(() => {
+    if (!currentUserId) return [];
+    return roomInvitations.filter((invite) => invite.sender_id === currentUserId);
+  }, [roomInvitations, currentUserId]);
+
   const handleSearch = useCallback(async () => {
     const term = query.trim();
 
@@ -222,10 +360,11 @@ export default function AmigosPage() {
       const { data, error } = await supabase
         .from("profiles")
         .select(
-          "id, display_name, username, points, games_played, games_won, avatar_key, frame_key"
+          "id, display_name, username, points, games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak, avatar_key, frame_key"
         )
         .or(`display_name.ilike.%${term}%,username.ilike.%${term}%`)
         .neq("id", currentUserId)
+        .order("points", { ascending: false })
         .limit(20);
 
       if (error) {
@@ -348,6 +487,194 @@ export default function AmigosPage() {
     }
   };
 
+  const createPptRoomAndInvite = async (friend: ProfileRow) => {
+    if (!currentUserId || !playerIdentity?.user_id) return;
+
+    try {
+      setInvitingId(friend.id);
+      setMessage("");
+      setErrorMessage("");
+
+      let roomCode = "";
+      let created = false;
+      let attempts = 0;
+
+      const gameSlug = "piedra-papel-o-tijera";
+      const variantKey = "bo3";
+      const maxPlayers = 2;
+      const roomSettings = buildRoomSettings(gameSlug, variantKey, maxPlayers);
+
+      while (!created && attempts < 5) {
+        attempts += 1;
+        roomCode = generateRoomCode();
+
+        const { error: roomError } = await supabase.from("rooms").insert({
+          code: roomCode,
+          status: "waiting",
+          started_at: null,
+          game_slug: gameSlug,
+          game_variant: variantKey,
+          max_players: maxPlayers,
+          room_settings: roomSettings,
+        });
+
+        if (roomError) {
+          console.error("Error creando sala para invitación:", roomError);
+          continue;
+        }
+
+        const { error: playerError } = await supabase.from("room_players").insert({
+          room_code: roomCode,
+          player_name: playerIdentity.name,
+          is_host: true,
+          is_ready: false,
+          user_id: playerIdentity.user_id,
+          is_guest: false,
+        });
+
+        if (playerError) {
+          console.error("Error creando host de invitación:", playerError);
+          await supabase.from("rooms").delete().eq("code", roomCode);
+          continue;
+        }
+
+        created = true;
+      }
+
+      if (!created || !roomCode) {
+        setErrorMessage("No se pudo crear la sala de invitación.");
+        return;
+      }
+
+      const { error: inviteError } = await supabase.from("room_invitations").insert({
+        room_code: roomCode,
+        sender_id: currentUserId,
+        receiver_id: friend.id,
+        status: "pending",
+        message: `${playerIdentity.name} te invitó a jugar Piedra, Papel o Tijera.`,
+      });
+
+      if (inviteError) {
+        console.error("Error creando invitación:", inviteError);
+        setErrorMessage("La sala se creó, pero no se pudo enviar la invitación.");
+        return;
+      }
+
+      savePlayerIdentity(roomCode, playerIdentity.name, true);
+      setMessage(`Invitación enviada a ${friend.display_name || friend.username || "tu amigo"}.`);
+      await loadRoomInvitations(currentUserId);
+
+      router.push(`/sala/${roomCode}`);
+    } finally {
+      setInvitingId(null);
+    }
+  };
+
+  const acceptRoomInvitation = async (invite: RoomInvitationRow) => {
+    if (!currentUserId || !playerIdentity?.user_id) return;
+
+    try {
+      setWorkingId(invite.id);
+      setMessage("");
+      setErrorMessage("");
+
+      const { data: room, error: roomError } = await supabase
+        .from("rooms")
+        .select("code, max_players, status")
+        .eq("code", invite.room_code)
+        .maybeSingle();
+
+      if (roomError || !room) {
+        setErrorMessage("La sala de esta invitación ya no existe.");
+        return;
+      }
+
+      const { data: existingPlayers, error: playersError } = await supabase
+        .from("room_players")
+        .select("*")
+        .eq("room_code", invite.room_code);
+
+      if (playersError) {
+        console.error("Error validando sala invitada:", playersError);
+        setErrorMessage("No se pudo validar la sala.");
+        return;
+      }
+
+      const list = existingPlayers ?? [];
+      const alreadyInside = list.some((player) => player.user_id === currentUserId);
+
+      if (!alreadyInside) {
+        const capacity = Number(room.max_players ?? 2);
+
+        if (list.length >= capacity) {
+          setErrorMessage("La sala ya está llena.");
+          return;
+        }
+
+        const { error: insertError } = await supabase.from("room_players").insert({
+          room_code: invite.room_code,
+          player_name: playerIdentity.name,
+          is_host: false,
+          is_ready: false,
+          user_id: currentUserId,
+          is_guest: false,
+        });
+
+        if (insertError) {
+          console.error("Error entrando a sala invitada:", insertError);
+          setErrorMessage("No se pudo entrar a la sala.");
+          return;
+        }
+      }
+
+      const { error: updateError } = await supabase
+        .from("room_invitations")
+        .update({
+          status: "accepted",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", invite.id);
+
+      if (updateError) {
+        console.error("Error aceptando invitación:", updateError);
+      }
+
+      savePlayerIdentity(invite.room_code, playerIdentity.name, false);
+      router.push(`/sala/${invite.room_code}`);
+    } finally {
+      setWorkingId(null);
+    }
+  };
+
+  const declineRoomInvitation = async (inviteId: string) => {
+    if (!currentUserId) return;
+
+    try {
+      setWorkingId(inviteId);
+      setMessage("");
+      setErrorMessage("");
+
+      const { error } = await supabase
+        .from("room_invitations")
+        .update({
+          status: "declined",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", inviteId);
+
+      if (error) {
+        console.error("Error rechazando invitación:", error);
+        setErrorMessage("No se pudo rechazar la invitación.");
+        return;
+      }
+
+      setMessage("Invitación rechazada.");
+      await loadRoomInvitations(currentUserId);
+    } finally {
+      setWorkingId(null);
+    }
+  };
+
   const getSearchAction = (player: ProfileRow) => {
     const existing = friendshipByUserId.get(player.id);
 
@@ -418,7 +745,7 @@ export default function AmigosPage() {
 
   const renderPlayerCard = (
     player: ProfileRow,
-    action?: React.ReactNode,
+    action?: ReactNode,
     subtitle?: string
   ) => {
     const avatar = getAvatarByKey(player.avatar_key);
@@ -429,7 +756,8 @@ export default function AmigosPage() {
     return (
       <div
         key={player.id}
-        className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5 transition hover:border-orange-500/30"
+        onClick={() => setSelectedStatsPlayer(player)}
+        className="cursor-pointer rounded-[28px] border border-white/10 bg-white/[0.03] p-5 transition hover:border-orange-500/30 hover:bg-white/[0.05]"
       >
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex min-w-0 items-center gap-4">
@@ -444,10 +772,112 @@ export default function AmigosPage() {
                 {subtitle ??
                   `${player.points ?? 0} pts · ${gamesPlayed} jugadas · ${gamesWon} ganadas`}
               </p>
+
+              <p className="mt-1 text-xs text-orange-200/70">
+                Toca para ver estadísticas
+              </p>
             </div>
           </div>
 
-          {action && <div className="flex flex-wrap gap-2">{action}</div>}
+          {action && (
+            <div
+              onClick={(event) => event.stopPropagation()}
+              className="flex flex-wrap gap-2"
+            >
+              {action}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderStatsModal = () => {
+    if (!selectedStatsPlayer) return null;
+
+    const player = selectedStatsPlayer;
+    const avatar = getAvatarByKey(player.avatar_key);
+    const frame = getFrameByKey(player.frame_key);
+    const gamesPlayed = player.games_played ?? 0;
+    const gamesWon = player.games_won ?? 0;
+    const gamesLost = player.games_lost ?? 0;
+    const winRate = gamesPlayed > 0 ? ((gamesWon / gamesPlayed) * 100).toFixed(1) : "0.0";
+
+    return (
+      <div
+        className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm"
+        onClick={() => setSelectedStatsPlayer(null)}
+      >
+        <div
+          className="w-full max-w-lg rounded-[34px] border border-orange-500/20 bg-zinc-950 p-6 shadow-[0_0_60px_rgba(249,115,22,0.18)]"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <PlayerAvatar avatar={avatar} frame={frame} size="md" />
+              <div>
+                <h2 className="text-2xl font-extrabold">
+                  {player.display_name || player.username || "Jugador"}
+                </h2>
+                <p className="text-sm text-white/60">Resumen del jugador</p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSelectedStatsPlayer(null)}
+              className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-white transition hover:bg-white/10"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/45">Puntos</p>
+              <p className="mt-2 text-3xl font-extrabold text-orange-400">{player.points ?? 0}</p>
+            </div>
+
+            <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/45">Win Rate</p>
+              <p className="mt-2 text-3xl font-extrabold text-emerald-300">{winRate}%</p>
+            </div>
+
+            <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/45">Jugadas</p>
+              <p className="mt-2 text-3xl font-extrabold">{gamesPlayed}</p>
+            </div>
+
+            <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/45">Récord</p>
+              <p className="mt-2 text-lg font-bold">
+                {gamesWon} ganadas · {gamesLost} perdidas
+              </p>
+            </div>
+
+            <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/45">Racha actual</p>
+              <p className="mt-2 text-3xl font-extrabold text-yellow-300">
+                {player.current_win_streak ?? 0}
+              </p>
+            </div>
+
+            <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-white/45">Mejor racha</p>
+              <p className="mt-2 text-3xl font-extrabold text-yellow-300">
+                {player.best_win_streak ?? 0}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-3xl border border-orange-500/15 bg-orange-500/5 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-orange-300">
+              Puntos acumulados
+            </p>
+            <p className="mt-2 text-2xl font-extrabold">
+              {player.total_points_earned ?? 0}
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -503,6 +933,8 @@ export default function AmigosPage() {
         showProfileButton
       />
 
+      {renderStatsModal()}
+
       <section className="relative overflow-hidden px-6 pb-14 pt-16">
         <div className="absolute inset-0 opacity-30">
           <div className="absolute left-1/2 top-0 h-[500px] w-[500px] -translate-x-1/2 rounded-full bg-orange-500/10 blur-3xl" />
@@ -521,7 +953,7 @@ export default function AmigosPage() {
             </h1>
 
             <p className="mx-auto mt-8 max-w-3xl text-xl leading-relaxed text-white/70">
-              Busca jugadores, envía solicitudes y prepara tu círculo para futuras invitaciones rápidas.
+              Busca jugadores, envía solicitudes e invita amigos a partidas rápidas.
             </p>
           </div>
 
@@ -591,6 +1023,59 @@ export default function AmigosPage() {
             </section>
 
             <section className="space-y-6">
+              <div className="rounded-[34px] border border-cyan-500/15 bg-zinc-950/90 p-6">
+                <h2 className="text-2xl font-bold">Invitaciones a sala</h2>
+
+                <div className="mt-5 space-y-4">
+                  {receivedRoomInvitations.length === 0 ? (
+                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 text-white/60">
+                      No tienes invitaciones pendientes.
+                    </div>
+                  ) : (
+                    receivedRoomInvitations.map((invite) => {
+                      const sender = invitationProfilesMap[invite.sender_id];
+
+                      return (
+                        <div
+                          key={invite.id}
+                          className="rounded-[28px] border border-cyan-500/20 bg-cyan-500/10 p-5"
+                        >
+                          <p className="text-lg font-bold">
+                            {sender?.display_name || sender?.username || "Un amigo"} te invitó
+                          </p>
+                          <p className="mt-1 text-sm text-white/70">
+                            Sala: <span className="font-bold">{invite.room_code}</span>
+                          </p>
+                          <p className="mt-1 text-sm text-white/60">
+                            {invite.message ?? "Invitación para jugar."}
+                          </p>
+
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void acceptRoomInvitation(invite)}
+                              disabled={workingId === invite.id}
+                              className="rounded-2xl bg-emerald-500 px-4 py-2 font-bold text-black transition hover:bg-emerald-400 disabled:opacity-60"
+                            >
+                              Aceptar y entrar
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => void declineRoomInvitation(invite.id)}
+                              disabled={workingId === invite.id}
+                              className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-2 font-bold text-red-300 transition hover:bg-red-500/20 disabled:opacity-60"
+                            >
+                              Rechazar
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
               <div className="rounded-[34px] border border-emerald-500/15 bg-zinc-950/90 p-6">
                 <h2 className="text-2xl font-bold">Solicitudes recibidas</h2>
 
@@ -640,14 +1125,25 @@ export default function AmigosPage() {
                     categorizedFriends.accepted.map((player) =>
                       renderPlayerCard(
                         player,
-                        <button
-                          type="button"
-                          onClick={() => void deleteFriendship(player.friendshipId)}
-                          disabled={workingId === player.friendshipId}
-                          className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-2 font-bold text-red-300 transition hover:bg-red-500/20 disabled:opacity-60"
-                        >
-                          Eliminar
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => void createPptRoomAndInvite(player)}
+                            disabled={invitingId === player.id}
+                            className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 font-bold text-cyan-200 transition hover:bg-cyan-500/20 disabled:opacity-60"
+                          >
+                            {invitingId === player.id ? "Invitando..." : "Invitar"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => void deleteFriendship(player.friendshipId)}
+                            disabled={workingId === player.friendshipId}
+                            className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-2 font-bold text-red-300 transition hover:bg-red-500/20 disabled:opacity-60"
+                          >
+                            Eliminar
+                          </button>
+                        </>
                       )
                     )
                   )}
@@ -679,6 +1175,30 @@ export default function AmigosPage() {
                     )
                   )}
                 </div>
+
+                {sentRoomInvitations.length > 0 && (
+                  <div className="mt-6 rounded-3xl border border-cyan-500/15 bg-cyan-500/5 p-5">
+                    <h3 className="font-bold text-cyan-200">Invitaciones enviadas</h3>
+                    <div className="mt-3 space-y-2">
+                      {sentRoomInvitations.map((invite) => {
+                        const receiver = invitationProfilesMap[invite.receiver_id];
+
+                        return (
+                          <div
+                            key={invite.id}
+                            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/70"
+                          >
+                            Invitaste a{" "}
+                            <span className="font-bold text-white">
+                              {receiver?.display_name || receiver?.username || "un amigo"}
+                            </span>{" "}
+                            a la sala <span className="font-bold text-cyan-200">{invite.room_code}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </section>
           </div>
