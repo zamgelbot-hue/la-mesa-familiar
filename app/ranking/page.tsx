@@ -1,15 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
 import PlayerAvatar from "@/components/PlayerAvatar";
-import Link from "next/link";
 import SiteHeader from "@/components/site/SiteHeader";
 
-type LeaderboardTab = "points" | "total_points_earned" | "best_win_streak" | "win_rate";
+type LeaderboardTab =
+  | "points"
+  | "weekly_points"
+  | "total_points_earned"
+  | "best_win_streak"
+  | "win_rate";
 
 type LeaderboardProfile = {
   id: string;
@@ -28,6 +31,7 @@ type RankedPlayer = {
   id: string;
   display_name: string;
   points: number;
+  weekly_points: number;
   games_played: number;
   games_won: number;
   games_lost: number;
@@ -42,12 +46,16 @@ const WIN_RATE_MIN_GAMES = 10;
 
 const TAB_LABELS: Record<LeaderboardTab, string> = {
   points: "Puntos",
+  weekly_points: "Semanal",
   total_points_earned: "Acumulado",
   best_win_streak: "Racha",
   win_rate: "Win Rate",
 };
 
-function normalizeProfiles(list: LeaderboardProfile[]): RankedPlayer[] {
+function normalizeProfiles(
+  list: LeaderboardProfile[],
+  weeklyPointsMap: Map<string, number> = new Map(),
+): RankedPlayer[] {
   return list
     .filter((player) => {
       const hasName = !!player.display_name && player.display_name.trim().length > 0;
@@ -66,6 +74,7 @@ function normalizeProfiles(list: LeaderboardProfile[]): RankedPlayer[] {
         id: player.id,
         display_name: player.display_name?.trim() || "Jugador",
         points,
+        weekly_points: weeklyPointsMap.get(player.id) ?? 0,
         games_played: gamesPlayed,
         games_won: gamesWon,
         games_lost: gamesLost,
@@ -89,6 +98,14 @@ function sortPlayers(players: RankedPlayer[], tab: LeaderboardTab) {
           b.games_won - a.games_won ||
           b.best_win_streak - a.best_win_streak ||
           b.total_points_earned - a.total_points_earned ||
+          a.display_name.localeCompare(b.display_name, "es")
+        );
+
+      case "weekly_points":
+        return (
+          b.weekly_points - a.weekly_points ||
+          b.points - a.points ||
+          b.games_won - a.games_won ||
           a.display_name.localeCompare(b.display_name, "es")
         );
 
@@ -131,6 +148,8 @@ function getPrimaryStatLabel(tab: LeaderboardTab) {
   switch (tab) {
     case "points":
       return "pts";
+    case "weekly_points":
+      return "semana";
     case "total_points_earned":
       return "acum";
     case "best_win_streak":
@@ -146,6 +165,8 @@ function getPrimaryStatValue(player: RankedPlayer, tab: LeaderboardTab) {
   switch (tab) {
     case "points":
       return `${player.points}`;
+    case "weekly_points":
+      return `${player.weekly_points}`;
     case "total_points_earned":
       return `${player.total_points_earned}`;
     case "best_win_streak":
@@ -181,7 +202,6 @@ function getPositionBadge(position: number) {
 }
 
 export default function RankingPage() {
-  const router = useRouter();
   const supabase = createClient();
 
   const [tab, setTab] = useState<LeaderboardTab>("points");
@@ -212,7 +232,35 @@ export default function RankingPage() {
         return;
       }
 
-      const normalized = normalizeProfiles((data ?? []) as LeaderboardProfile[]);
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      const { data: weeklyEvents, error: weeklyError } = await supabase
+        .from("reward_events")
+        .select("user_id, points_awarded")
+        .gte("created_at", sevenDaysAgo.toISOString());
+
+      if (weeklyError) {
+        console.error("Error cargando reward_events semanales:", weeklyError);
+      }
+
+      const weeklyPointsMap = new Map<string, number>();
+
+      for (const event of weeklyEvents ?? []) {
+        const userId = event.user_id as string;
+        const pointsAwarded = Number(event.points_awarded ?? 0);
+
+        weeklyPointsMap.set(
+          userId,
+          (weeklyPointsMap.get(userId) ?? 0) + pointsAwarded,
+        );
+      }
+
+      const normalized = normalizeProfiles(
+        (data ?? []) as LeaderboardProfile[],
+        weeklyPointsMap,
+      );
+
       setPlayers(normalized);
     } finally {
       setLoading(false);
@@ -241,6 +289,11 @@ export default function RankingPage() {
     if (tab === "win_rate") {
       return players.filter((player) => player.games_played >= WIN_RATE_MIN_GAMES);
     }
+
+    if (tab === "weekly_points") {
+      return players.filter((player) => player.weekly_points > 0);
+    }
+
     return players;
   }, [players, tab]);
 
@@ -260,13 +313,13 @@ export default function RankingPage() {
     };
   }, [rankedPlayers, playerIdentity]);
 
-return (
-  <main className="min-h-screen bg-black text-white">
-<SiteHeader
-  playerIdentity={playerIdentity}
-  showHomeButton
-  showProfileButton={!!playerIdentity}
-/>
+  return (
+    <main className="min-h-screen bg-black text-white">
+      <SiteHeader
+        playerIdentity={playerIdentity}
+        showHomeButton
+        showProfileButton={!!playerIdentity}
+      />
 
       <section className="relative overflow-hidden px-6 pb-14 pt-16">
         <div className="absolute inset-0 opacity-30">
@@ -313,7 +366,8 @@ return (
                   <div>
                     <p className="font-bold">{currentUserRank.player.display_name}</p>
                     <p className="text-sm text-white/65">
-                      {getPrimaryStatValue(currentUserRank.player, tab)} {getPrimaryStatLabel(tab)}
+                      {getPrimaryStatValue(currentUserRank.player, tab)}{" "}
+                      {getPrimaryStatLabel(tab)}
                     </p>
                   </div>
                 </div>
@@ -324,7 +378,15 @@ return (
           <div className="mx-auto mt-10 max-w-5xl">
             <div className="rounded-[30px] border border-orange-500/15 bg-zinc-950/90 p-4 shadow-[0_0_40px_rgba(249,115,22,0.05)]">
               <div className="flex flex-wrap gap-3">
-                {(["points", "total_points_earned", "best_win_streak", "win_rate"] as LeaderboardTab[]).map((item) => {
+                {(
+                  [
+                    "points",
+                    "weekly_points",
+                    "total_points_earned",
+                    "best_win_streak",
+                    "win_rate",
+                  ] as LeaderboardTab[]
+                ).map((item) => {
                   const active = tab === item;
 
                   return (
@@ -344,9 +406,16 @@ return (
                 })}
               </div>
 
+              {tab === "weekly_points" && (
+                <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+                  Este ranking cuenta solo los puntos ganados durante los últimos 7 días.
+                </div>
+              )}
+
               {tab === "win_rate" && (
                 <div className="mt-4 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300">
-                  El ranking por win rate solo clasifica jugadores con al menos {WIN_RATE_MIN_GAMES} partidas.
+                  El ranking por win rate solo clasifica jugadores con al menos{" "}
+                  {WIN_RATE_MIN_GAMES} partidas.
                 </div>
               )}
             </div>
@@ -357,9 +426,13 @@ return (
                   <h2 className="text-2xl font-bold">{TAB_LABELS[tab]}</h2>
                   <p className="mt-1 text-white/60">
                     {tab === "points" && "Ranking principal por puntos actuales."}
-                    {tab === "total_points_earned" && "Jugadores con mayor progreso acumulado."}
+                    {tab === "weekly_points" &&
+                      "Jugadores con más puntos ganados en los últimos 7 días."}
+                    {tab === "total_points_earned" &&
+                      "Jugadores con mayor progreso acumulado."}
                     {tab === "best_win_streak" && "Las mejores rachas de victorias."}
-                    {tab === "win_rate" && "La mejor efectividad entre jugadores clasificados."}
+                    {tab === "win_rate" &&
+                      "La mejor efectividad entre jugadores clasificados."}
                   </p>
                 </div>
 
@@ -388,13 +461,18 @@ return (
                 <div className="space-y-4">
                   {rankedPlayers.map((player, index) => {
                     const position = index + 1;
-                    const isMe = !!playerIdentity?.user_id && player.id === playerIdentity.user_id;
+                    const isMe =
+                      !!playerIdentity?.user_id && player.id === playerIdentity.user_id;
 
                     return (
                       <div
                         key={player.id}
-                        className={`rounded-[28px] border p-4 transition hover:border-orange-500/30 hover:bg-white/[0.05] ${getPodiumStyles(position)} ${
-                          isMe ? "ring-2 ring-emerald-400/50 shadow-[0_0_25px_rgba(16,185,129,0.15)]" : ""
+                        className={`rounded-[28px] border p-4 transition hover:border-orange-500/30 hover:bg-white/[0.05] ${getPodiumStyles(
+                          position,
+                        )} ${
+                          isMe
+                            ? "ring-2 ring-emerald-400/50 shadow-[0_0_25px_rgba(16,185,129,0.15)]"
+                            : ""
                         }`}
                       >
                         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -411,7 +489,9 @@ return (
 
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
-                                <p className="truncate text-xl font-bold">{player.display_name}</p>
+                                <p className="truncate text-xl font-bold">
+                                  {player.display_name}
+                                </p>
                                 {isMe && (
                                   <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-emerald-300">
                                     Tú
@@ -419,11 +499,13 @@ return (
                                 )}
                               </div>
 
-<p className="mt-2 text-sm leading-relaxed text-white/65">
-  {player.games_played === 0
-    ? "Sin partidas registradas"
-    : `${player.games_played} jugadas · ${player.games_won} ganadas · ${player.games_lost} perdidas · ${player.win_rate.toFixed(1)}% WR · racha máx ${player.best_win_streak}`}
-</p>
+                              <p className="mt-2 text-sm leading-relaxed text-white/65">
+                                {player.games_played === 0
+                                  ? "Sin partidas registradas"
+                                  : `${player.games_played} jugadas · ${player.games_won} ganadas · ${player.games_lost} perdidas · ${player.win_rate.toFixed(
+                                      1,
+                                    )}% WR · racha máx ${player.best_win_streak}`}
+                              </p>
                             </div>
                           </div>
 
@@ -438,6 +520,12 @@ return (
                             {tab !== "points" && (
                               <p className="mt-3 text-sm text-white/60">
                                 {player.points} pts actuales
+                              </p>
+                            )}
+
+                            {tab === "weekly_points" && (
+                              <p className="mt-1 text-sm text-emerald-300/80">
+                                últimos 7 días
                               </p>
                             )}
                           </div>
