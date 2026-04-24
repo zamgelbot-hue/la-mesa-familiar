@@ -380,12 +380,12 @@ export default function RankingPage() {
               <div className="flex flex-wrap gap-3">
                 {(
                   [
-                    "points",
-                    "weekly_points",
-                    "total_points_earned",
-                    "best_win_streak",
-                    "win_rate",
-                  ] as LeaderboardTab[]
+  "points",
+  "total_points_earned",
+  "best_win_streak",
+  "weekly_points",
+  "win_rate",
+] as LeaderboardTab[]
                 ).map((item) => {
                   const active = tab === item;
 
