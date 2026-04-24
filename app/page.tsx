@@ -7,6 +7,13 @@ import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity"
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
 import SiteHeader from "@/components/site/SiteHeader";
 import HomeFooter from "@/components/site/HomeFooter";
+import {
+  GAME_CONFIGS,
+  buildRoomSettings,
+  getDefaultMaxPlayersForGame,
+  getDefaultVariantForGame,
+  getGameIcon,
+} from "@/lib/games/gameCatalog";
 
 type Game = {
   id: string;
@@ -38,18 +45,6 @@ type TopPlayer = {
   frame_key: string | null;
 };
 
-type VariantOption = {
-  key: string;
-  label: string;
-  description: string;
-  available: boolean;
-};
-
-type GameConfig = {
-  maxPlayersOptions: number[];
-  variants: VariantOption[];
-};
-
 const DEFAULT_STATS: HomeStats = {
   activePlayers: 0,
   classicGames: 0,
@@ -57,96 +52,6 @@ const DEFAULT_STATS: HomeStats = {
 };
 
 const getPlayerStorageKey = (roomCode: string) => `lmf:player:${roomCode}`;
-
-const GAME_CONFIGS: Record<string, GameConfig> = {
-  "loteria-mexicana": {
-    maxPlayersOptions: [2, 4, 6],
-    variants: [
-      {
-        key: "clasica",
-        label: "Clásica",
-        description: "La versión tradicional de siempre.",
-        available: true,
-      },
-      {
-        key: "familia-palomares",
-        label: "Familia Palomares",
-        description: "Edición especial próximamente.",
-        available: false,
-      },
-      {
-        key: "comidas-mexicanas",
-        label: "Comidas Mexicanas",
-        description: "Nueva variante próximamente.",
-        available: false,
-      },
-    ],
-  },
-  "piedra-papel-o-tijera": {
-    maxPlayersOptions: [2],
-    variants: [
-      {
-        key: "bo3",
-        label: "Mejor 2 de 3",
-        description: "Gana quien consiga 2 rondas primero.",
-        available: true,
-      },
-      {
-        key: "bo5",
-        label: "Mejor 3 de 5",
-        description: "Gana quien consiga 3 rondas primero.",
-        available: true,
-      },
-      {
-        key: "bo7",
-        label: "Mejor 4 de 7",
-        description: "Gana quien consiga 4 rondas primero.",
-        available: true,
-      },
-    ],
-  },
-  "pregunta": {
-  maxPlayersOptions: [2, 4, 6, 8],
-  variants: [
-    {
-      key: "espanol",
-      label: "Español",
-      description: "Ortografía, gramática y comprensión.",
-      available: true,
-    },
-    {
-      key: "matematicas",
-      label: "Matemáticas",
-      description: "Operaciones, lógica y cálculo rápido.",
-      available: true,
-    },
-    {
-      key: "ingles",
-      label: "Inglés",
-      description: "Vocabulario y comprensión básica.",
-      available: true,
-    },
-    {
-      key: "geografia",
-      label: "Geografía",
-      description: "Países, capitales y lugares del mundo.",
-      available: true,
-    },
-    {
-      key: "ciencias",
-      label: "Ciencias",
-      description: "Preguntas básicas de ciencia y naturaleza.",
-      available: true,
-    },
-    {
-      key: "sabelotodo",
-      label: "Sabelotodo",
-      description: "Mezcla de todas las categorías.",
-      available: true,
-    },
-  ],
-},
-};
 
 const savePlayerIdentity = (
   roomCode: string,
@@ -190,92 +95,6 @@ function generateRoomCode(length = 6) {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return result;
-}
-
-function getDefaultVariantForGame(gameSlug: string) {
-  return GAME_CONFIGS[gameSlug]?.variants[0]?.key ?? "default";
-}
-
-function getDefaultMaxPlayersForGame(gameSlug: string) {
-  return GAME_CONFIGS[gameSlug]?.maxPlayersOptions[0] ?? 2;
-}
-
-function buildRoomSettings(gameSlug: string, variantKey: string, maxPlayers: number) {
-  if (gameSlug === "loteria-mexicana") {
-    return {
-      mode: "standard",
-      deck_variant: variantKey,
-      board_size: 4,
-      win_condition: "tabla",
-      max_players: maxPlayers,
-    };
-  }
-
-  if (gameSlug === "pregunta") {
-  const variantMap: Record<
-    string,
-    { categoryMode: string; totalRounds: number; answerTimeMs: number; max_players: number }
-  > = {
-    espanol: { categoryMode: "espanol", totalRounds: 10, answerTimeMs: 8000, max_players: maxPlayers },
-    matematicas: { categoryMode: "matematicas", totalRounds: 10, answerTimeMs: 10000, max_players: maxPlayers },
-    ingles: { categoryMode: "ingles", totalRounds: 10, answerTimeMs: 8000, max_players: maxPlayers },
-    geografia: { categoryMode: "geografia", totalRounds: 10, answerTimeMs: 8000, max_players: maxPlayers },
-    ciencias: { categoryMode: "ciencias", totalRounds: 10, answerTimeMs: 8000, max_players: maxPlayers },
-    sabelotodo: { categoryMode: "sabelotodo", totalRounds: 15, answerTimeMs: 6000, max_players: maxPlayers },
-  };
-
-  const selected = variantMap[variantKey] ?? variantMap.sabelotodo;
-
-  return {
-    mode: "quiz",
-    categoryMode: selected.categoryMode,
-    totalRounds: selected.totalRounds,
-    answerTimeMs: selected.answerTimeMs,
-    max_players: selected.max_players,
-  };
-}
-  
-  if (gameSlug === "piedra-papel-o-tijera") {
-    const variantMap: Record<string, { best_of: number; rounds_to_win: number }> = {
-      bo3: { best_of: 3, rounds_to_win: 2 },
-      bo5: { best_of: 5, rounds_to_win: 3 },
-      bo7: { best_of: 7, rounds_to_win: 4 },
-    };
-
-    const selected = variantMap[variantKey] ?? variantMap.bo3;
-
-    return {
-      mode: "match_series",
-      best_of: selected.best_of,
-      rounds_to_win: selected.rounds_to_win,
-      max_players: 2,
-    };
-  }
-
-  return {
-    max_players: maxPlayers,
-  };
-}
-
-function getGameIcon(slug: string) {
-  switch (slug) {
-    case "piedra-papel-o-tijera":
-      return "✂️";
-    case "loteria-mexicana":
-      return "🇲🇽";
-    case "domino":
-      return "🁫";
-    case "trivia-familiar":
-      return "🧠";
-    case "pictionary":
-      return "🎨";
-    case "bingo":
-      return "🎱";
-    case "memorama":
-      return "🃏";
-    default:
-      return "🎮";
-  }
 }
 
 export default function HomePage() {
