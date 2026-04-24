@@ -2,6 +2,8 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+const MIN_REWARD_COOLDOWN_MS = 15000; // 15 segundos
+
 type PlayerRewardInput = {
   userId: string | null | undefined;
   isGuest?: boolean;
@@ -22,6 +24,7 @@ type ProfileRewardSnapshot = {
   total_points_earned: number | null;
   current_win_streak: number | null;
   best_win_streak: number | null;
+  last_reward_at: string | null;
 };
 
 async function readProfile(
@@ -31,8 +34,8 @@ async function readProfile(
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "points, games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak"
-    )
+  "points, games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak, last_reward_at"
+)
     .eq("id", userId)
     .single();
 
@@ -46,6 +49,15 @@ function getStreakBonus(streak: number) {
   return 0;
 }
 
+function isOnCooldown(lastRewardAt: string | null | undefined) {
+  if (!lastRewardAt) return false;
+
+  const last = new Date(lastRewardAt).getTime();
+  const now = Date.now();
+
+  return now - last < MIN_REWARD_COOLDOWN_MS;
+}
+
 export async function applyRewardsEngine({
   supabase,
   players,
@@ -56,6 +68,10 @@ export async function applyRewardsEngine({
 
     const snapshot = await readProfile(supabase, player.userId);
     if (!snapshot) continue;
+    
+    if (isOnCooldown(snapshot.last_reward_at)) {
+  continue; // 🚫 evita farming
+}
 
     const isWinner = player.placement === 1;
 
@@ -87,6 +103,7 @@ export async function applyRewardsEngine({
           (snapshot.total_points_earned ?? 0) + finalPoints,
         current_win_streak: nextStreak,
         best_win_streak: bestStreak,
+        last_reward_at: new Date().toISOString(),
       })
       .eq("id", player.userId);
   }
