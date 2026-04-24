@@ -576,9 +576,20 @@ export default function SalaPage() {
               await fetchGame(nextRoom.game_slug);
             }
 
-            if (nextRoom.status === "playing") {
-              router.replace(`/juego/${code}`);
-            }
+            if (nextRoom.status === "closed") {
+  const me = players.find((p) => p.player_name === currentPlayerName);
+
+  if (!me?.is_host) {
+    setErrorMessage("El host cerró la sala");
+  }
+
+  router.replace("/");
+  return;
+}
+
+if (nextRoom.status === "playing") {
+  router.replace(`/juego/${code}`);
+}
           } else {
             const freshRoom = await fetchRoom();
 
@@ -593,7 +604,7 @@ export default function SalaPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, code, fetchPlayers, fetchRoom, fetchGame, router]);
+  }, [supabase, code, fetchPlayers, fetchRoom, fetchGame, router, isHost]);
 
   useEffect(() => {
     if (room?.status === "playing") {
@@ -616,6 +627,46 @@ export default function SalaPage() {
     setCurrentPlayerName(playerName);
   };
 
+  const handleBackHome = async () => {
+  if (!room) {
+    router.push("/");
+    return;
+  }
+
+  try {
+    const me = players.find((p) => p.player_name === currentPlayerName);
+
+    if (isHost) {
+      await supabase
+        .from("rooms")
+        .update({
+          status: "closed",
+        })
+        .eq("code", code);
+
+      await supabase
+        .from("room_players")
+        .delete()
+        .eq("room_code", code);
+
+      router.push("/");
+      return;
+    }
+
+    if (me) {
+      await supabase
+        .from("room_players")
+        .delete()
+        .eq("id", me.id);
+    }
+
+    router.push("/");
+  } catch (error) {
+    console.error("Error saliendo de la sala:", error);
+    router.push("/");
+  }
+};
+  
   const handleToggleReady = async () => {
     if (!currentPlayerName) return;
 
@@ -710,7 +761,7 @@ export default function SalaPage() {
           <p className="text-3xl font-bold text-red-300">No encontramos esta sala.</p>
 
           <button
-            onClick={() => router.push("/")}
+          onClick={() => void handleBackHome()}
             className="mt-5 rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black"
           >
             Volver al inicio
@@ -724,7 +775,7 @@ export default function SalaPage() {
     <main className="min-h-screen bg-[#0a0a0b] px-4 py-6 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
         <button
-          onClick={() => router.push("/")}
+          onClick={() => void handleBackHome()}
           className="mb-6 rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black transition hover:bg-orange-400"
         >
           ← Volver
