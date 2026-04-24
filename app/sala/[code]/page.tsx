@@ -649,39 +649,45 @@ if (nextRoom.status === "playing") {
     const me =
       currentPlayer ??
       players.find((p) => p.player_name === currentPlayerName) ??
-      players.find(
-        (p) =>
-          playerIdentity?.is_guest &&
-          p.is_guest &&
-          !p.user_id &&
-          p.player_name === playerIdentity.name,
-      ) ??
       null;
 
     if (isHost) {
-      await supabase
+      const { error: closeError } = await supabase
         .from("rooms")
         .update({ status: "closed" })
         .eq("code", code);
 
-      await supabase
+      if (closeError) {
+        console.error("Error cerrando sala:", closeError);
+      }
+
+      const { error: deleteAllError } = await supabase
         .from("room_players")
         .delete()
         .eq("room_code", code);
+
+      if (deleteAllError) {
+        console.error("Error borrando jugadores de sala:", deleteAllError);
+      }
 
       router.push("/");
       return;
     }
 
+    // 🔹 IMPORTANTE: borrar por ID SIEMPRE
     if (me?.id) {
-      await supabase.from("room_players").delete().eq("id", me.id);
-    } else if (currentPlayerName) {
-      await supabase
+      const { error: deleteError } = await supabase
         .from("room_players")
         .delete()
-        .eq("room_code", code)
-        .eq("player_name", currentPlayerName);
+        .eq("id", me.id);
+
+      if (deleteError) {
+        console.error("Error borrando jugador:", deleteError);
+      }
     }
+
+    // 🔹 fuerza refresh antes de salir (clave)
+    await fetchPlayers(playerIdentityRef.current);
 
     router.push("/");
   } catch (error) {
