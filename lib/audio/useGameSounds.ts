@@ -6,6 +6,10 @@ type SoundKey =
   | "reveal"
   | "victory";
 
+type CreateGameSoundsOptions = {
+  baseVolume?: number;
+};
+
 const SOUND_PATHS: Record<SoundKey, string> = {
   round_start: "/audio/pregunta/round_start.mp3",
   timer_warning: "/audio/pregunta/timer_warning.mp3",
@@ -15,30 +19,59 @@ const SOUND_PATHS: Record<SoundKey, string> = {
   victory: "/audio/pregunta/victory.mp3",
 };
 
-export function createGameSounds() {
+export function createGameSounds(options?: CreateGameSoundsOptions) {
   const cache = new Map<SoundKey, HTMLAudioElement>();
+  const baseVolume = options?.baseVolume ?? 0.7;
 
   function getAudio(key: SoundKey) {
-    if (!cache.has(key)) {
-      const audio = new Audio(SOUND_PATHS[key]);
-      audio.volume = 0.7;
+    let audio = cache.get(key);
+
+    if (!audio) {
+      audio = new Audio(SOUND_PATHS[key]);
+      audio.preload = "auto";
+      audio.volume = baseVolume;
       cache.set(key, audio);
     }
-    return cache.get(key)!;
+
+    return audio;
   }
 
-  function play(key: SoundKey) {
+  function preloadAll() {
+    (Object.keys(SOUND_PATHS) as SoundKey[]).forEach((key) => {
+      const audio = getAudio(key);
+      audio.load();
+    });
+  }
+
+  function play(key: SoundKey, volume?: number) {
     const audio = getAudio(key);
 
-    // reinicia si ya estaba sonando
+    audio.pause();
     audio.currentTime = 0;
+    audio.volume = volume ?? baseVolume;
 
-    audio.play().catch(() => {
-      // evitar errores por autoplay policies
+    void audio.play().catch(() => {});
+  }
+
+  function stop(key: SoundKey) {
+    const audio = cache.get(key);
+    if (!audio) return;
+
+    audio.pause();
+    audio.currentTime = 0;
+  }
+
+  function stopAll() {
+    cache.forEach((audio) => {
+      audio.pause();
+      audio.currentTime = 0;
     });
   }
 
   return {
+    preloadAll,
     play,
+    stop,
+    stopAll,
   };
 }
