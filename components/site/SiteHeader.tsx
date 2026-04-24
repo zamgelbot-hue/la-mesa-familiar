@@ -13,6 +13,7 @@ type SiteHeaderProps = {
   showMainNav?: boolean;
   showHomeButton?: boolean;
   showRankingButton?: boolean;
+  showFriendsButton?: boolean;
   showProfileButton?: boolean;
   showStartButton?: boolean;
   showLoginButton?: boolean;
@@ -25,6 +26,7 @@ export default function SiteHeader({
   showMainNav = false,
   showHomeButton = false,
   showRankingButton = false,
+  showFriendsButton = false,
   showProfileButton = false,
   showStartButton = false,
   showLoginButton = false,
@@ -79,6 +81,16 @@ export default function SiteHeader({
               className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10"
             >
               Ranking
+            </button>
+          )}
+
+          {showFriendsButton && (
+            <button
+              type="button"
+              onClick={() => router.push("/amigos")}
+              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white transition hover:bg-white/10"
+            >
+              Amigos
             </button>
           )}
 
