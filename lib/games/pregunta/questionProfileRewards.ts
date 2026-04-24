@@ -99,7 +99,12 @@ export async function applyQuestionGameProfileRewards(
   supabase: SupabaseClient,
   standings: FinalStanding[],
 ) {
-  const registeredStandings = standings.filter((player) => !!player.playerId);
+  const registeredStandings = standings.filter(
+    (player) =>
+      !!player.playerId &&
+      typeof player.playerId === "string" &&
+      !player.playerId.startsWith("guest:"),
+  );
 
   if (!registeredStandings.length) return;
 
