@@ -2,14 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
-import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
-import { GAME_CONFIGS, getVariantLabel } from "@/lib/games/gameCatalog";
 import RoomChat from "@/components/RoomChat";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import ShareRoomButton from "@/components/room/ShareRoomButton";
+import { useParams, useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
+import {
+  GAME_CONFIGS,
+  buildRoomSettings,
+  getAvailableVariantsForGame,
+  getVariantLabel,
+} from "@/lib/games/gameCatalog";
 
 type Room = {
   id: string;
@@ -190,6 +194,11 @@ export default function SalaPage() {
     if (!room?.game_slug) return [];
     return GAME_CONFIGS[room.game_slug]?.tutorial ?? [];
   }, [room?.game_slug]);
+
+  const availableVariants = useMemo(() => {
+  if (!room?.game_slug) return [];
+  return getAvailableVariantsForGame(room.game_slug);
+}, [room?.game_slug]);
 
   const allReady = useMemo(() => {
     return (
@@ -622,6 +631,30 @@ export default function SalaPage() {
     }
   };
 
+  const handleChangeVariant = async (variantKey: string) => {
+  if (!room || !isHost) return;
+  if (room.status !== "waiting") return;
+  if (!room.game_slug) return;
+
+  const nextSettings = buildRoomSettings(
+    room.game_slug,
+    variantKey,
+    roomMaxPlayers,
+  );
+
+  const { error } = await supabase
+    .from("rooms")
+    .update({
+      game_variant: variantKey,
+      room_settings: nextSettings,
+    })
+    .eq("code", code);
+
+  if (error) {
+    console.error("Error cambiando variante:", error);
+  }
+};
+
   const handleStartGame = async () => {
     if (!room || !isHost || !allReady || sortedPlayers.length < minPlayersToStart) {
       return;
@@ -901,8 +934,27 @@ export default function SalaPage() {
                   </p>
 
                   <p className="mt-2 text-sm text-white/60">
-                    Variante activa: {variantLabel}
-                  </p>
+  Variante activa: {variantLabel}
+</p>
+
+{isHost && room?.status === "waiting" && availableVariants.length > 1 && (
+  <div className="mt-4 flex flex-wrap justify-center gap-2">
+    {availableVariants.map((variant) => (
+      <button
+        key={variant.key}
+        type="button"
+        onClick={() => handleChangeVariant(variant.key)}
+        className={`rounded-xl px-3 py-2 text-sm font-bold transition ${
+          room.game_variant === variant.key
+            ? "bg-orange-500 text-black"
+            : "bg-white/10 text-white hover:bg-white/20"
+        }`}
+      >
+        {variant.label}
+      </button>
+    ))}
+  </div>
+)}
                 </div>
               </div>
 
