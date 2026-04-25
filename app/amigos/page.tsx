@@ -564,7 +564,7 @@ export default function AmigosPage() {
       setMessage(`Invitación enviada a ${friend.display_name || friend.username || "tu amigo"}.`);
       await loadRoomInvitations(currentUserId);
 
-      router.push(`/sala/${roomCode}`);
+      window.location.href = `/sala/${roomCode}`;
     } finally {
       setInvitingId(null);
     }
@@ -640,7 +640,7 @@ export default function AmigosPage() {
       }
 
       savePlayerIdentity(invite.room_code, playerIdentity.name, false);
-      router.push(`/sala/${invite.room_code}`);
+      window.location.href = `/sala/${invite.room_code}`;
     } finally {
       setWorkingId(null);
     }
