@@ -283,11 +283,11 @@ export default function AmigosPage() {
     return map;
   }, [friendships, currentUserId]);
 
-  useEffect(() => {
+useEffect(() => {
   if (!currentUserId) return;
 
   const channel = supabase
-    .channel(`room-invitations-${currentUserId}`)
+    .channel(`realtime-social-${currentUserId}`)
     .on(
       "postgres_changes",
       {
@@ -298,6 +298,35 @@ export default function AmigosPage() {
       },
       () => {
         void loadRoomInvitations(currentUserId);
+        setMessage("🔔 Recibiste una nueva invitación a sala.");
+      }
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "friendships",
+        filter: `requester_id=eq.${currentUserId}`,
+      },
+      () => {
+        void loadFriendships(currentUserId);
+        void handleSearch();
+        setMessage("🤝 Tu lista de amigos se actualizó.");
+      }
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "friendships",
+        filter: `addressee_id=eq.${currentUserId}`,
+      },
+      () => {
+        void loadFriendships(currentUserId);
+        void handleSearch();
+        setMessage("🤝 Tienes una actualización de amistad.");
       }
     )
     .subscribe();
@@ -305,7 +334,13 @@ export default function AmigosPage() {
   return () => {
     supabase.removeChannel(channel);
   };
-}, [supabase, currentUserId, loadRoomInvitations]);
+}, [
+  supabase,
+  currentUserId,
+  loadRoomInvitations,
+  loadFriendships,
+  handleSearch,
+]);
 
   const categorizedFriends = useMemo(() => {
     const accepted: FriendProfile[] = [];
