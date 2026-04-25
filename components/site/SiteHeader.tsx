@@ -36,40 +36,53 @@ export default function SiteHeader({
   const router = useRouter();
   const supabase = createClient();
 
-  const [pendingInvites, setPendingInvites] = useState(0);
+  const [pendingRoomInvites, setPendingRoomInvites] = useState(0);
+  const [pendingFriendRequests, setPendingFriendRequests] = useState(0);
 
   const selectedAvatar = getAvatarByKey(playerIdentity?.avatar_key);
   const selectedFrame = getFrameByKey(playerIdentity?.frame_key);
 
-  const loadPendingInvites = useCallback(async () => {
+  const totalNotifications = pendingRoomInvites + pendingFriendRequests;
+
+  const loadSocialNotifications = useCallback(async () => {
     if (!playerIdentity?.user_id || playerIdentity.is_guest) {
-      setPendingInvites(0);
+      setPendingRoomInvites(0);
+      setPendingFriendRequests(0);
       return;
     }
 
-    const { count, error } = await supabase
-      .from("room_invitations")
-      .select("id", { count: "exact", head: true })
-      .eq("receiver_id", playerIdentity.user_id)
-      .eq("status", "pending");
+    const [roomInvitesRes, friendRequestsRes] = await Promise.all([
+      supabase
+        .from("room_invitations")
+        .select("id", { count: "exact", head: true })
+        .eq("receiver_id", playerIdentity.user_id)
+        .eq("status", "pending"),
 
-    if (error) {
-      console.error("Error cargando invitaciones pendientes:", error);
-      return;
+      supabase
+        .from("friendships")
+        .select("id", { count: "exact", head: true })
+        .eq("addressee_id", playerIdentity.user_id)
+        .eq("status", "pending"),
+    ]);
+
+    if (!roomInvitesRes.error) {
+      setPendingRoomInvites(roomInvitesRes.count ?? 0);
     }
 
-    setPendingInvites(count ?? 0);
+    if (!friendRequestsRes.error) {
+      setPendingFriendRequests(friendRequestsRes.count ?? 0);
+    }
   }, [supabase, playerIdentity?.user_id, playerIdentity?.is_guest]);
 
   useEffect(() => {
-    void loadPendingInvites();
-  }, [loadPendingInvites]);
+    void loadSocialNotifications();
+  }, [loadSocialNotifications]);
 
   useEffect(() => {
     if (!playerIdentity?.user_id || playerIdentity.is_guest) return;
 
     const channel = supabase
-      .channel(`global-room-invitations-${playerIdentity.user_id}`)
+      .channel(`global-social-${playerIdentity.user_id}`)
       .on(
         "postgres_changes",
         {
@@ -79,7 +92,19 @@ export default function SiteHeader({
           filter: `receiver_id=eq.${playerIdentity.user_id}`,
         },
         () => {
-          void loadPendingInvites();
+          void loadSocialNotifications();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "friendships",
+          filter: `addressee_id=eq.${playerIdentity.user_id}`,
+        },
+        () => {
+          void loadSocialNotifications();
         }
       )
       .subscribe();
@@ -87,7 +112,12 @@ export default function SiteHeader({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, playerIdentity?.user_id, playerIdentity?.is_guest, loadPendingInvites]);
+  }, [
+    supabase,
+    playerIdentity?.user_id,
+    playerIdentity?.is_guest,
+    loadSocialNotifications,
+  ]);
 
   return (
     <header className="sticky top-0 z-50 border-b border-orange-500/10 bg-black/80 backdrop-blur-xl">
@@ -152,16 +182,20 @@ export default function SiteHeader({
               type="button"
               onClick={() => router.push("/amigos")}
               className={`relative rounded-2xl border px-4 py-2 font-semibold transition ${
-                pendingInvites > 0
+                totalNotifications > 0
                   ? "border-cyan-400/40 bg-cyan-500/15 text-cyan-200 shadow-[0_0_20px_rgba(34,211,238,0.12)]"
                   : "border-white/10 bg-white/5 text-white hover:bg-white/10"
               }`}
-              title="Invitaciones"
+              title={
+                totalNotifications > 0
+                  ? `${pendingRoomInvites} invitaciones, ${pendingFriendRequests} solicitudes`
+                  : "Notificaciones"
+              }
             >
               🔔
-              {pendingInvites > 0 && (
+              {totalNotifications > 0 && (
                 <span className="absolute -right-2 -top-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-orange-500 px-1.5 text-xs font-extrabold text-black">
-                  {pendingInvites}
+                  {totalNotifications}
                 </span>
               )}
             </button>
