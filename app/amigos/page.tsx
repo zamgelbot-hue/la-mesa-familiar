@@ -576,15 +576,26 @@ export default function AmigosPage() {
         attempts += 1;
         roomCode = generateRoomCode();
 
-        const { error: roomError } = await supabase.from("rooms").insert({
-          code: roomCode,
-          status: "waiting",
-          started_at: null,
-          game_slug: gameSlug,
-          game_variant: variantKey,
-          max_players: maxPlayers,
-          room_settings: roomSettings,
-        });
+        const { data: roomData, error: roomError } = await supabase
+  .from("rooms")
+  .insert({
+    code: roomCode,
+    status: "waiting",
+    started_at: null,
+    game_slug: gameSlug,
+    game_variant: variantKey,
+    max_players: maxPlayers,
+    room_settings: roomSettings,
+  })
+  .select()
+  .single();
+
+if (roomError || !roomData) {
+  console.error("❌ Error REAL creando sala:", roomError);
+  continue;
+}
+
+        console.log("✅ Sala creada:", roomCode);
 
         if (roomError) {
           console.error("Error creando sala para invitación:", roomError);
