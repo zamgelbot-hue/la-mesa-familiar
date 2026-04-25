@@ -473,74 +473,81 @@ export default function SalaPage() {
   );
 
   useEffect(() => {
-    let active = true;
+  let active = true;
 
-    const timeout = window.setTimeout(() => {
-      if (active) {
-        setLoading(false);
-        setErrorMessage("La sala tardó demasiado en cargar. Intenta recargar.");
-      }
-    }, 10000);
-
-    const init = async () => {
-  setLoading(true);
-  setErrorMessage("");
-  autoJoinAttemptedRef.current = false;
-
-  try {
-    await new Promise((resolve) => setTimeout(resolve, 700));
-
-    await supabase.auth.getSession();
-
-    const identity = await loadPlayerIdentity();
-        if (!active) return;
-
-        const loadedRoom = await fetchRoom();
-        if (!active) return;
-
-        const loadedPlayers = await fetchPlayers(identity);
-        if (!active) return;
-
-        if (loadedRoom?.game_slug) {
-          await fetchGame(loadedRoom.game_slug);
-        }
-
-        const joined = await autoJoinIfNeeded(loadedRoom, loadedPlayers, identity);
-        if (!active) return;
-
-        if (joined) {
-          await fetchRoom();
-          await fetchPlayers(identity);
-        }
-      } catch (error) {
-        console.error("Error inicializando sala:", error);
-        if (active) {
-          setErrorMessage("No se pudo cargar la sala correctamente.");
-        }
-      } finally {
-        if (active) {
-          window.clearTimeout(timeout);
-          setLoading(false);
-        }
-      }
-    };
-
-    if (code) {
-      void init();
+  const timeout = window.setTimeout(() => {
+    if (active) {
+      setLoading(false);
+      setErrorMessage("La sala tardó demasiado en cargar. Intenta recargar.");
     }
+  }, 12000);
 
-    return () => {
-      active = false;
-      window.clearTimeout(timeout);
-    };
-  }, [
-    code,
-    loadPlayerIdentity,
-    fetchRoom,
-    fetchPlayers,
-    fetchGame,
-    autoJoinIfNeeded,
-  ]);
+  const init = async () => {
+    setLoading(true);
+    setErrorMessage("");
+    autoJoinAttemptedRef.current = false;
+
+    try {
+      // 1) Primero cargamos la sala. NO dependemos de la sesión para esto.
+      const loadedRoom = await fetchRoom();
+      if (!active) return;
+
+      if (!loadedRoom) {
+        setErrorMessage("No se pudo encontrar esta sala.");
+        setLoading(false);
+        return;
+      }
+
+      // 2) Luego cargamos identidad. Si tarda o falla, la sala ya existe en pantalla.
+      const identity = await loadPlayerIdentity();
+      if (!active) return;
+
+      // 3) Cargamos jugadores.
+      const loadedPlayers = await fetchPlayers(identity);
+      if (!active) return;
+
+      // 4) Cargamos juego.
+      if (loadedRoom.game_slug) {
+        await fetchGame(loadedRoom.game_slug);
+      }
+
+      // 5) Auto-join solo si aplica.
+      const joined = await autoJoinIfNeeded(loadedRoom, loadedPlayers, identity);
+      if (!active) return;
+
+      if (joined) {
+        await fetchRoom();
+        await fetchPlayers(identity);
+      }
+    } catch (error) {
+      console.error("Error inicializando sala:", error);
+      if (active) {
+        setErrorMessage("No se pudo cargar la sala correctamente.");
+      }
+    } finally {
+      if (active) {
+        window.clearTimeout(timeout);
+        setLoading(false);
+      }
+    }
+  };
+
+  if (code) {
+    void init();
+  }
+
+  return () => {
+    active = false;
+    window.clearTimeout(timeout);
+  };
+}, [
+  code,
+  loadPlayerIdentity,
+  fetchRoom,
+  fetchPlayers,
+  fetchGame,
+  autoJoinIfNeeded,
+]);
 
   useEffect(() => {
     let active = true;
