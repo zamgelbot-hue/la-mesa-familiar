@@ -556,98 +556,124 @@ export default function AmigosPage() {
   };
 
   const createPptRoomAndInvite = async (friend: ProfileRow) => {
-    if (!currentUserId || !playerIdentity?.user_id) return;
+  if (!currentUserId || !playerIdentity?.user_id) {
+    setErrorMessage("No se pudo identificar tu usuario.");
+    return;
+  }
 
-    try {
-      setInvitingId(friend.id);
-      setMessage("");
-      setErrorMessage("");
+  try {
+    setInvitingId(friend.id);
+    setMessage("");
+    setErrorMessage("");
 
-      let roomCode = "";
-      let created = false;
-      let attempts = 0;
+    let roomCode = "";
+    let created = false;
+    let attempts = 0;
 
-      const gameSlug = "piedra-papel-o-tijera";
-      const variantKey = "bo3";
-      const maxPlayers = 2;
-      const roomSettings = buildRoomSettings(gameSlug, variantKey, maxPlayers);
+    const gameSlug = "piedra-papel-o-tijera";
+    const variantKey = "bo3";
+    const maxPlayers = 2;
+    const roomSettings = buildRoomSettings(gameSlug, variantKey, maxPlayers);
 
-      while (!created && attempts < 5) {
-        attempts += 1;
-        roomCode = generateRoomCode();
+    while (!created && attempts < 5) {
+      attempts += 1;
+      roomCode = generateRoomCode();
 
-        const { data: roomData, error: roomError } = await supabase
-  .from("rooms")
-  .insert({
-    code: roomCode,
-    status: "waiting",
-    started_at: null,
-    game_slug: gameSlug,
-    game_variant: variantKey,
-    max_players: maxPlayers,
-    room_settings: roomSettings,
-  })
-  .select()
-  .single();
+      const { data: insertedRoom, error: roomError } = await supabase
+        .from("rooms")
+        .insert({
+          code: roomCode,
+          status: "waiting",
+          started_at: null,
+          game_slug: gameSlug,
+          game_variant: variantKey,
+          max_players: maxPlayers,
+          room_settings: roomSettings,
+        })
+        .select("id, code")
+        .single();
 
-if (roomError || !roomData) {
-  console.error("❌ Error REAL creando sala:", roomError);
-  continue;
-}
-
-        console.log("✅ Sala creada:", roomCode);
-
-        if (roomError) {
-          console.error("Error creando sala para invitación:", roomError);
-          continue;
-        }
-
-        const { error: playerError } = await supabase.from("room_players").insert({
-          room_code: roomCode,
-          player_name: playerIdentity.name,
-          is_host: true,
-          is_ready: false,
-          user_id: playerIdentity.user_id,
-          is_guest: false,
-        });
-
-        if (playerError) {
-          console.error("Error creando host de invitación:", playerError);
-          await supabase.from("rooms").delete().eq("code", roomCode);
-          continue;
-        }
-
-        created = true;
+      if (roomError || !insertedRoom) {
+        console.error("❌ Error creando sala:", roomError);
+        continue;
       }
 
-      if (!created || !roomCode) {
-        setErrorMessage("No se pudo crear la sala de invitación.");
-        return;
+      const { data: confirmedRoom, error: confirmError } = await supabase
+        .from("rooms")
+        .select("code")
+        .eq("code", roomCode)
+        .maybeSingle();
+
+      if (confirmError || !confirmedRoom) {
+        console.error("❌ La sala se insertó pero no se pudo confirmar:", confirmError);
+        continue;
       }
 
-      const { error: inviteError } = await supabase.from("room_invitations").insert({
+      const { error: playerError } = await supabase.from("room_players").insert({
         room_code: roomCode,
-        sender_id: currentUserId,
-        receiver_id: friend.id,
-        status: "pending",
-        message: `${playerIdentity.name} te invitó a jugar Piedra, Papel o Tijera.`,
+        player_name: playerIdentity.name,
+        is_host: true,
+        is_ready: false,
+        user_id: playerIdentity.user_id,
+        is_guest: false,
       });
 
-      if (inviteError) {
-        console.error("Error creando invitación:", inviteError);
-        setErrorMessage("La sala se creó, pero no se pudo enviar la invitación.");
-        return;
+      if (playerError) {
+        console.error("❌ Error creando host:", playerError);
+
+        await supabase.from("rooms").delete().eq("code", roomCode);
+        continue;
       }
 
-      savePlayerIdentity(roomCode, playerIdentity.name, true);
-      setMessage(`Invitación enviada a ${friend.display_name || friend.username || "tu amigo"}.`);
-      await loadRoomInvitations(currentUserId);
+      const { data: confirmedPlayer, error: confirmPlayerError } = await supabase
+        .from("room_players")
+        .select("id")
+        .eq("room_code", roomCode)
+        .eq("user_id", playerIdentity.user_id)
+        .maybeSingle();
 
-      window.location.href = `/sala/${roomCode}`;
-    } finally {
-      setInvitingId(null);
+      if (confirmPlayerError || !confirmedPlayer) {
+        console.error("❌ Host insertado pero no confirmado:", confirmPlayerError);
+
+        await supabase.from("room_players").delete().eq("room_code", roomCode);
+        await supabase.from("rooms").delete().eq("code", roomCode);
+        continue;
+      }
+
+      created = true;
     }
-  };
+
+    if (!created || !roomCode) {
+      setErrorMessage(
+        "No se pudo crear la sala. Revisa permisos de rooms y room_players."
+      );
+      return;
+    }
+
+    const { error: inviteError } = await supabase.from("room_invitations").insert({
+      room_code: roomCode,
+      sender_id: currentUserId,
+      receiver_id: friend.id,
+      status: "pending",
+      message: `${playerIdentity.name} te invitó a jugar Piedra, Papel o Tijera.`,
+    });
+
+    if (inviteError) {
+      console.error("❌ Error creando invitación:", inviteError);
+      setErrorMessage("La sala se creó, pero no se pudo enviar la invitación.");
+      return;
+    }
+
+    savePlayerIdentity(roomCode, playerIdentity.name, true);
+    setMessage(`Invitación enviada a ${friend.display_name || friend.username || "tu amigo"}.`);
+
+    await loadRoomInvitations(currentUserId);
+
+    window.location.href = `/sala/${roomCode}`;
+  } finally {
+    setInvitingId(null);
+  }
+};
 
   const acceptRoomInvitation = async (invite: RoomInvitationRow) => {
     if (!currentUserId || !playerIdentity?.user_id) return;
