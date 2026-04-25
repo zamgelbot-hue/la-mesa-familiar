@@ -483,12 +483,16 @@ export default function SalaPage() {
     }, 10000);
 
     const init = async () => {
-      setLoading(true);
-      setErrorMessage("");
-      autoJoinAttemptedRef.current = false;
+  setLoading(true);
+  setErrorMessage("");
+  autoJoinAttemptedRef.current = false;
 
-      try {
-        const identity = await loadPlayerIdentity();
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 700));
+
+    await supabase.auth.getSession();
+
+    const identity = await loadPlayerIdentity();
         if (!active) return;
 
         const loadedRoom = await fetchRoom();
