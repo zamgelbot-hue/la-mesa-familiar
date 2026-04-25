@@ -283,65 +283,6 @@ export default function AmigosPage() {
     return map;
   }, [friendships, currentUserId]);
 
-useEffect(() => {
-  if (!currentUserId) return;
-
-  const channel = supabase
-    .channel(`realtime-social-${currentUserId}`)
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "room_invitations",
-        filter: `receiver_id=eq.${currentUserId}`,
-      },
-      () => {
-        void loadRoomInvitations(currentUserId);
-        setMessage("🔔 Recibiste una nueva invitación a sala.");
-      }
-    )
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "friendships",
-        filter: `requester_id=eq.${currentUserId}`,
-      },
-      () => {
-        void loadFriendships(currentUserId);
-        void handleSearch();
-        setMessage("🤝 Tu lista de amigos se actualizó.");
-      }
-    )
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "friendships",
-        filter: `addressee_id=eq.${currentUserId}`,
-      },
-      () => {
-        void loadFriendships(currentUserId);
-        void handleSearch();
-        setMessage("🤝 Tienes una actualización de amistad.");
-      }
-    )
-    .subscribe();
-
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [
-  supabase,
-  currentUserId,
-  loadRoomInvitations,
-  loadFriendships,
-  handleSearch,
-]);
-
   const categorizedFriends = useMemo(() => {
     const accepted: FriendProfile[] = [];
     const received: FriendProfile[] = [];
