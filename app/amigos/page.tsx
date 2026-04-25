@@ -283,6 +283,30 @@ export default function AmigosPage() {
     return map;
   }, [friendships, currentUserId]);
 
+  useEffect(() => {
+  if (!currentUserId) return;
+
+  const channel = supabase
+    .channel(`room-invitations-${currentUserId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "room_invitations",
+        filter: `receiver_id=eq.${currentUserId}`,
+      },
+      () => {
+        void loadRoomInvitations(currentUserId);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [supabase, currentUserId, loadRoomInvitations]);
+
   const categorizedFriends = useMemo(() => {
     const accepted: FriendProfile[] = [];
     const received: FriendProfile[] = [];
