@@ -395,6 +395,74 @@ export default function AmigosPage() {
     return () => window.clearTimeout(timer);
   }, [query, handleSearch]);
 
+  useEffect(() => {
+  if (!currentUserId) return;
+
+  const channel = supabase
+    .channel(`amigos-realtime-${currentUserId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "friendships",
+        filter: `requester_id=eq.${currentUserId}`,
+      },
+      () => {
+        void loadFriendships(currentUserId);
+        setMessage("🤝 Tu lista de amigos se actualizó.");
+      }
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "friendships",
+        filter: `addressee_id=eq.${currentUserId}`,
+      },
+      () => {
+        void loadFriendships(currentUserId);
+        setMessage("🤝 Tienes una actualización de amistad.");
+      }
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "room_invitations",
+        filter: `receiver_id=eq.${currentUserId}`,
+      },
+      () => {
+        void loadRoomInvitations(currentUserId);
+        setMessage("🔔 Recibiste una invitación a sala.");
+      }
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "room_invitations",
+        filter: `sender_id=eq.${currentUserId}`,
+      },
+      () => {
+        void loadRoomInvitations(currentUserId);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [
+  supabase,
+  currentUserId,
+  loadFriendships,
+  loadRoomInvitations,
+]);
+
   const sendRequest = async (targetUserId: string) => {
     if (!currentUserId) return;
 
