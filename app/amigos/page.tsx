@@ -1231,14 +1231,6 @@ export default function AmigosPage() {
                       renderPlayerCard(
                         player,
                         <>
-                          <button
-                            type="button"
-                            onClick={() => void createPptRoomAndInvite(player)}
-                            disabled={invitingId === player.id}
-                            className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 font-bold text-cyan-200 transition hover:bg-cyan-500/20 disabled:opacity-60"
-                          >
-                            {invitingId === player.id ? "Invitando..." : "Invitar"}
-                          </button>
 
                           <button
                             type="button"
