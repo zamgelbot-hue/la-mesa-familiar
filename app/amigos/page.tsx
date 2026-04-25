@@ -1,13 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import SiteHeader from "@/components/site/SiteHeader";
-import { buildRoomSettings } from "@/lib/games/gameCatalog";
 
 type ProfileRow = {
   id: string;
@@ -33,69 +31,13 @@ type FriendshipRow = {
   updated_at: string;
 };
 
-type RoomInvitationRow = {
-  id: string;
-  room_code: string;
-  sender_id: string;
-  receiver_id: string;
-  status: "pending" | "accepted" | "declined" | "expired";
-  message: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
 type FriendProfile = ProfileRow & {
   friendshipId: string;
   status: "pending" | "accepted" | "blocked";
   direction: "sent" | "received" | "friend";
 };
 
-const getPlayerStorageKey = (roomCode: string) => `lmf:player:${roomCode}`;
-
-function generateRoomCode(length = 6) {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let result = "";
-
-  for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-
-  return result;
-}
-
-function savePlayerIdentity(roomCode: string, playerName: string, isHost: boolean) {
-  if (typeof window === "undefined") return;
-
-  const payload = JSON.stringify({
-    roomCode,
-    playerName,
-    isHost,
-    savedAt: new Date().toISOString(),
-  });
-
-  localStorage.setItem(getPlayerStorageKey(roomCode), payload);
-  sessionStorage.setItem(getPlayerStorageKey(roomCode), payload);
-
-  const legacyKeys = [
-    `la-mesa-player-name-${roomCode}`,
-    `mesa-player-name-${roomCode}`,
-    `player_name_${roomCode}`,
-    `playerName_${roomCode}`,
-    `room_player_name_${roomCode}`,
-    `roomPlayerName_${roomCode}`,
-    "player_name",
-    "playerName",
-    "nombreJugador",
-  ];
-
-  for (const key of legacyKeys) {
-    localStorage.setItem(key, playerName);
-    sessionStorage.setItem(key, playerName);
-  }
-}
-
 export default function AmigosPage() {
-  const router = useRouter();
   const supabase = createClient();
 
   const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(null);
@@ -105,15 +47,11 @@ export default function AmigosPage() {
   const [searchResults, setSearchResults] = useState<ProfileRow[]>([]);
   const [friendships, setFriendships] = useState<FriendshipRow[]>([]);
   const [profilesMap, setProfilesMap] = useState<Record<string, ProfileRow>>({});
-  const [roomInvitations, setRoomInvitations] = useState<RoomInvitationRow[]>([]);
-  const [invitationProfilesMap, setInvitationProfilesMap] = useState<Record<string, ProfileRow>>({});
-
   const [selectedStatsPlayer, setSelectedStatsPlayer] = useState<ProfileRow | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [workingId, setWorkingId] = useState<string | null>(null);
-  const [invitingId, setInvitingId] = useState<string | null>(null);
 
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -187,64 +125,6 @@ export default function AmigosPage() {
     [supabase]
   );
 
-  const loadRoomInvitations = useCallback(
-    async (userId?: string | null) => {
-      if (!userId) {
-        setRoomInvitations([]);
-        setInvitationProfilesMap({});
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("room_invitations")
-        .select("*")
-        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
-        .eq("status", "pending")
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("Error cargando invitaciones:", error);
-        return;
-      }
-
-      const rows = (data ?? []) as RoomInvitationRow[];
-      setRoomInvitations(rows);
-
-      const otherIds = Array.from(
-        new Set(
-          rows.map((row) =>
-            row.sender_id === userId ? row.receiver_id : row.sender_id
-          )
-        )
-      );
-
-      if (!otherIds.length) {
-        setInvitationProfilesMap({});
-        return;
-      }
-
-      const { data: profileData, error: profilesError } = await supabase
-        .from("profiles")
-        .select(
-          "id, display_name, username, points, games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak, avatar_key, frame_key"
-        )
-        .in("id", otherIds);
-
-      if (profilesError) {
-        console.error("Error cargando perfiles de invitaciones:", profilesError);
-        return;
-      }
-
-      const map: Record<string, ProfileRow> = {};
-      for (const profile of profileData ?? []) {
-        map[profile.id] = profile as ProfileRow;
-      }
-
-      setInvitationProfilesMap(map);
-    },
-    [supabase]
-  );
-
   const loadAll = useCallback(async () => {
     try {
       setLoading(true);
@@ -256,14 +136,11 @@ export default function AmigosPage() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      await Promise.all([
-        loadFriendships(user?.id ?? null),
-        loadRoomInvitations(user?.id ?? null),
-      ]);
+      await loadFriendships(user?.id ?? null);
     } finally {
       setLoading(false);
     }
-  }, [loadIdentity, loadFriendships, loadRoomInvitations, supabase]);
+  }, [loadIdentity, loadFriendships, supabase]);
 
   useEffect(() => {
     void loadAll();
@@ -277,6 +154,7 @@ export default function AmigosPage() {
     for (const row of friendships) {
       const otherId =
         row.requester_id === currentUserId ? row.addressee_id : row.requester_id;
+
       map.set(otherId, row);
     }
 
@@ -327,16 +205,6 @@ export default function AmigosPage() {
 
     return { accepted, received, sent };
   }, [friendships, profilesMap, currentUserId]);
-
-  const receivedRoomInvitations = useMemo(() => {
-    if (!currentUserId) return [];
-    return roomInvitations.filter((invite) => invite.receiver_id === currentUserId);
-  }, [roomInvitations, currentUserId]);
-
-  const sentRoomInvitations = useMemo(() => {
-    if (!currentUserId) return [];
-    return roomInvitations.filter((invite) => invite.sender_id === currentUserId);
-  }, [roomInvitations, currentUserId]);
 
   const handleSearch = useCallback(async () => {
     const term = query.trim();
@@ -396,72 +264,42 @@ export default function AmigosPage() {
   }, [query, handleSearch]);
 
   useEffect(() => {
-  if (!currentUserId) return;
+    if (!currentUserId) return;
 
-  const channel = supabase
-    .channel(`amigos-realtime-${currentUserId}`)
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "friendships",
-        filter: `requester_id=eq.${currentUserId}`,
-      },
-      () => {
-        void loadFriendships(currentUserId);
-        setMessage("🤝 Tu lista de amigos se actualizó.");
-      }
-    )
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "friendships",
-        filter: `addressee_id=eq.${currentUserId}`,
-      },
-      () => {
-        void loadFriendships(currentUserId);
-        setMessage("🤝 Tienes una actualización de amistad.");
-      }
-    )
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "room_invitations",
-        filter: `receiver_id=eq.${currentUserId}`,
-      },
-      () => {
-        void loadRoomInvitations(currentUserId);
-        setMessage("🔔 Recibiste una invitación a sala.");
-      }
-    )
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "room_invitations",
-        filter: `sender_id=eq.${currentUserId}`,
-      },
-      () => {
-        void loadRoomInvitations(currentUserId);
-      }
-    )
-    .subscribe();
+    const channel = supabase
+      .channel(`amigos-realtime-${currentUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "friendships",
+          filter: `requester_id=eq.${currentUserId}`,
+        },
+        () => {
+          void loadFriendships(currentUserId);
+          setMessage("🤝 Tu lista de amigos se actualizó.");
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "friendships",
+          filter: `addressee_id=eq.${currentUserId}`,
+        },
+        () => {
+          void loadFriendships(currentUserId);
+          setMessage("🤝 Tienes una actualización de amistad.");
+        }
+      )
+      .subscribe();
 
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [
-  supabase,
-  currentUserId,
-  loadFriendships,
-  loadRoomInvitations,
-]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, currentUserId, loadFriendships]);
 
   const sendRequest = async (targetUserId: string) => {
     if (!currentUserId) return;
@@ -550,231 +388,6 @@ export default function AmigosPage() {
       setMessage("Actualizado correctamente.");
       await loadFriendships(currentUserId);
       await handleSearch();
-    } finally {
-      setWorkingId(null);
-    }
-  };
-
-  const createPptRoomAndInvite = async (friend: ProfileRow) => {
-  if (!currentUserId || !playerIdentity?.user_id) {
-    setErrorMessage("No se pudo identificar tu usuario.");
-    return;
-  }
-
-  try {
-    setInvitingId(friend.id);
-    setMessage("");
-    setErrorMessage("");
-
-    let roomCode = "";
-    let created = false;
-    let attempts = 0;
-
-    const gameSlug = "piedra-papel-o-tijera";
-    const variantKey = "bo3";
-    const maxPlayers = 2;
-    const roomSettings = buildRoomSettings(gameSlug, variantKey, maxPlayers);
-
-    while (!created && attempts < 5) {
-      attempts += 1;
-      roomCode = generateRoomCode();
-
-      const { data: insertedRoom, error: roomError } = await supabase
-        .from("rooms")
-        .insert({
-          code: roomCode,
-          status: "waiting",
-          started_at: null,
-          game_slug: gameSlug,
-          game_variant: variantKey,
-          max_players: maxPlayers,
-          room_settings: roomSettings,
-        })
-        .select("id, code")
-        .single();
-
-      if (roomError || !insertedRoom) {
-        console.error("❌ Error creando sala:", roomError);
-        continue;
-      }
-
-      const { data: confirmedRoom, error: confirmError } = await supabase
-        .from("rooms")
-        .select("code")
-        .eq("code", roomCode)
-        .maybeSingle();
-
-      if (confirmError || !confirmedRoom) {
-        console.error("❌ La sala se insertó pero no se pudo confirmar:", confirmError);
-        continue;
-      }
-
-      const { error: playerError } = await supabase.from("room_players").insert({
-        room_code: roomCode,
-        player_name: playerIdentity.name,
-        is_host: true,
-        is_ready: false,
-        user_id: playerIdentity.user_id,
-        is_guest: false,
-      });
-
-      if (playerError) {
-        console.error("❌ Error creando host:", playerError);
-
-        await supabase.from("rooms").delete().eq("code", roomCode);
-        continue;
-      }
-
-      const { data: confirmedPlayer, error: confirmPlayerError } = await supabase
-        .from("room_players")
-        .select("id")
-        .eq("room_code", roomCode)
-        .eq("user_id", playerIdentity.user_id)
-        .maybeSingle();
-
-      if (confirmPlayerError || !confirmedPlayer) {
-        console.error("❌ Host insertado pero no confirmado:", confirmPlayerError);
-
-        await supabase.from("room_players").delete().eq("room_code", roomCode);
-        await supabase.from("rooms").delete().eq("code", roomCode);
-        continue;
-      }
-
-      created = true;
-    }
-
-    if (!created || !roomCode) {
-      setErrorMessage(
-        "No se pudo crear la sala. Revisa permisos de rooms y room_players."
-      );
-      return;
-    }
-
-    const { error: inviteError } = await supabase.from("room_invitations").insert({
-      room_code: roomCode,
-      sender_id: currentUserId,
-      receiver_id: friend.id,
-      status: "pending",
-      message: `${playerIdentity.name} te invitó a jugar Piedra, Papel o Tijera.`,
-    });
-
-    if (inviteError) {
-      console.error("❌ Error creando invitación:", inviteError);
-      setErrorMessage("La sala se creó, pero no se pudo enviar la invitación.");
-      return;
-    }
-
-    savePlayerIdentity(roomCode, playerIdentity.name, true);
-    setMessage(`Invitación enviada a ${friend.display_name || friend.username || "tu amigo"}.`);
-
-    await loadRoomInvitations(currentUserId);
-
-    window.location.href = `/sala/${roomCode}`;
-  } finally {
-    setInvitingId(null);
-  }
-};
-
-  const acceptRoomInvitation = async (invite: RoomInvitationRow) => {
-    if (!currentUserId || !playerIdentity?.user_id) return;
-
-    try {
-      setWorkingId(invite.id);
-      setMessage("");
-      setErrorMessage("");
-
-      const { data: room, error: roomError } = await supabase
-        .from("rooms")
-        .select("code, max_players, status")
-        .eq("code", invite.room_code)
-        .maybeSingle();
-
-      if (roomError || !room) {
-        setErrorMessage("La sala de esta invitación ya no existe.");
-        return;
-      }
-
-      const { data: existingPlayers, error: playersError } = await supabase
-        .from("room_players")
-        .select("*")
-        .eq("room_code", invite.room_code);
-
-      if (playersError) {
-        console.error("Error validando sala invitada:", playersError);
-        setErrorMessage("No se pudo validar la sala.");
-        return;
-      }
-
-      const list = existingPlayers ?? [];
-      const alreadyInside = list.some((player) => player.user_id === currentUserId);
-
-      if (!alreadyInside) {
-        const capacity = Number(room.max_players ?? 2);
-
-        if (list.length >= capacity) {
-          setErrorMessage("La sala ya está llena.");
-          return;
-        }
-
-        const { error: insertError } = await supabase.from("room_players").insert({
-          room_code: invite.room_code,
-          player_name: playerIdentity.name,
-          is_host: false,
-          is_ready: false,
-          user_id: currentUserId,
-          is_guest: false,
-        });
-
-        if (insertError) {
-          console.error("Error entrando a sala invitada:", insertError);
-          setErrorMessage("No se pudo entrar a la sala.");
-          return;
-        }
-      }
-
-      const { error: updateError } = await supabase
-        .from("room_invitations")
-        .update({
-          status: "accepted",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", invite.id);
-
-      if (updateError) {
-        console.error("Error aceptando invitación:", updateError);
-      }
-
-      savePlayerIdentity(invite.room_code, playerIdentity.name, false);
-      window.location.href = `/sala/${invite.room_code}`;
-    } finally {
-      setWorkingId(null);
-    }
-  };
-
-  const declineRoomInvitation = async (inviteId: string) => {
-    if (!currentUserId) return;
-
-    try {
-      setWorkingId(inviteId);
-      setMessage("");
-      setErrorMessage("");
-
-      const { error } = await supabase
-        .from("room_invitations")
-        .update({
-          status: "declined",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", inviteId);
-
-      if (error) {
-        console.error("Error rechazando invitación:", error);
-        setErrorMessage("No se pudo rechazar la invitación.");
-        return;
-      }
-
-      setMessage("Invitación rechazada.");
-      await loadRoomInvitations(currentUserId);
     } finally {
       setWorkingId(null);
     }
@@ -906,7 +519,8 @@ export default function AmigosPage() {
     const gamesPlayed = player.games_played ?? 0;
     const gamesWon = player.games_won ?? 0;
     const gamesLost = player.games_lost ?? 0;
-    const winRate = gamesPlayed > 0 ? ((gamesWon / gamesPlayed) * 100).toFixed(1) : "0.0";
+    const winRate =
+      gamesPlayed > 0 ? ((gamesWon / gamesPlayed) * 100).toFixed(1) : "0.0";
 
     return (
       <div
@@ -940,12 +554,16 @@ export default function AmigosPage() {
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-white/45">Puntos</p>
-              <p className="mt-2 text-3xl font-extrabold text-orange-400">{player.points ?? 0}</p>
+              <p className="mt-2 text-3xl font-extrabold text-orange-400">
+                {player.points ?? 0}
+              </p>
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-white/45">Win Rate</p>
-              <p className="mt-2 text-3xl font-extrabold text-emerald-300">{winRate}%</p>
+              <p className="mt-2 text-3xl font-extrabold text-emerald-300">
+                {winRate}%
+              </p>
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
@@ -1058,7 +676,7 @@ export default function AmigosPage() {
             </h1>
 
             <p className="mx-auto mt-8 max-w-3xl text-xl leading-relaxed text-white/70">
-              Busca jugadores, envía solicitudes e invita amigos a partidas rápidas.
+              Busca jugadores, envía solicitudes y administra tu círculo de amigos.
             </p>
           </div>
 
@@ -1128,59 +746,6 @@ export default function AmigosPage() {
             </section>
 
             <section className="space-y-6">
-              <div className="rounded-[34px] border border-cyan-500/15 bg-zinc-950/90 p-6">
-                <h2 className="text-2xl font-bold">Invitaciones a sala</h2>
-
-                <div className="mt-5 space-y-4">
-                  {receivedRoomInvitations.length === 0 ? (
-                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 text-white/60">
-                      No tienes invitaciones pendientes.
-                    </div>
-                  ) : (
-                    receivedRoomInvitations.map((invite) => {
-                      const sender = invitationProfilesMap[invite.sender_id];
-
-                      return (
-                        <div
-                          key={invite.id}
-                          className="rounded-[28px] border border-cyan-500/20 bg-cyan-500/10 p-5"
-                        >
-                          <p className="text-lg font-bold">
-                            {sender?.display_name || sender?.username || "Un amigo"} te invitó
-                          </p>
-                          <p className="mt-1 text-sm text-white/70">
-                            Sala: <span className="font-bold">{invite.room_code}</span>
-                          </p>
-                          <p className="mt-1 text-sm text-white/60">
-                            {invite.message ?? "Invitación para jugar."}
-                          </p>
-
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => void acceptRoomInvitation(invite)}
-                              disabled={workingId === invite.id}
-                              className="rounded-2xl bg-emerald-500 px-4 py-2 font-bold text-black transition hover:bg-emerald-400 disabled:opacity-60"
-                            >
-                              Aceptar y entrar
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => void declineRoomInvitation(invite.id)}
-                              disabled={workingId === invite.id}
-                              className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-2 font-bold text-red-300 transition hover:bg-red-500/20 disabled:opacity-60"
-                            >
-                              Rechazar
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
               <div className="rounded-[34px] border border-emerald-500/15 bg-zinc-950/90 p-6">
                 <h2 className="text-2xl font-bold">Solicitudes recibidas</h2>
 
@@ -1202,6 +767,7 @@ export default function AmigosPage() {
                           >
                             Aceptar
                           </button>
+
                           <button
                             type="button"
                             onClick={() => void deleteFriendship(player.friendshipId)}
@@ -1210,8 +776,7 @@ export default function AmigosPage() {
                           >
                             Rechazar
                           </button>
-                        </>,
-                        "Quiere agregarte como amigo"
+                        </>
                       )
                     )
                   )}
@@ -1230,17 +795,14 @@ export default function AmigosPage() {
                     categorizedFriends.accepted.map((player) =>
                       renderPlayerCard(
                         player,
-                        <>
-
-                          <button
-                            type="button"
-                            onClick={() => void deleteFriendship(player.friendshipId)}
-                            disabled={workingId === player.friendshipId}
-                            className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-2 font-bold text-red-300 transition hover:bg-red-500/20 disabled:opacity-60"
-                          >
-                            Eliminar
-                          </button>
-                        </>
+                        <button
+                          type="button"
+                          onClick={() => void deleteFriendship(player.friendshipId)}
+                          disabled={workingId === player.friendshipId}
+                          className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-2 font-bold text-red-300 transition hover:bg-red-500/20 disabled:opacity-60"
+                        >
+                          Eliminar
+                        </button>
                       )
                     )
                   )}
@@ -1272,30 +834,6 @@ export default function AmigosPage() {
                     )
                   )}
                 </div>
-
-                {sentRoomInvitations.length > 0 && (
-                  <div className="mt-6 rounded-3xl border border-cyan-500/15 bg-cyan-500/5 p-5">
-                    <h3 className="font-bold text-cyan-200">Invitaciones enviadas</h3>
-                    <div className="mt-3 space-y-2">
-                      {sentRoomInvitations.map((invite) => {
-                        const receiver = invitationProfilesMap[invite.receiver_id];
-
-                        return (
-                          <div
-                            key={invite.id}
-                            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/70"
-                          >
-                            Invitaste a{" "}
-                            <span className="font-bold text-white">
-                              {receiver?.display_name || receiver?.username || "un amigo"}
-                            </span>{" "}
-                            a la sala <span className="font-bold text-cyan-200">{invite.room_code}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
               </div>
             </section>
           </div>
