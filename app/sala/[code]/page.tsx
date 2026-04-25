@@ -223,32 +223,49 @@ export default function SalaPage() {
   }, []);
 
   const fetchRoom = useCallback(
-    async (retries = 3, delayMs = 500) => {
-      for (let attempt = 0; attempt < retries; attempt++) {
-        const { data, error } = await supabase
-          .from("rooms")
-          .select("*")
-          .eq("code", code)
-          .maybeSingle();
+  async (retries = 10, delayMs = 700) => {
+    for (let attempt = 0; attempt < retries; attempt++) {
+      const { data, error } = await supabase
+        .from("rooms")
+        .select("*")
+        .eq("code", code)
+        .maybeSingle();
 
-        if (error) {
-          console.error("Error cargando room:", error);
-        } else if (data) {
-          const nextRoom = data as Room;
-          setRoom(nextRoom);
-          return nextRoom;
-        }
-
-        if (attempt < retries - 1) {
-          await new Promise((resolve) => setTimeout(resolve, delayMs));
-        }
+      if (error) {
+        console.error("Error cargando room:", error);
       }
 
-      setRoom(null);
-      return null;
-    },
-    [supabase, code],
-  );
+      if (data) {
+        const nextRoom = data as Room;
+        setRoom(nextRoom);
+        return nextRoom;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    // Segundo intento extra por si el código viene con alguna diferencia rara
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from("rooms")
+      .select("*")
+      .ilike("code", code)
+      .maybeSingle();
+
+    if (fallbackError) {
+      console.error("Error cargando room fallback:", fallbackError);
+    }
+
+    if (fallbackData) {
+      const nextRoom = fallbackData as Room;
+      setRoom(nextRoom);
+      return nextRoom;
+    }
+
+    setRoom(null);
+    return null;
+  },
+  [supabase, code],
+);
 
   const fetchGame = useCallback(
     async (gameSlug?: string | null) => {
