@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
 import { applyHeadToHeadMatchRewards } from "@/lib/gameRewards";
+import { applyRewardsEngine } from "@/lib/rewards/rewardEngine";
 import RoomChat from "@/components/RoomChat";
 import type { Choice, GameState, PPTGameProps, ProfileMap, RoomPlayer } from "./pptTypes";
 import {
@@ -17,6 +18,40 @@ import {
   playPPTSfx,
 } from "./pptUtils";
 
+const BOT_PLAYER_NAME = "Bot Familiar 🤖";
+
+const BOT_CHOICES: Exclude<Choice, null>[] = ["piedra", "papel", "tijera"];
+
+function getRandomBotChoice(): Exclude<Choice, null> {
+  return BOT_CHOICES[Math.floor(Math.random() * BOT_CHOICES.length)];
+}
+
+function buildBotPlayer(roomCode: string): RoomPlayer {
+  return {
+    id: `bot-${roomCode}`,
+    room_code: roomCode,
+    player_name: BOT_PLAYER_NAME,
+    is_host: false,
+    is_ready: true,
+    created_at: "9999-12-31T23:59:59.999Z",
+    user_id: null,
+    is_guest: true,
+  };
+}
+
+function withBotPlayer(
+  realPlayers: RoomPlayer[],
+  roomCode: string,
+  vsBot: boolean,
+) {
+  if (!vsBot) return realPlayers;
+  if (realPlayers.some((player) => player.player_name === BOT_PLAYER_NAME)) {
+    return realPlayers;
+  }
+
+  return [...realPlayers, buildBotPlayer(roomCode)];
+}
+
 export default function PPTGame({
   roomCode,
   roomVariant,
@@ -27,6 +62,7 @@ export default function PPTGame({
   const supabase = supabaseRef.current;
 
   const code = String(roomCode ?? "").toUpperCase();
+  const isVsBot = roomSettings?.vs_bot === true || roomVariant === "bot_bo3";
 
   const [players, setPlayers] = useState<RoomPlayer[]>([]);
   const [profilesMap, setProfilesMap] = useState<ProfileMap>({});
@@ -48,16 +84,17 @@ export default function PPTGame({
   });
 
   const autoAdvanceRef = useRef<NodeJS.Timeout | null>(null);
+  const botMoveRef = useRef<NodeJS.Timeout | null>(null);
   const resolvingRoundRef = useRef(false);
   const lastResolvedKeyRef = useRef("");
   const lastChampionRef = useRef<string | null>(null);
 
-  const { bestOf, roundsToWin, modeLabel, variantLabel } = useMemo(
+  const { roundsToWin, modeLabel, variantLabel } = useMemo(
     () => getModeConfig(roomVariant, roomSettings),
-    [roomVariant, roomSettings]
+    [roomVariant, roomSettings],
   );
 
-  const sortedPlayers = useMemo(() => {
+  const sortedRealPlayers = useMemo(() => {
     return [...players].sort((a, b) => {
       if (a.is_host && !b.is_host) return -1;
       if (!a.is_host && b.is_host) return 1;
@@ -65,15 +102,21 @@ export default function PPTGame({
     });
   }, [players]);
 
-  const bothPlayersPresent = sortedPlayers.length >= 2;
+  const sortedPlayers = useMemo(() => {
+    return withBotPlayer(sortedRealPlayers, code, isVsBot);
+  }, [sortedRealPlayers, code, isVsBot]);
+
+  const bothPlayersPresent = isVsBot
+    ? sortedRealPlayers.length >= 1
+    : sortedPlayers.length >= 2;
 
   const hostPlayer = useMemo(() => {
-    return sortedPlayers.find((p) => p.is_host) ?? null;
-  }, [sortedPlayers]);
+    return sortedRealPlayers.find((p) => p.is_host) ?? null;
+  }, [sortedRealPlayers]);
 
   const currentPlayer = useMemo(() => {
-    return sortedPlayers.find((p) => p.player_name === currentPlayerName) ?? null;
-  }, [sortedPlayers, currentPlayerName]);
+    return sortedRealPlayers.find((p) => p.player_name === currentPlayerName) ?? null;
+  }, [sortedRealPlayers, currentPlayerName]);
 
   const detectStoredPlayerName = useCallback((roomCode: string) => {
     if (typeof window === "undefined") return "";
@@ -171,7 +214,7 @@ export default function PPTGame({
 
       return "";
     },
-    [code, detectStoredPlayerName]
+    [code, detectStoredPlayerName],
   );
 
   const isHost = useMemo(() => {
@@ -179,8 +222,10 @@ export default function PPTGame({
   }, [hostPlayer, currentPlayerName]);
 
   const opponentName = useMemo(() => {
+    if (isVsBot) return BOT_PLAYER_NAME;
+
     return sortedPlayers.find((p) => p.player_name !== currentPlayerName)?.player_name ?? "";
-  }, [sortedPlayers, currentPlayerName]);
+  }, [sortedPlayers, currentPlayerName, isVsBot]);
 
   const myChoice = gameState.playerChoices?.[currentPlayerName] ?? null;
   const opponentChoice = gameState.playerChoices?.[opponentName] ?? null;
@@ -214,7 +259,7 @@ export default function PPTGame({
     async (playerList: RoomPlayer[]) => {
       try {
         const userIds = Array.from(
-          new Set(playerList.map((p) => p.user_id).filter(Boolean))
+          new Set(playerList.map((p) => p.user_id).filter(Boolean)),
         ) as string[];
 
         if (userIds.length === 0) {
@@ -252,7 +297,7 @@ export default function PPTGame({
         setProfilesMap({});
       }
     },
-    [supabase]
+    [supabase],
   );
 
   const fetchPlayers = useCallback(async () => {
@@ -306,6 +351,8 @@ export default function PPTGame({
   const ensureGameStateRow = useCallback(
     async (playerList: RoomPlayer[]) => {
       try {
+        const gamePlayers = withBotPlayer(playerList, code, isVsBot);
+
         const { data, error } = await supabase
           .from("game_state")
           .select("id, state")
@@ -317,7 +364,12 @@ export default function PPTGame({
           return;
         }
 
-        if (data) {
+        const existingState = data?.state as Partial<GameState> | undefined;
+        const hasBotInState =
+          existingState?.playerChoices &&
+          Object.prototype.hasOwnProperty.call(existingState.playerChoices, BOT_PLAYER_NAME);
+
+        if (data && (!isVsBot || hasBotInState)) {
           const merged: GameState = {
             ...DEFAULT_STATE,
             ...(data.state as Partial<GameState>),
@@ -326,7 +378,25 @@ export default function PPTGame({
           return;
         }
 
-        const fresh = buildFreshState(playerList);
+        const fresh = buildFreshState(gamePlayers);
+
+        if (data) {
+          const { error: updateError } = await supabase
+            .from("game_state")
+            .update({
+              state: fresh,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("room_code", code);
+
+          if (updateError) {
+            console.error("Error actualizando game_state para bot:", updateError);
+            return;
+          }
+
+          setGameState(fresh);
+          return;
+        }
 
         const { error: insertError } = await supabase.from("game_state").insert({
           room_code: code,
@@ -363,7 +433,7 @@ export default function PPTGame({
         console.error("Error inesperado asegurando game_state:", error);
       }
     },
-    [supabase, code]
+    [supabase, code, isVsBot],
   );
 
   const refreshGameState = useCallback(async () => {
@@ -431,7 +501,7 @@ export default function PPTGame({
         console.error("Error inesperado actualizando game_state:", error);
       }
     },
-    [supabase, code]
+    [supabase, code],
   );
 
   const writeGameState = useCallback(
@@ -457,36 +527,60 @@ export default function PPTGame({
         return false;
       }
     },
-    [supabase, code]
+    [supabase, code],
   );
 
-const awardPoints = useCallback(
-  async (championName: string | null) => {
-    try {
-      if (!championName) return;
-      if (sortedPlayers.length < 2) return;
+  const awardPoints = useCallback(
+    async (championName: string | null) => {
+      try {
+        if (!championName) return;
 
-      const winner = sortedPlayers.find(
-        (player) => player.player_name === championName
-      );
-      const loser = sortedPlayers.find(
-        (player) => player.player_name !== championName
-      );
+        if (isVsBot) {
+          const humanPlayer = sortedRealPlayers.find(
+            (player) => player.player_name === championName,
+          );
 
-      await applyHeadToHeadMatchRewards({
-  supabase,
-  winnerUserId: winner?.user_id,
-  loserUserId: loser?.user_id,
-  gameType: "ppt_human",
-});
+          if (!humanPlayer) return;
 
-      await fetchProfilesForPlayers(sortedPlayers);
-    } catch (error) {
-      console.error("Error general dando puntos/stats:", error);
-    }
-  },
-  [sortedPlayers, supabase, fetchProfilesForPlayers]
-);
+          await applyRewardsEngine({
+            supabase,
+            gameType: "ppt_bot",
+            players: [
+              {
+                userId: humanPlayer.user_id,
+                placement: 1,
+                basePoints: 1,
+              },
+            ],
+          });
+
+          await fetchProfilesForPlayers(sortedRealPlayers);
+          return;
+        }
+
+        if (sortedRealPlayers.length < 2) return;
+
+        const winner = sortedRealPlayers.find(
+          (player) => player.player_name === championName,
+        );
+        const loser = sortedRealPlayers.find(
+          (player) => player.player_name !== championName,
+        );
+
+        await applyHeadToHeadMatchRewards({
+          supabase,
+          winnerUserId: winner?.user_id,
+          loserUserId: loser?.user_id,
+          gameType: "ppt_human",
+        });
+
+        await fetchProfilesForPlayers(sortedRealPlayers);
+      } catch (error) {
+        console.error("Error general dando puntos/stats:", error);
+      }
+    },
+    [isVsBot, sortedRealPlayers, supabase, fetchProfilesForPlayers],
+  );
 
   const clearGameChat = useCallback(async () => {
     try {
@@ -666,6 +760,11 @@ const awardPoints = useCallback(
   const handleRematch = async () => {
     if (!currentPlayerName) return;
 
+    if (isVsBot) {
+      await updateGameState(() => buildFreshState(sortedPlayers));
+      return;
+    }
+
     await updateGameState((prev) => {
       const votes = Array.from(new Set([...(prev.rematchVotes ?? []), currentPlayerName]));
 
@@ -750,7 +849,7 @@ const awardPoints = useCallback(
         },
         async () => {
           await fetchPlayers();
-        }
+        },
       )
       .on(
         "postgres_changes",
@@ -762,7 +861,7 @@ const awardPoints = useCallback(
         },
         async () => {
           await refreshGameState();
-        }
+        },
       )
       .on(
         "postgres_changes",
@@ -784,7 +883,7 @@ const awardPoints = useCallback(
           } else {
             await fetchRoom();
           }
-        }
+        },
       )
       .subscribe();
 
@@ -792,6 +891,53 @@ const awardPoints = useCallback(
       supabase.removeChannel(channel);
     };
   }, [supabase, code, fetchPlayers, refreshGameState, fetchRoom, router]);
+
+  useEffect(() => {
+    if (!isVsBot) return;
+    if (!currentPlayerName) return;
+    if (!isHost) return;
+    if (gameState.matchOver) return;
+    if (gameState.roundWinner) return;
+
+    const humanChoice = gameState.playerChoices?.[currentPlayerName];
+    const botChoice = gameState.playerChoices?.[BOT_PLAYER_NAME];
+
+    if (!humanChoice || botChoice) return;
+
+    if (botMoveRef.current) {
+      clearTimeout(botMoveRef.current);
+    }
+
+    botMoveRef.current = setTimeout(async () => {
+      await updateGameState((prev) => {
+        if (prev.matchOver || prev.roundWinner) return prev;
+        if (!prev.playerChoices?.[currentPlayerName]) return prev;
+        if (prev.playerChoices?.[BOT_PLAYER_NAME]) return prev;
+
+        return {
+          ...prev,
+          playerChoices: {
+            ...(prev.playerChoices ?? {}),
+            [BOT_PLAYER_NAME]: getRandomBotChoice(),
+          },
+        };
+      });
+    }, 700);
+
+    return () => {
+      if (botMoveRef.current) {
+        clearTimeout(botMoveRef.current);
+      }
+    };
+  }, [
+    isVsBot,
+    currentPlayerName,
+    isHost,
+    gameState.matchOver,
+    gameState.roundWinner,
+    gameState.playerChoices,
+    updateGameState,
+  ]);
 
   useEffect(() => {
     resolveRoundIfNeeded();
@@ -839,6 +985,10 @@ const awardPoints = useCallback(
     return () => {
       if (autoAdvanceRef.current) {
         clearTimeout(autoAdvanceRef.current);
+      }
+
+      if (botMoveRef.current) {
+        clearTimeout(botMoveRef.current);
       }
     };
   }, []);
@@ -918,13 +1068,13 @@ const awardPoints = useCallback(
   }
 
   const needsIdentitySelection =
-    sortedPlayers.length > 0 &&
+    sortedRealPlayers.length > 0 &&
     (!currentPlayerName ||
-      !sortedPlayers.some((player) => player.player_name === currentPlayerName));
+      !sortedRealPlayers.some((player) => player.player_name === currentPlayerName));
 
   const renderGameAvatar = (
     avatar: { emoji?: string; image?: string; label?: string },
-    frame: { className?: string; image?: string; label?: string }
+    frame: { className?: string; image?: string; label?: string },
   ) => {
     return (
       <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-black">
@@ -1000,6 +1150,12 @@ const awardPoints = useCallback(
                 {currentPlayerName || "No seleccionado"}
               </span>
             </p>
+
+            {isVsBot && (
+              <p className="mt-2 inline-flex rounded-full border border-cyan-400/25 bg-cyan-500/10 px-3 py-1 text-sm font-bold text-cyan-200">
+                Modo contra bot · ganas 1 punto si vences
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-3 md:items-end">
@@ -1009,7 +1165,9 @@ const awardPoints = useCallback(
               className="rounded-2xl bg-white/5 px-4 py-3 text-center shadow-[0_0_24px_rgba(250,204,21,0.05)]"
             >
               <p className="text-sm text-white/60">Modo</p>
-              <p className="text-xl font-bold text-yellow-400">{modeLabel}</p>
+              <p className="text-xl font-bold text-yellow-400">
+                {isVsBot ? "Vs Bot" : modeLabel}
+              </p>
               <p className="text-sm text-white/60">
                 Gana quien llegue a {roundsToWin} ronda{roundsToWin !== 1 ? "s" : ""}
               </p>
@@ -1053,7 +1211,7 @@ const awardPoints = useCallback(
               </p>
 
               <div className="mt-4 grid gap-3 md:grid-cols-2">
-                {sortedPlayers.map((player) => (
+                {sortedRealPlayers.map((player) => (
                   <button
                     key={player.id}
                     onClick={() => handleSelectIdentity(player.player_name)}
@@ -1080,7 +1238,9 @@ const awardPoints = useCallback(
               exit={{ opacity: 0 }}
               className="mb-6 rounded-3xl border border-yellow-500/20 bg-yellow-500/10 p-5"
             >
-              <p className="text-lg font-semibold text-yellow-300">Esperando al segundo jugador...</p>
+              <p className="text-lg font-semibold text-yellow-300">
+                Esperando al segundo jugador...
+              </p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1096,8 +1256,8 @@ const awardPoints = useCallback(
                 roundPopup.accent === "yellow"
                   ? "border-yellow-400/30 bg-yellow-500/10"
                   : roundPopup.accent === "emerald"
-                  ? "border-emerald-400/30 bg-emerald-500/10"
-                  : "border-orange-400/30 bg-orange-500/10"
+                    ? "border-emerald-400/30 bg-emerald-500/10"
+                    : "border-orange-400/30 bg-orange-500/10"
               }`}
             >
               <p className="text-sm uppercase tracking-[0.3em] text-orange-200">Resultado de ronda</p>
@@ -1115,12 +1275,18 @@ const awardPoints = useCallback(
             const visibleChoice = getVisibleChoiceLabel(selected, isCurrent);
 
             const profile = player.user_id ? profilesMap[player.user_id] : null;
-            const avatar = getAvatarByKey(
-              player.is_guest ? "avatar_guest" : profile?.avatar_key ?? "avatar_sun"
-            );
-            const frame = getFrameByKey(
-              player.is_guest ? "frame_guest" : profile?.frame_key ?? "frame_orange"
-            );
+
+            const avatar = player.player_name === BOT_PLAYER_NAME
+              ? { emoji: "🤖", label: "Bot" }
+              : getAvatarByKey(
+                  player.is_guest ? "avatar_guest" : profile?.avatar_key ?? "avatar_sun",
+                );
+
+            const frame = player.player_name === BOT_PLAYER_NAME
+              ? { className: "border-cyan-400/60", label: "Bot" }
+              : getFrameByKey(
+                  player.is_guest ? "frame_guest" : profile?.frame_key ?? "frame_orange",
+                );
 
             return (
               <motion.div
@@ -1134,7 +1300,7 @@ const awardPoints = useCallback(
                 transition={{ duration: 0.28 }}
                 className={`rounded-3xl border p-5 ${getPlayerCardStyles(
                   player.player_name,
-                  isCurrent
+                  isCurrent,
                 )}`}
               >
                 <div className="mb-3 flex items-center justify-between gap-4">
@@ -1145,7 +1311,13 @@ const awardPoints = useCallback(
                       <p className="text-xl font-bold">
                         {player.player_name} {player.is_host ? "👑" : ""}
                       </p>
-                      <p className="text-sm text-white/60">{isCurrent ? "Tú" : "Rival"}</p>
+                      <p className="text-sm text-white/60">
+                        {player.player_name === BOT_PLAYER_NAME
+                          ? "Rival automático"
+                          : isCurrent
+                            ? "Tú"
+                            : "Rival"}
+                      </p>
                     </div>
                   </div>
 
@@ -1180,7 +1352,7 @@ const awardPoints = useCallback(
                 <p className="text-sm uppercase tracking-[0.2em] text-white/60">Ronda actual</p>
                 <h2 className="text-2xl font-bold">Ronda {gameState.round}</h2>
                 <p className="mt-1 text-sm text-white/60">
-                  Formato activo: {variantLabel}
+                  Formato activo: {isVsBot ? "Vs Bot" : variantLabel}
                 </p>
               </div>
 
@@ -1189,10 +1361,12 @@ const awardPoints = useCallback(
                   {needsIdentitySelection
                     ? "Primero selecciona tu jugador"
                     : gameState.resultText
-                    ? gameState.resultText
-                    : myChoice && !shouldRevealChoices
-                    ? "Esperando al otro jugador..."
-                    : "Haz tu elección"}
+                      ? gameState.resultText
+                      : myChoice && !shouldRevealChoices
+                        ? isVsBot
+                          ? "El bot está pensando..."
+                          : "Esperando al otro jugador..."
+                        : "Haz tu elección"}
                 </p>
               </div>
             </div>
@@ -1299,7 +1473,11 @@ const awardPoints = useCallback(
                   👑 {gameState.champion}
                 </motion.h2>
                 <p className="mt-3 text-lg text-white/80">
-                  La partida terminó. Ya tenemos campeón del {modeLabel.toLowerCase()}.
+                  {isVsBot
+                    ? gameState.champion === BOT_PLAYER_NAME
+                      ? "El bot ganó esta vez. Intenta la revancha."
+                      : "Ganaste contra el bot y recibiste 1 punto."
+                    : `La partida terminó. Ya tenemos campeón del ${modeLabel.toLowerCase()}.`}
                 </p>
               </div>
 
@@ -1346,9 +1524,11 @@ const awardPoints = useCallback(
                 </motion.button>
               </div>
 
-              <p className="mt-4 text-center text-sm text-white/60">
-                Votos de revancha: {gameState.rematchVotes?.length ?? 0}/{Math.max(sortedPlayers.length, 2)}
-              </p>
+              {!isVsBot && (
+                <p className="mt-4 text-center text-sm text-white/60">
+                  Votos de revancha: {gameState.rematchVotes?.length ?? 0}/{Math.max(sortedPlayers.length, 2)}
+                </p>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
