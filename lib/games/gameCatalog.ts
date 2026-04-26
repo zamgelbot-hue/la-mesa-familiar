@@ -73,13 +73,25 @@ export const GAME_CONFIGS: Record<string, GameConfig> = {
     ],
   },
 
-  gato: {
+    gato: {
     maxPlayersOptions: [2],
     variants: [
       {
         key: "clasico",
-        label: "Clásico",
-        description: "Partida rápida de 3 en línea para 2 jugadores.",
+        label: "Clásico 3x3",
+        description: "Gana conectando 3 en línea.",
+        available: true,
+      },
+      {
+        key: "grande",
+        label: "Grande 5x5",
+        description: "Gana conectando 5 en línea.",
+        available: true,
+      },
+      {
+        key: "epico",
+        label: "Épico 7x7",
+        description: "Gana conectando 5. Bonus si conectas 7.",
         available: true,
       },
     ],
@@ -88,8 +100,8 @@ export const GAME_CONFIGS: Record<string, GameConfig> = {
       "El segundo jugador juega con O",
       "Jueguen por turnos",
       "No puedes tocar una casilla ocupada",
-      "Gana quien complete 3 en línea",
-      "Si se llena el tablero sin ganador, es empate",
+      "Gana conectando la línea requerida",
+      "En Épico 7x7 puedes ganar bonus conectando 7",
     ],
   },
 
@@ -258,18 +270,42 @@ export function buildRoomSettings(
     };
   }
 
-  if (gameSlug === "gato") {
+    if (gameSlug === "gato") {
+    const variantMap: Record<
+      string,
+      {
+        board_size: number;
+        win_length: number;
+        bonus_win_length: number | null;
+      }
+    > = {
+      clasico: {
+        board_size: 3,
+        win_length: 3,
+        bonus_win_length: null,
+      },
+      grande: {
+        board_size: 5,
+        win_length: 5,
+        bonus_win_length: null,
+      },
+      epico: {
+        board_size: 7,
+        win_length: 5,
+        bonus_win_length: 7,
+      },
+    };
+
+    const selected = variantMap[variantKey] ?? variantMap.clasico;
+
     return {
       mode: "classic_tictactoe",
-      board_size: 3,
+      board_size: selected.board_size,
+      win_length: selected.win_length,
+      bonus_win_length: selected.bonus_win_length,
       max_players: 2,
     };
   }
-
-  return {
-    max_players: maxPlayers,
-  };
-}
 
 export function getGameIcon(slug: string) {
   switch (slug) {
