@@ -45,6 +45,8 @@ type GatoState = {
   rematch_votes: string[];
 };
 
+type GatoSound = "tap" | "error" | "win" | "draw" | "bonus";
+
 const DEFAULT_STATE: GatoState = {
   game_slug: "gato",
   match_id: "",
@@ -71,6 +73,76 @@ function createMatchId() {
   return `gato_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function playGatoSound(type: GatoSound) {
+  if (typeof window === "undefined") return;
+
+  const AudioCtx =
+    window.AudioContext ||
+    (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+      .webkitAudioContext;
+
+  if (!AudioCtx) return;
+
+  const ctx = new AudioCtx();
+  const now = ctx.currentTime;
+
+  const tone = (
+    frequency: number,
+    start: number,
+    duration: number,
+    oscType: OscillatorType = "sine",
+    gainValue = 0.05,
+  ) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = oscType;
+    osc.frequency.setValueAtTime(frequency, start);
+
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(gainValue, start + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(start);
+    osc.stop(start + duration);
+  };
+
+  if (type === "tap") {
+    tone(520, now, 0.08, "triangle", 0.04);
+    tone(720, now + 0.05, 0.08, "triangle", 0.035);
+  }
+
+  if (type === "error") {
+    tone(180, now, 0.09, "square", 0.035);
+    tone(130, now + 0.08, 0.12, "square", 0.03);
+  }
+
+  if (type === "win") {
+    tone(440, now, 0.11, "triangle", 0.045);
+    tone(554, now + 0.12, 0.11, "triangle", 0.05);
+    tone(659, now + 0.24, 0.18, "triangle", 0.055);
+  }
+
+  if (type === "draw") {
+    tone(280, now, 0.1, "sine", 0.035);
+    tone(280, now + 0.14, 0.1, "sine", 0.035);
+  }
+
+  if (type === "bonus") {
+    tone(523, now, 0.1, "triangle", 0.045);
+    tone(659, now + 0.1, 0.1, "triangle", 0.05);
+    tone(784, now + 0.2, 0.12, "triangle", 0.055);
+    tone(1046, now + 0.34, 0.2, "sine", 0.06);
+  }
+
+  window.setTimeout(() => {
+    ctx.close().catch(() => {});
+  }, 900);
+}
+
 function getModeConfig(
   roomVariant?: string | null,
   roomSettings?: Record<string, any> | null,
@@ -95,8 +167,8 @@ function getModeConfig(
         boardSizeFromSettings === 3
           ? "Clásico 3x3"
           : boardSizeFromSettings === 5
-          ? "Grande 5x5"
-          : "Épico 7x7",
+            ? "Grande 5x5"
+            : "Épico 7x7",
     };
   }
 
@@ -210,7 +282,7 @@ function checkWinner(
       if (!normalWin && line.length >= winLength) {
         normalWin = {
           symbol,
-          line,
+          line: line.slice(0, winLength),
           isBonus: false,
         };
       }
@@ -244,6 +316,7 @@ export default function GatoGame({
   const [message, setMessage] = useState("");
 
   const awardingRef = useRef(false);
+  const lastEndSoundKeyRef = useRef("");
 
   const sortedPlayers = useMemo(() => {
     return [...players].sort((a, b) => {
@@ -506,11 +579,32 @@ export default function GatoGame({
   const handleCellClick = async (index: number) => {
     setMessage("");
 
-    if (!bothPlayersPresent) return setMessage("Esperando al segundo jugador.");
-    if (!currentPlayerName || !currentPlayer) return setMessage("Selecciona tu jugador primero.");
-    if (gameState.match_over) return setMessage("La partida ya terminó.");
-    if (!isMyTurn) return setMessage("Todavía no es tu turno.");
-    if (gameState.board[index]) return setMessage("Esa casilla ya está ocupada.");
+    if (!bothPlayersPresent) {
+      playGatoSound("error");
+      return setMessage("Esperando al segundo jugador.");
+    }
+
+    if (!currentPlayerName || !currentPlayer) {
+      playGatoSound("error");
+      return setMessage("Selecciona tu jugador primero.");
+    }
+
+    if (gameState.match_over) {
+      playGatoSound("error");
+      return setMessage("La partida ya terminó.");
+    }
+
+    if (!isMyTurn) {
+      playGatoSound("error");
+      return setMessage("Todavía no es tu turno.");
+    }
+
+    if (gameState.board[index]) {
+      playGatoSound("error");
+      return setMessage("Esa casilla ya está ocupada.");
+    }
+
+    playGatoSound("tap");
 
     await updateGameState((prev) => {
       if (prev.match_over) return prev;
@@ -636,6 +730,7 @@ export default function GatoGame({
   const handleSelectIdentity = (playerName: string) => {
     persistPlayerName(code, playerName);
     setCurrentPlayerName(playerName);
+    playGatoSound("tap");
   };
 
   useEffect(() => {
@@ -720,6 +815,32 @@ export default function GatoGame({
     void awardRewardsIfNeeded(gameState);
   }, [gameState, awardRewardsIfNeeded]);
 
+  useEffect(() => {
+    if (!gameState.match_over) return;
+
+    const soundKey = `${gameState.match_id}:${gameState.is_draw ? "draw" : gameState.is_bonus_win ? "bonus" : "win"}`;
+
+    if (lastEndSoundKeyRef.current === soundKey) return;
+    lastEndSoundKeyRef.current = soundKey;
+
+    if (gameState.is_draw) {
+      playGatoSound("draw");
+      return;
+    }
+
+    if (gameState.is_bonus_win) {
+      playGatoSound("bonus");
+      return;
+    }
+
+    playGatoSound("win");
+  }, [
+    gameState.match_over,
+    gameState.match_id,
+    gameState.is_draw,
+    gameState.is_bonus_win,
+  ]);
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-black p-6 text-white">
@@ -740,20 +861,25 @@ export default function GatoGame({
     gameState.board_size === 7
       ? "grid-cols-7 max-w-2xl gap-2"
       : gameState.board_size === 5
-      ? "grid-cols-5 max-w-xl gap-2.5"
-      : "grid-cols-3 max-w-md gap-3";
+        ? "grid-cols-5 max-w-xl gap-2.5"
+        : "grid-cols-3 max-w-md gap-3";
 
   const cellTextClass =
     gameState.board_size === 7
       ? "text-3xl md:text-5xl"
       : gameState.board_size === 5
-      ? "text-4xl md:text-6xl"
-      : "text-6xl md:text-7xl";
+        ? "text-4xl md:text-6xl"
+        : "text-6xl md:text-7xl";
 
   return (
     <main className="min-h-screen bg-black p-4 text-white md:p-8">
+      <div className="pointer-events-none fixed inset-0 opacity-40">
+        <div className="absolute left-1/2 top-0 h-[440px] w-[440px] -translate-x-1/2 rounded-full bg-orange-500/10 blur-3xl" />
+        <div className="absolute bottom-0 right-0 h-[340px] w-[340px] rounded-full bg-yellow-500/10 blur-3xl" />
+      </div>
+
       <div className="relative mx-auto max-w-6xl">
-        <section className="mb-6 rounded-[32px] border border-orange-500/15 bg-zinc-950/90 p-6">
+        <section className="mb-6 rounded-[32px] border border-orange-500/15 bg-zinc-950/90 p-6 shadow-[0_0_40px_rgba(249,115,22,0.06)]">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-orange-300/80">
@@ -762,6 +888,9 @@ export default function GatoGame({
               <h1 className="mt-2 text-4xl font-extrabold">El Gato</h1>
               <p className="mt-2 text-white/65">
                 Sala: <span className="font-bold text-orange-300">{code}</span>
+              </p>
+              <p className="text-white/65">
+                Estado: <span className="font-bold text-white">{roomStatus}</span>
               </p>
               <p className="text-white/65">
                 Modo: <span className="font-bold text-white">{modeLabel}</span>
@@ -834,14 +963,14 @@ export default function GatoGame({
                 return (
                   <div
                     key={player.id}
-                    className={`rounded-3xl border p-5 ${
+                    className={`rounded-3xl border p-5 transition ${
                       winner
-                        ? "border-yellow-400/40 bg-yellow-500/10"
+                        ? "border-yellow-400/40 bg-yellow-500/10 shadow-[0_0_28px_rgba(250,204,21,0.14)]"
                         : active
-                        ? "border-orange-400/40 bg-orange-500/10"
-                        : isMe
-                        ? "border-emerald-400/35 bg-emerald-500/10"
-                        : "border-white/10 bg-white/[0.03]"
+                          ? "border-orange-400/40 bg-orange-500/10 shadow-[0_0_24px_rgba(249,115,22,0.12)]"
+                          : isMe
+                            ? "border-emerald-400/35 bg-emerald-500/10"
+                            : "border-white/10 bg-white/[0.03]"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-4">
@@ -858,13 +987,30 @@ export default function GatoGame({
                         {symbol}
                       </div>
                     </div>
+
+                    {active && !gameState.match_over && (
+                      <p className="mt-3 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-3 py-2 text-sm font-bold text-orange-200">
+                        Turno actual
+                      </p>
+                    )}
                   </div>
                 );
               })}
             </div>
+
+            <div className="mt-5 rounded-3xl border border-white/10 bg-black/30 p-4">
+              <p className="text-sm text-white/55">Tu jugador</p>
+              <p className="mt-1 text-lg font-bold text-emerald-300">
+                {currentPlayerName || "No seleccionado"}
+              </p>
+              <p className="mt-3 text-sm text-white/55">Tu ficha</p>
+              <p className="mt-1 text-3xl font-black text-orange-300">
+                {mySymbol ?? "-"}
+              </p>
+            </div>
           </section>
 
-          <section className="rounded-[32px] border border-orange-500/15 bg-zinc-950/90 p-5">
+          <section className="rounded-[32px] border border-orange-500/15 bg-zinc-950/90 p-5 shadow-[0_0_40px_rgba(249,115,22,0.05)]">
             <div className="mb-5 text-center">
               <p className="text-sm font-semibold uppercase tracking-[0.18em] text-orange-300/80">
                 Tablero {gameState.board_size}x{gameState.board_size}
@@ -874,10 +1020,10 @@ export default function GatoGame({
                 {gameState.match_over
                   ? gameState.result_text
                   : isMyTurn
-                  ? "Tu turno"
-                  : gameState.current_turn
-                  ? `Turno de ${gameState.current_turn}`
-                  : "Preparando turno"}
+                    ? "Tu turno"
+                    : gameState.current_turn
+                      ? `Turno de ${gameState.current_turn}`
+                      : "Preparando turno"}
               </h2>
 
               {message && (
@@ -903,14 +1049,14 @@ export default function GatoGame({
                       !!cell ||
                       gameState.match_over
                     }
-                    className={`aspect-square rounded-2xl border font-black transition ${cellTextClass} ${
+                    className={`aspect-square rounded-2xl border font-black transition duration-200 ${cellTextClass} ${
                       isWinningCell
-                        ? "border-yellow-400 bg-yellow-500/15 text-yellow-300"
+                        ? "animate-pulse border-yellow-400 bg-yellow-500/20 text-yellow-300 shadow-[0_0_34px_rgba(250,204,21,0.28)]"
                         : cell === "X"
-                        ? "border-orange-500/35 bg-orange-500/10 text-orange-300"
-                        : cell === "O"
-                        ? "border-cyan-400/30 bg-cyan-500/10 text-cyan-200"
-                        : "border-white/10 bg-white/[0.04] hover:border-orange-500/35 hover:bg-orange-500/10"
+                          ? "border-orange-500/35 bg-orange-500/10 text-orange-300 shadow-[0_0_18px_rgba(249,115,22,0.08)]"
+                          : cell === "O"
+                            ? "border-cyan-400/30 bg-cyan-500/10 text-cyan-200 shadow-[0_0_18px_rgba(34,211,238,0.08)]"
+                            : "border-white/10 bg-white/[0.04] hover:scale-[1.03] hover:border-orange-500/35 hover:bg-orange-500/10"
                     } disabled:cursor-not-allowed disabled:opacity-80`}
                   >
                     {cell}
@@ -929,16 +1075,16 @@ export default function GatoGame({
                   {gameState.is_draw
                     ? "🤝 Empate"
                     : gameState.is_bonus_win
-                    ? `🔥 ${gameState.winner}`
-                    : `👑 ${gameState.winner}`}
+                      ? `🔥 ${gameState.winner}`
+                      : `👑 ${gameState.winner}`}
                 </h3>
 
                 <p className="mt-2 text-white/70">
                   {gameState.is_draw
                     ? "Se llenó el tablero sin ganador."
                     : gameState.is_bonus_win
-                    ? "Victoria perfecta: conectó 7 en línea. +3 puntos bonus."
-                    : `Ganó con ${gameState.winner_symbol}.`}
+                      ? "Victoria perfecta: conectó 7 en línea. +3 puntos bonus."
+                      : `Ganó con ${gameState.winner_symbol}.`}
                 </p>
 
                 <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-center">
@@ -968,6 +1114,68 @@ export default function GatoGame({
           </section>
         </div>
       </div>
+
+      {gameState.match_over && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4 backdrop-blur-md">
+          <div className="relative w-full max-w-xl overflow-hidden rounded-[36px] border border-yellow-400/30 bg-zinc-950 p-8 text-center shadow-[0_0_70px_rgba(250,204,21,0.20)] md:p-10">
+            <div className="pointer-events-none absolute -left-16 -top-16 h-40 w-40 rounded-full bg-yellow-500/20 blur-3xl" />
+            <div className="pointer-events-none absolute -bottom-16 -right-16 h-40 w-40 rounded-full bg-orange-500/20 blur-3xl" />
+
+            <div className="relative">
+              <p className="text-sm font-bold uppercase tracking-[0.32em] text-yellow-300">
+                Resultado
+              </p>
+
+              <div className="mx-auto mt-5 flex h-24 w-24 animate-pulse items-center justify-center rounded-full border border-yellow-400/30 bg-yellow-500/10 text-5xl shadow-[0_0_45px_rgba(250,204,21,0.16)]">
+                {gameState.is_draw ? "🤝" : gameState.is_bonus_win ? "🔥" : "👑"}
+              </div>
+
+              <h2 className="mt-6 text-4xl font-extrabold md:text-5xl">
+                {gameState.is_draw
+                  ? "Empate"
+                  : gameState.is_bonus_win
+                    ? "Victoria Perfecta"
+                    : "Ganador"}
+              </h2>
+
+              <p className="mt-4 text-2xl font-bold text-white">
+                {gameState.is_draw ? "Sin ganador" : gameState.winner}
+              </p>
+
+              <p className="mx-auto mt-3 max-w-md text-white/70">
+                {gameState.is_draw
+                  ? "El tablero se llenó sin completar una línea ganadora."
+                  : gameState.is_bonus_win
+                    ? "Conectó 7 en línea y ganó +3 puntos bonus."
+                    : `Ganó conectando ${gameState.win_length} en línea con ${gameState.winner_symbol}.`}
+              </p>
+
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                <button
+                  type="button"
+                  onClick={handleRematch}
+                  className="rounded-2xl bg-emerald-500 px-7 py-3 font-extrabold text-black transition hover:bg-emerald-400"
+                >
+                  Revancha
+                </button>
+
+                <button
+                  type="button"
+                  onClick={goBackToRoom}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-7 py-3 font-extrabold text-white transition hover:bg-white/10"
+                >
+                  Volver a sala
+                </button>
+              </div>
+
+              <p className="mt-5 text-sm text-white/50">
+                Votos de revancha: {gameState.rematch_votes?.length ?? 0}/
+                {Math.max(sortedPlayers.length, 2)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <RoomChat
         roomCode={code}
