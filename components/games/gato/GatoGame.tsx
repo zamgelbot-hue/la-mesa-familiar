@@ -47,6 +47,9 @@ type GatoState = {
 
 type GatoSound = "tap" | "error" | "win" | "draw" | "bonus";
 
+const BOT_PLAYER_NAME = "Bot Familiar 🤖";
+const BOT_REWARD_COOLDOWN_MS = 60000;
+
 const DEFAULT_STATE: GatoState = {
   game_slug: "gato",
   match_id: "",
@@ -71,6 +74,89 @@ const getPlayerStorageKey = (roomCode: string) => `lmf:player:${roomCode}`;
 
 function createMatchId() {
   return `gato_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function buildBotPlayer(roomCode: string): RoomPlayer {
+  return {
+    id: `bot-gato-${roomCode}`,
+    room_code: roomCode,
+    player_name: BOT_PLAYER_NAME,
+    is_host: false,
+    is_ready: true,
+    created_at: "9999-12-31T23:59:59.999Z",
+    user_id: null,
+    is_guest: true,
+  };
+}
+
+function withBotPlayer(
+  realPlayers: RoomPlayer[],
+  roomCode: string,
+  vsBot: boolean,
+) {
+  if (!vsBot) return realPlayers;
+  if (realPlayers.some((player) => player.player_name === BOT_PLAYER_NAME)) {
+    return realPlayers;
+  }
+
+  return [...realPlayers, buildBotPlayer(roomCode)];
+}
+
+async function applyBotWinReward({
+  supabase,
+  userId,
+}: {
+  supabase: any;
+  userId: string | null | undefined;
+}) {
+  if (!userId || userId.startsWith("guest:")) return;
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("points, total_points_earned, last_reward_at")
+    .eq("id", userId)
+    .single();
+
+  if (profileError || !profile) return;
+
+  const lastRewardAt = profile.last_reward_at
+    ? new Date(profile.last_reward_at).getTime()
+    : 0;
+
+  const now = Date.now();
+
+  if (now - lastRewardAt < BOT_REWARD_COOLDOWN_MS) {
+    console.log("⏳ Reward Gato VS Bot en cooldown");
+    return;
+  }
+
+  const rewardedAt = new Date().toISOString();
+
+  const { error: updateError } = await supabase
+    .from("profiles")
+    .update({
+      points: (profile.points ?? 0) + 1,
+      total_points_earned: (profile.total_points_earned ?? 0) + 1,
+      last_reward_at: rewardedAt,
+    })
+    .eq("id", userId);
+
+  if (updateError) {
+    console.error("Error dando reward Gato VS Bot:", updateError);
+    return;
+  }
+
+  const { error: eventError } = await supabase.from("reward_events").insert({
+    user_id: userId,
+    game_type: "gato_bot",
+    points_awarded: 1,
+    placement: 1,
+    created_at: rewardedAt,
+  });
+
+  if (eventError) {
+    console.error("Error guardando reward_event Gato VS Bot:", eventError);
+  }
 }
 
 function playGatoSound(type: GatoSound) {
@@ -147,6 +233,8 @@ function getModeConfig(
   roomVariant?: string | null,
   roomSettings?: Record<string, any> | null,
 ) {
+  const isVsBot = roomSettings?.vs_bot === true || roomVariant === "bot_clasico";
+
   const boardSizeFromSettings = Number(roomSettings?.board_size ?? 0);
   const winLengthFromSettings = Number(roomSettings?.win_length ?? 0);
   const bonusWinLengthFromSettings =
@@ -154,6 +242,15 @@ function getModeConfig(
     roomSettings?.bonus_win_length === undefined
       ? null
       : Number(roomSettings?.bonus_win_length ?? 0);
+
+  if (isVsBot) {
+    return {
+      boardSize: 3,
+      winLength: 3,
+      bonusWinLength: null,
+      modeLabel: "Vs Bot 3x3",
+    };
+  }
 
   if (boardSizeFromSettings > 0 && winLengthFromSettings > 0) {
     return {
@@ -292,6 +389,47 @@ function checkWinner(
   return normalWin;
 }
 
+function getBotMove(board: CellValue[], boardSize: number, winLength: number) {
+  const emptyIndexes = board
+    .map((cell, index) => (cell === null ? index : null))
+    .filter((value): value is number => value !== null);
+
+  if (emptyIndexes.length === 0) return null;
+
+  const tryMove = (symbol: "X" | "O") => {
+    for (const index of emptyIndexes) {
+      const copy = [...board];
+      copy[index] = symbol;
+
+      const result = checkWinner(copy, boardSize, winLength, null);
+
+      if (result?.symbol === symbol) {
+        return index;
+      }
+    }
+
+    return null;
+  };
+
+  const winningMove = tryMove("O");
+  if (winningMove !== null) return winningMove;
+
+  const blockingMove = tryMove("X");
+  if (blockingMove !== null) return blockingMove;
+
+  const center = Math.floor((boardSize * boardSize) / 2);
+  if (board[center] === null) return center;
+
+  const corners = [0, boardSize - 1, boardSize * (boardSize - 1), boardSize * boardSize - 1];
+  const openCorners = corners.filter((index) => board[index] === null);
+
+  if (openCorners.length > 0) {
+    return openCorners[Math.floor(Math.random() * openCorners.length)];
+  }
+
+  return emptyIndexes[Math.floor(Math.random() * emptyIndexes.length)];
+}
+
 export default function GatoGame({
   roomCode,
   roomVariant,
@@ -302,6 +440,7 @@ export default function GatoGame({
   const supabase = supabaseRef.current;
 
   const code = String(roomCode ?? "").toUpperCase();
+  const isVsBot = roomSettings?.vs_bot === true || roomVariant === "bot_clasico";
 
   const { boardSize, winLength, bonusWinLength, modeLabel } = useMemo(
     () => getModeConfig(roomVariant, roomSettings),
@@ -317,8 +456,9 @@ export default function GatoGame({
 
   const awardingRef = useRef(false);
   const lastEndSoundKeyRef = useRef("");
+  const botMoveRef = useRef<NodeJS.Timeout | null>(null);
 
-  const sortedPlayers = useMemo(() => {
+  const sortedRealPlayers = useMemo(() => {
     return [...players].sort((a, b) => {
       if (a.is_host && !b.is_host) return -1;
       if (!a.is_host && b.is_host) return 1;
@@ -326,12 +466,21 @@ export default function GatoGame({
     });
   }, [players]);
 
+  const sortedPlayers = useMemo(() => {
+    return withBotPlayer(sortedRealPlayers, code, isVsBot);
+  }, [sortedRealPlayers, code, isVsBot]);
+
   const currentPlayer = useMemo(() => {
-    return sortedPlayers.find((p) => p.player_name === currentPlayerName) ?? null;
-  }, [sortedPlayers, currentPlayerName]);
+    return (
+      sortedRealPlayers.find((p) => p.player_name === currentPlayerName) ?? null
+    );
+  }, [sortedRealPlayers, currentPlayerName]);
 
   const isHost = !!currentPlayer?.is_host;
-  const bothPlayersPresent = sortedPlayers.length >= 2;
+  const bothPlayersPresent = isVsBot
+    ? sortedRealPlayers.length >= 1
+    : sortedPlayers.length >= 2;
+
   const mySymbol = currentPlayerName ? gameState.symbols?.[currentPlayerName] : null;
   const isMyTurn = gameState.current_turn === currentPlayerName;
 
@@ -459,6 +608,8 @@ export default function GatoGame({
 
   const ensureGameStateRow = useCallback(
     async (playerList: RoomPlayer[]) => {
+      const gamePlayers = withBotPlayer(playerList, code, isVsBot);
+
       const { data } = await supabase
         .from("game_state")
         .select("id, state")
@@ -466,18 +617,22 @@ export default function GatoGame({
         .maybeSingle();
 
       const existing = data?.state as Partial<GatoState> | undefined;
+      const hasBotInState =
+        existing?.symbols &&
+        Object.prototype.hasOwnProperty.call(existing.symbols, BOT_PLAYER_NAME);
 
       if (
         data &&
         existing?.game_slug === "gato" &&
-        existing.board_size === boardSize
+        existing.board_size === boardSize &&
+        (!isVsBot || hasBotInState)
       ) {
         setGameState(normalizeState(existing));
         return;
       }
 
       const fresh = buildFreshState(
-        playerList,
+        gamePlayers,
         boardSize,
         winLength,
         bonusWinLength,
@@ -511,6 +666,7 @@ export default function GatoGame({
       winLength,
       bonusWinLength,
       normalizeState,
+      isVsBot,
     ],
   );
 
@@ -540,13 +696,33 @@ export default function GatoGame({
       if (state.rewards_applied) return;
       if (awardingRef.current) return;
 
-      const winner = sortedPlayers.find((p) => p.player_name === state.winner);
-      const loser = sortedPlayers.find((p) => p.player_name !== state.winner);
-
-      if (!winner || !loser) return;
-
       try {
         awardingRef.current = true;
+
+        if (isVsBot) {
+          const humanWinner = sortedRealPlayers.find(
+            (player) => player.player_name === state.winner,
+          );
+
+          if (humanWinner) {
+            await applyBotWinReward({
+              supabase,
+              userId: humanWinner.user_id,
+            });
+          }
+
+          await updateGameState((prev) => ({
+            ...prev,
+            rewards_applied: true,
+          }));
+
+          return;
+        }
+
+        const winner = sortedPlayers.find((p) => p.player_name === state.winner);
+        const loser = sortedPlayers.find((p) => p.player_name !== state.winner);
+
+        if (!winner || !loser) return;
 
         await applyRewardsEngine({
           supabase,
@@ -573,7 +749,14 @@ export default function GatoGame({
         awardingRef.current = false;
       }
     },
-    [isHost, sortedPlayers, supabase, updateGameState],
+    [
+      isHost,
+      isVsBot,
+      sortedRealPlayers,
+      sortedPlayers,
+      supabase,
+      updateGameState,
+    ],
   );
 
   const handleCellClick = async (index: number) => {
@@ -596,7 +779,11 @@ export default function GatoGame({
 
     if (!isMyTurn) {
       playGatoSound("error");
-      return setMessage("Todavía no es tu turno.");
+      return setMessage(
+        gameState.current_turn === BOT_PLAYER_NAME
+          ? "Es turno del bot."
+          : "Todavía no es tu turno.",
+      );
     }
 
     if (gameState.board[index]) {
@@ -705,6 +892,13 @@ export default function GatoGame({
   const handleRematch = async () => {
     if (!currentPlayerName) return;
 
+    if (isVsBot) {
+      await updateGameState(() =>
+        buildFreshState(sortedPlayers, boardSize, winLength, bonusWinLength),
+      );
+      return;
+    }
+
     await updateGameState((prev) => {
       const votes = Array.from(
         new Set([...(prev.rematch_votes ?? []), currentPlayerName]),
@@ -812,6 +1006,95 @@ export default function GatoGame({
   }, [supabase, code, fetchPlayers, refreshGameState, fetchRoom, router]);
 
   useEffect(() => {
+    if (!isVsBot) return;
+    if (!isHost) return;
+    if (gameState.match_over) return;
+    if (gameState.current_turn !== BOT_PLAYER_NAME) return;
+
+    if (botMoveRef.current) {
+      clearTimeout(botMoveRef.current);
+    }
+
+    botMoveRef.current = setTimeout(async () => {
+      await updateGameState((prev) => {
+        if (prev.match_over) return prev;
+        if (prev.current_turn !== BOT_PLAYER_NAME) return prev;
+
+        const moveIndex = getBotMove(
+          prev.board,
+          prev.board_size,
+          prev.win_length,
+        );
+
+        if (moveIndex === null) return prev;
+
+        const symbol = prev.symbols[BOT_PLAYER_NAME];
+        if (!symbol) return prev;
+
+        const nextBoard = [...prev.board];
+        nextBoard[moveIndex] = symbol;
+
+        const winnerResult = checkWinner(
+          nextBoard,
+          prev.board_size,
+          prev.win_length,
+          prev.bonus_win_length,
+        );
+
+        if (winnerResult?.symbol) {
+          return {
+            ...prev,
+            board: nextBoard,
+            winner: BOT_PLAYER_NAME,
+            winner_symbol: winnerResult.symbol,
+            winning_line: winnerResult.line,
+            is_draw: false,
+            match_over: true,
+            is_bonus_win: false,
+            result_text: `${BOT_PLAYER_NAME} ganó la partida`,
+          };
+        }
+
+        const draw = nextBoard.every(Boolean);
+
+        if (draw) {
+          return {
+            ...prev,
+            board: nextBoard,
+            current_turn: null,
+            is_draw: true,
+            match_over: true,
+            result_text: "Empate",
+          };
+        }
+
+        const nextTurn =
+          sortedRealPlayers[0]?.player_name ?? currentPlayerName ?? null;
+
+        return {
+          ...prev,
+          board: nextBoard,
+          current_turn: nextTurn,
+        };
+      });
+    }, 650);
+
+    return () => {
+      if (botMoveRef.current) {
+        clearTimeout(botMoveRef.current);
+      }
+    };
+  }, [
+    isVsBot,
+    isHost,
+    gameState.match_over,
+    gameState.current_turn,
+    updateGameState,
+    sortedRealPlayers,
+    currentPlayerName,
+  ]);
+
+  useEffect(() => {
     void awardRewardsIfNeeded(gameState);
   }, [gameState, awardRewardsIfNeeded]);
 
@@ -841,6 +1124,14 @@ export default function GatoGame({
     gameState.is_bonus_win,
   ]);
 
+  useEffect(() => {
+    return () => {
+      if (botMoveRef.current) {
+        clearTimeout(botMoveRef.current);
+      }
+    };
+  }, []);
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-black p-6 text-white">
@@ -853,9 +1144,11 @@ export default function GatoGame({
   }
 
   const needsIdentitySelection =
-    sortedPlayers.length > 0 &&
+    sortedRealPlayers.length > 0 &&
     (!currentPlayerName ||
-      !sortedPlayers.some((player) => player.player_name === currentPlayerName));
+      !sortedRealPlayers.some(
+        (player) => player.player_name === currentPlayerName,
+      ));
 
   const gridClass =
     gameState.board_size === 7
@@ -902,6 +1195,12 @@ export default function GatoGame({
                   ? ` · Bonus conectando ${gameState.bonus_win_length}`
                   : ""}
               </p>
+
+              {isVsBot && (
+                <p className="mt-2 inline-flex rounded-full border border-cyan-400/25 bg-cyan-500/10 px-3 py-1 text-sm font-bold text-cyan-200">
+                  Modo contra bot · ganas 1 punto si vences
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row">
@@ -931,7 +1230,7 @@ export default function GatoGame({
             </p>
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {sortedPlayers.map((player) => (
+              {sortedRealPlayers.map((player) => (
                 <button
                   key={player.id}
                   type="button"
@@ -959,6 +1258,7 @@ export default function GatoGame({
                 const active = gameState.current_turn === player.player_name;
                 const winner = gameState.winner === player.player_name;
                 const isMe = player.player_name === currentPlayerName;
+                const isBot = player.player_name === BOT_PLAYER_NAME;
 
                 return (
                   <div
@@ -970,7 +1270,9 @@ export default function GatoGame({
                           ? "border-orange-400/40 bg-orange-500/10 shadow-[0_0_24px_rgba(249,115,22,0.12)]"
                           : isMe
                             ? "border-emerald-400/35 bg-emerald-500/10"
-                            : "border-white/10 bg-white/[0.03]"
+                            : isBot
+                              ? "border-cyan-400/25 bg-cyan-500/10"
+                              : "border-white/10 bg-white/[0.03]"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-4">
@@ -979,7 +1281,7 @@ export default function GatoGame({
                           {player.player_name} {player.is_host ? "👑" : ""}
                         </p>
                         <p className="mt-1 text-sm text-white/55">
-                          {isMe ? "Tú" : "Rival"} · Ficha {symbol}
+                          {isBot ? "Rival automático" : isMe ? "Tú" : "Rival"} · Ficha {symbol}
                         </p>
                       </div>
 
@@ -990,7 +1292,7 @@ export default function GatoGame({
 
                     {active && !gameState.match_over && (
                       <p className="mt-3 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-3 py-2 text-sm font-bold text-orange-200">
-                        Turno actual
+                        {isBot ? "El bot está pensando..." : "Turno actual"}
                       </p>
                     )}
                   </div>
@@ -1021,9 +1323,11 @@ export default function GatoGame({
                   ? gameState.result_text
                   : isMyTurn
                     ? "Tu turno"
-                    : gameState.current_turn
-                      ? `Turno de ${gameState.current_turn}`
-                      : "Preparando turno"}
+                    : gameState.current_turn === BOT_PLAYER_NAME
+                      ? "El bot está pensando..."
+                      : gameState.current_turn
+                        ? `Turno de ${gameState.current_turn}`
+                        : "Preparando turno"}
               </h2>
 
               {message && (
@@ -1064,53 +1368,6 @@ export default function GatoGame({
                 );
               })}
             </div>
-
-            {gameState.match_over && (
-              <div className="mt-6 rounded-[28px] border border-yellow-400/25 bg-yellow-500/10 p-5 text-center">
-                <p className="text-sm uppercase tracking-[0.24em] text-yellow-300">
-                  Resultado
-                </p>
-
-                <h3 className="mt-2 text-3xl font-extrabold">
-                  {gameState.is_draw
-                    ? "🤝 Empate"
-                    : gameState.is_bonus_win
-                      ? `🔥 ${gameState.winner}`
-                      : `👑 ${gameState.winner}`}
-                </h3>
-
-                <p className="mt-2 text-white/70">
-                  {gameState.is_draw
-                    ? "Se llenó el tablero sin ganador."
-                    : gameState.is_bonus_win
-                      ? "Victoria perfecta: conectó 7 en línea. +3 puntos bonus."
-                      : `Ganó con ${gameState.winner_symbol}.`}
-                </p>
-
-                <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-center">
-                  <button
-                    type="button"
-                    onClick={handleRematch}
-                    className="rounded-2xl bg-emerald-500 px-6 py-3 font-bold text-black transition hover:bg-emerald-400"
-                  >
-                    Revancha
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={goBackToRoom}
-                    className="rounded-2xl border border-white/10 bg-white/5 px-6 py-3 font-bold transition hover:bg-white/10"
-                  >
-                    Volver a sala
-                  </button>
-                </div>
-
-                <p className="mt-4 text-sm text-white/55">
-                  Votos de revancha: {gameState.rematch_votes?.length ?? 0}/
-                  {Math.max(sortedPlayers.length, 2)}
-                </p>
-              </div>
-            )}
           </section>
         </div>
       </div>
@@ -1127,7 +1384,7 @@ export default function GatoGame({
               </p>
 
               <div className="mx-auto mt-5 flex h-24 w-24 animate-pulse items-center justify-center rounded-full border border-yellow-400/30 bg-yellow-500/10 text-5xl shadow-[0_0_45px_rgba(250,204,21,0.16)]">
-                {gameState.is_draw ? "🤝" : gameState.is_bonus_win ? "🔥" : "👑"}
+                {gameState.is_draw ? "🤝" : gameState.is_bonus_win ? "🔥" : gameState.winner === BOT_PLAYER_NAME ? "🤖" : "👑"}
               </div>
 
               <h2 className="mt-6 text-4xl font-extrabold md:text-5xl">
@@ -1135,7 +1392,9 @@ export default function GatoGame({
                   ? "Empate"
                   : gameState.is_bonus_win
                     ? "Victoria Perfecta"
-                    : "Ganador"}
+                    : gameState.winner === BOT_PLAYER_NAME
+                      ? "Ganó el Bot"
+                      : "Ganador"}
               </h2>
 
               <p className="mt-4 text-2xl font-bold text-white">
@@ -1145,9 +1404,13 @@ export default function GatoGame({
               <p className="mx-auto mt-3 max-w-md text-white/70">
                 {gameState.is_draw
                   ? "El tablero se llenó sin completar una línea ganadora."
-                  : gameState.is_bonus_win
-                    ? "Conectó 7 en línea y ganó +3 puntos bonus."
-                    : `Ganó conectando ${gameState.win_length} en línea con ${gameState.winner_symbol}.`}
+                  : isVsBot && gameState.winner === BOT_PLAYER_NAME
+                    ? "El bot ganó esta vez. Intenta la revancha."
+                    : isVsBot
+                      ? "Ganaste contra el bot y recibiste 1 punto si el cooldown ya terminó."
+                      : gameState.is_bonus_win
+                        ? "Conectó 7 en línea y ganó +3 puntos bonus."
+                        : `Ganó conectando ${gameState.win_length} en línea con ${gameState.winner_symbol}.`}
               </p>
 
               <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center">
@@ -1168,10 +1431,12 @@ export default function GatoGame({
                 </button>
               </div>
 
-              <p className="mt-5 text-sm text-white/50">
-                Votos de revancha: {gameState.rematch_votes?.length ?? 0}/
-                {Math.max(sortedPlayers.length, 2)}
-              </p>
+              {!isVsBot && (
+                <p className="mt-5 text-sm text-white/50">
+                  Votos de revancha: {gameState.rematch_votes?.length ?? 0}/
+                  {Math.max(sortedPlayers.length, 2)}
+                </p>
+              )}
             </div>
           </div>
         </div>
