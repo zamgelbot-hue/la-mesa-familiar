@@ -60,7 +60,7 @@ async function applyBotWinReward({
   userId: string | null | undefined;
 }) {
   if (!userId) return;
-  if (userId.startsWith("guest:")) return;
+  if (!userId || userId.startsWith("guest:")) return;
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
