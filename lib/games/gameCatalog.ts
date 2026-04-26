@@ -12,115 +12,135 @@ export type GameConfig = {
 };
 
 export const GAME_CONFIGS: Record<string, GameConfig> = {
-"loteria-mexicana": {
-  maxPlayersOptions: [2, 4, 6],
-  variants: [
-    {
-      key: "clasica",
-      label: "Clásica",
-      description: "La versión tradicional de siempre.",
-      available: true,
-    },
-    {
-      key: "familia-palomares",
-      label: "Familia Palomares",
-      description: "Edición especial próximamente.",
-      available: false,
-    },
-    {
-      key: "comidas-mexicanas",
-      label: "Comidas Mexicanas",
-      description: "Nueva variante próximamente.",
-      available: false,
-    },
-  ],
-  tutorial: [
-    "Escucha las cartas que se van cantando",
-    "Marca tu tablero si tienes la carta",
-    "No puedes marcar cartas incorrectas",
-    "Completa tu tablero para ganar",
-  ],
-},
+  "loteria-mexicana": {
+    maxPlayersOptions: [2, 4, 6],
+    variants: [
+      {
+        key: "clasica",
+        label: "Clásica",
+        description: "La versión tradicional de siempre.",
+        available: true,
+      },
+      {
+        key: "familia-palomares",
+        label: "Familia Palomares",
+        description: "Edición especial próximamente.",
+        available: false,
+      },
+      {
+        key: "comidas-mexicanas",
+        label: "Comidas Mexicanas",
+        description: "Nueva variante próximamente.",
+        available: false,
+      },
+    ],
+    tutorial: [
+      "Escucha las cartas que se van cantando",
+      "Marca tu tablero si tienes la carta",
+      "No puedes marcar cartas incorrectas",
+      "Completa tu tablero para ganar",
+    ],
+  },
 
-"piedra-papel-o-tijera": {
-  maxPlayersOptions: [2],
-  variants: [
-    {
-      key: "bo3",
-      label: "Mejor 2 de 3",
-      description: "Gana quien consiga 2 rondas primero.",
-      available: true,
-    },
-    {
-      key: "bo5",
-      label: "Mejor 3 de 5",
-      description: "Gana quien consiga 3 rondas primero.",
-      available: true,
-    },
-    {
-      key: "bo7",
-      label: "Mejor 4 de 7",
-      description: "Gana quien consiga 4 rondas primero.",
-      available: true,
-    },
-  ],
-  tutorial: [
-    "Piedra vence a Tijera",
-    "Tijera vence a Papel",
-    "Papel vence a Piedra",
-    "Elige tu opción cuando inicie la ronda",
-    "Gana quien complete la serie primero",
-  ],
-},
+  "piedra-papel-o-tijera": {
+    maxPlayersOptions: [2],
+    variants: [
+      {
+        key: "bo3",
+        label: "Mejor 2 de 3",
+        description: "Gana quien consiga 2 rondas primero.",
+        available: true,
+      },
+      {
+        key: "bo5",
+        label: "Mejor 3 de 5",
+        description: "Gana quien consiga 3 rondas primero.",
+        available: true,
+      },
+      {
+        key: "bo7",
+        label: "Mejor 4 de 7",
+        description: "Gana quien consiga 4 rondas primero.",
+        available: true,
+      },
+    ],
+    tutorial: [
+      "Piedra vence a Tijera",
+      "Tijera vence a Papel",
+      "Papel vence a Piedra",
+      "Elige tu opción cuando inicie la ronda",
+      "Gana quien complete la serie primero",
+    ],
+  },
 
-pregunta: {
-  maxPlayersOptions: [2, 4, 6, 8],
-  variants: [
-    {
-      key: "espanol",
-      label: "Español",
-      description: "Ortografía, gramática y comprensión.",
-      available: true,
-    },
-    {
-      key: "matematicas",
-      label: "Matemáticas",
-      description: "Operaciones, lógica y cálculo rápido.",
-      available: true,
-    },
-    {
-      key: "ingles",
-      label: "Inglés",
-      description: "Vocabulario y comprensión básica.",
-      available: true,
-    },
-    {
-      key: "geografia",
-      label: "Geografía",
-      description: "Países, capitales y lugares del mundo.",
-      available: true,
-    },
-    {
-      key: "ciencias",
-      label: "Ciencias",
-      description: "Preguntas básicas de ciencia y naturaleza.",
-      available: true,
-    },
-    {
-      key: "sabelotodo",
-      label: "Sabelotodo",
-      description: "Mezcla de todas las categorías.",
-      available: true,
-    },
-  ],
-  tutorial: [
-    "Lee la pregunta cuidadosamente",
-    "Espera a que aparezcan las opciones",
-    "Selecciona tu respuesta antes de que termine el tiempo",
-    "Ganas puntos por respuestas correctas y rapidez",
-    "El jugador con más puntos gana",
-  ],
-},
+  gato: {
+    maxPlayersOptions: [2],
+    variants: [
+      {
+        key: "clasico",
+        label: "Clásico",
+        description: "Partida rápida de 3 en línea para 2 jugadores.",
+        available: true,
+      },
+    ],
+    tutorial: [
+      "El host juega con X",
+      "El segundo jugador juega con O",
+      "Jueguen por turnos",
+      "No puedes tocar una casilla ocupada",
+      "Gana quien complete 3 en línea",
+      "Si se llena el tablero sin ganador, es empate",
+    ],
+  },
+
+  pregunta: {
+    maxPlayersOptions: [2, 4, 6, 8],
+    variants: [
+      {
+        key: "espanol",
+        label: "Español",
+        description: "Ortografía, gramática y comprensión.",
+        available: true,
+      },
+      {
+        key: "matematicas",
+        label: "Matemáticas",
+        description: "Operaciones, lógica y cálculo rápido.",
+        available: true,
+      },
+      {
+        key: "ingles",
+        label: "Inglés",
+        description: "Vocabulario y comprensión básica.",
+        available: true,
+      },
+      {
+        key: "geografia",
+        label: "Geografía",
+        description: "Países, capitales y lugares del mundo.",
+        available: true,
+      },
+      {
+        key: "ciencias",
+        label: "Ciencias",
+        description: "Preguntas básicas de ciencia y naturaleza.",
+        available: true,
+      },
+      {
+        key: "sabelotodo",
+        label: "Sabelotodo",
+        description: "Mezcla de todas las categorías.",
+        available: true,
+      },
+    ],
+    tutorial: [
+      "Lee la pregunta cuidadosamente",
+      "Espera a que aparezcan las opciones",
+      "Selecciona tu respuesta antes de que termine el tiempo",
+      "Ganas puntos por respuestas correctas y rapidez",
+      "El jugador con más puntos gana",
+    ],
+  },
 };
 
 export function getDefaultVariantForGame(gameSlug: string) {
@@ -238,6 +258,14 @@ export function buildRoomSettings(
     };
   }
 
+  if (gameSlug === "gato") {
+    return {
+      mode: "classic_tictactoe",
+      board_size: 3,
+      max_players: 2,
+    };
+  }
+
   return {
     max_players: maxPlayers,
   };
@@ -251,6 +279,8 @@ export function getGameIcon(slug: string) {
       return "🇲🇽";
     case "pregunta":
       return "❓";
+    case "gato":
+      return "⭕";
     case "domino":
       return "🁫";
     case "trivia-familiar":
