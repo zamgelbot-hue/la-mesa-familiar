@@ -5,7 +5,8 @@ export type RewardGameType =
   | "ppt_human"
   | "ppt_bot"
   | "pregunta"
-  | "loteria";
+  | "loteria"
+  | "gato";
 
 type RewardConfig = {
   winnerPoints: number;
@@ -28,6 +29,10 @@ const REWARD_TABLE: Record<RewardGameType, RewardConfig> = {
   loteria: {
     winnerPoints: 7,
     loserPoints: 3,
+  },
+    gato: {
+    winnerPoints: 4,
+    loserPoints: 1,
   },
 };
 
