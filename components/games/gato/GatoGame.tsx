@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { applyHeadToHeadMatchRewards } from "@/lib/gameRewards";
+import { applyRewardsEngine } from "@/lib/rewards/rewardEngine";
 import RoomChat from "@/components/RoomChat";
 
 type GatoGameProps = {
@@ -28,6 +28,9 @@ type CellValue = "X" | "O" | null;
 type GatoState = {
   game_slug: "gato";
   match_id: string;
+  board_size: number;
+  win_length: number;
+  bonus_win_length: number | null;
   board: CellValue[];
   current_turn: string | null;
   symbols: Record<string, "X" | "O">;
@@ -37,6 +40,7 @@ type GatoState = {
   is_draw: boolean;
   match_over: boolean;
   result_text: string | null;
+  is_bonus_win: boolean;
   rewards_applied: boolean;
   rematch_votes: string[];
 };
@@ -44,6 +48,9 @@ type GatoState = {
 const DEFAULT_STATE: GatoState = {
   game_slug: "gato",
   match_id: "",
+  board_size: 3,
+  win_length: 3,
+  bonus_win_length: null,
   board: Array(9).fill(null),
   current_turn: null,
   symbols: {},
@@ -53,20 +60,10 @@ const DEFAULT_STATE: GatoState = {
   is_draw: false,
   match_over: false,
   result_text: null,
+  is_bonus_win: false,
   rewards_applied: false,
   rematch_votes: [],
 };
-
-const WINNING_LINES = [
-  [0, 1, 2],
-  [3, 4, 5],
-  [6, 7, 8],
-  [0, 3, 6],
-  [1, 4, 7],
-  [2, 5, 8],
-  [0, 4, 8],
-  [2, 4, 6],
-];
 
 const getPlayerStorageKey = (roomCode: string) => `lmf:player:${roomCode}`;
 
@@ -74,7 +71,67 @@ function createMatchId() {
   return `gato_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function buildFreshState(players: RoomPlayer[]): GatoState {
+function getModeConfig(
+  roomVariant?: string | null,
+  roomSettings?: Record<string, any> | null,
+) {
+  const boardSizeFromSettings = Number(roomSettings?.board_size ?? 0);
+  const winLengthFromSettings = Number(roomSettings?.win_length ?? 0);
+  const bonusWinLengthFromSettings =
+    roomSettings?.bonus_win_length === null ||
+    roomSettings?.bonus_win_length === undefined
+      ? null
+      : Number(roomSettings?.bonus_win_length ?? 0);
+
+  if (boardSizeFromSettings > 0 && winLengthFromSettings > 0) {
+    return {
+      boardSize: boardSizeFromSettings,
+      winLength: winLengthFromSettings,
+      bonusWinLength:
+        bonusWinLengthFromSettings && bonusWinLengthFromSettings > 0
+          ? bonusWinLengthFromSettings
+          : null,
+      modeLabel:
+        boardSizeFromSettings === 3
+          ? "Clásico 3x3"
+          : boardSizeFromSettings === 5
+          ? "Grande 5x5"
+          : "Épico 7x7",
+    };
+  }
+
+  if (roomVariant === "grande") {
+    return {
+      boardSize: 5,
+      winLength: 5,
+      bonusWinLength: null,
+      modeLabel: "Grande 5x5",
+    };
+  }
+
+  if (roomVariant === "epico") {
+    return {
+      boardSize: 7,
+      winLength: 5,
+      bonusWinLength: 7,
+      modeLabel: "Épico 7x7",
+    };
+  }
+
+  return {
+    boardSize: 3,
+    winLength: 3,
+    bonusWinLength: null,
+    modeLabel: "Clásico 3x3",
+  };
+}
+
+function buildFreshState(
+  players: RoomPlayer[],
+  boardSize: number,
+  winLength: number,
+  bonusWinLength: number | null,
+): GatoState {
   const sorted = [...players].sort((a, b) => {
     if (a.is_host && !b.is_host) return -1;
     if (!a.is_host && b.is_host) return 1;
@@ -87,7 +144,10 @@ function buildFreshState(players: RoomPlayer[]): GatoState {
   return {
     ...DEFAULT_STATE,
     match_id: createMatchId(),
-    board: Array(9).fill(null),
+    board_size: boardSize,
+    win_length: winLength,
+    bonus_win_length: bonusWinLength,
+    board: Array(boardSize * boardSize).fill(null),
     current_turn: p1,
     symbols: {
       ...(p1 ? { [p1]: "X" as const } : {}),
@@ -96,27 +156,85 @@ function buildFreshState(players: RoomPlayer[]): GatoState {
   };
 }
 
-function checkWinner(board: CellValue[]) {
-  for (const line of WINNING_LINES) {
-    const [a, b, c] = line;
+function checkWinner(
+  board: CellValue[],
+  boardSize: number,
+  winLength: number,
+  bonusWinLength: number | null,
+) {
+  const directions = [
+    { row: 0, col: 1 },
+    { row: 1, col: 0 },
+    { row: 1, col: 1 },
+    { row: 1, col: -1 },
+  ];
 
-    if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-      return {
-        symbol: board[a],
-        line,
-      };
+  let normalWin: {
+    symbol: "X" | "O";
+    line: number[];
+    isBonus: boolean;
+  } | null = null;
+
+  for (let index = 0; index < board.length; index++) {
+    const symbol = board[index];
+    if (!symbol) continue;
+
+    const startRow = Math.floor(index / boardSize);
+    const startCol = index % boardSize;
+
+    for (const direction of directions) {
+      const line: number[] = [];
+      let row = startRow;
+      let col = startCol;
+
+      while (
+        row >= 0 &&
+        row < boardSize &&
+        col >= 0 &&
+        col < boardSize &&
+        board[row * boardSize + col] === symbol
+      ) {
+        line.push(row * boardSize + col);
+        row += direction.row;
+        col += direction.col;
+      }
+
+      if (bonusWinLength && line.length >= bonusWinLength) {
+        return {
+          symbol,
+          line,
+          isBonus: true,
+        };
+      }
+
+      if (!normalWin && line.length >= winLength) {
+        normalWin = {
+          symbol,
+          line,
+          isBonus: false,
+        };
+      }
     }
   }
 
-  return null;
+  return normalWin;
 }
 
-export default function GatoGame({ roomCode }: GatoGameProps) {
+export default function GatoGame({
+  roomCode,
+  roomVariant,
+  roomSettings,
+}: GatoGameProps) {
   const router = useRouter();
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
 
   const code = String(roomCode ?? "").toUpperCase();
+
+  const { boardSize, winLength, bonusWinLength, modeLabel } = useMemo(
+    () => getModeConfig(roomVariant, roomSettings),
+    [roomVariant, roomSettings],
+  );
 
   const [players, setPlayers] = useState<RoomPlayer[]>([]);
   const [gameState, setGameState] = useState<GatoState>(DEFAULT_STATE);
@@ -143,53 +261,19 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
   const bothPlayersPresent = sortedPlayers.length >= 2;
   const mySymbol = currentPlayerName ? gameState.symbols?.[currentPlayerName] : null;
   const isMyTurn = gameState.current_turn === currentPlayerName;
-  const opponent = sortedPlayers.find((p) => p.player_name !== currentPlayerName) ?? null;
 
   const detectStoredPlayerName = useCallback((roomCode: string) => {
     if (typeof window === "undefined") return "";
 
     const canonicalKey = getPlayerStorageKey(roomCode);
+    const raw =
+      localStorage.getItem(canonicalKey) || sessionStorage.getItem(canonicalKey);
 
-    const localCanonical = localStorage.getItem(canonicalKey);
-    if (localCanonical) {
+    if (raw) {
       try {
-        const parsed = JSON.parse(localCanonical);
-        if (parsed?.playerName && typeof parsed.playerName === "string") {
-          return parsed.playerName.trim();
-        }
+        const parsed = JSON.parse(raw);
+        if (parsed?.playerName) return String(parsed.playerName).trim();
       } catch {}
-    }
-
-    const sessionCanonical = sessionStorage.getItem(canonicalKey);
-    if (sessionCanonical) {
-      try {
-        const parsed = JSON.parse(sessionCanonical);
-        if (parsed?.playerName && typeof parsed.playerName === "string") {
-          return parsed.playerName.trim();
-        }
-      } catch {}
-    }
-
-    const legacyKeys = [
-      `la-mesa-player-name-${roomCode}`,
-      `mesa-player-name-${roomCode}`,
-      `player_name_${roomCode}`,
-      `playerName_${roomCode}`,
-      `room_player_name_${roomCode}`,
-      `roomPlayerName_${roomCode}`,
-      "player_name",
-      "playerName",
-      "nombreJugador",
-    ];
-
-    for (const key of legacyKeys) {
-      const value = localStorage.getItem(key);
-      if (value?.trim()) return value.trim();
-    }
-
-    for (const key of legacyKeys) {
-      const value = sessionStorage.getItem(key);
-      if (value?.trim()) return value.trim();
     }
 
     return "";
@@ -198,18 +282,38 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
   const persistPlayerName = useCallback((roomCode: string, playerName: string) => {
     if (typeof window === "undefined") return;
 
-    const value = playerName.trim();
-    if (!value) return;
-
     const payload = JSON.stringify({
       roomCode,
-      playerName: value,
+      playerName,
       savedAt: new Date().toISOString(),
     });
 
     localStorage.setItem(getPlayerStorageKey(roomCode), payload);
     sessionStorage.setItem(getPlayerStorageKey(roomCode), payload);
   }, []);
+
+  const normalizeState = useCallback(
+    (incoming?: Partial<GatoState> | null): GatoState => {
+      const expectedCells = boardSize * boardSize;
+
+      return {
+        ...DEFAULT_STATE,
+        ...incoming,
+        game_slug: "gato",
+        board_size: boardSize,
+        win_length: winLength,
+        bonus_win_length: bonusWinLength,
+        board:
+          Array.isArray(incoming?.board) && incoming.board.length === expectedCells
+            ? incoming.board
+            : Array(expectedCells).fill(null),
+        symbols: incoming?.symbols ?? {},
+        winning_line: incoming?.winning_line ?? [],
+        rematch_votes: incoming?.rematch_votes ?? [],
+      };
+    },
+    [boardSize, winLength, bonusWinLength],
+  );
 
   const fetchPlayers = useCallback(async () => {
     const { data, error } = await supabase
@@ -235,48 +339,13 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
   }, [supabase, code, detectStoredPlayerName]);
 
   const fetchRoom = useCallback(async () => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("rooms")
       .select("status")
       .eq("code", code)
       .maybeSingle();
 
-    if (error) {
-      console.error("Error cargando room:", error);
-      return;
-    }
-
-    if (data?.status) {
-      setRoomStatus(data.status);
-    }
-  }, [supabase, code]);
-
-  const refreshGameState = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("game_state")
-      .select("state")
-      .eq("room_code", code)
-      .maybeSingle();
-
-    if (error) {
-      console.error("Error refrescando gato game_state:", error);
-      return;
-    }
-
-    if (!data?.state) return;
-
-    const incoming = data.state as Partial<GatoState>;
-
-    if (incoming.game_slug !== "gato") return;
-
-    setGameState({
-      ...DEFAULT_STATE,
-      ...incoming,
-      board: Array.isArray(incoming.board) ? incoming.board : Array(9).fill(null),
-      symbols: incoming.symbols ?? {},
-      winning_line: incoming.winning_line ?? [],
-      rematch_votes: incoming.rematch_votes ?? [],
-    });
+    if (data?.status) setRoomStatus(data.status);
   }, [supabase, code]);
 
   const writeGameState = useCallback(
@@ -297,37 +366,49 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
       setGameState(nextState);
       return true;
     },
-    [supabase, code]
+    [supabase, code],
   );
+
+  const refreshGameState = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("game_state")
+      .select("state")
+      .eq("room_code", code)
+      .maybeSingle();
+
+    if (error || !data?.state) return;
+
+    const incoming = data.state as Partial<GatoState>;
+    if (incoming.game_slug !== "gato") return;
+
+    setGameState(normalizeState(incoming));
+  }, [supabase, code, normalizeState]);
 
   const ensureGameStateRow = useCallback(
     async (playerList: RoomPlayer[]) => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("game_state")
         .select("id, state")
         .eq("room_code", code)
         .maybeSingle();
 
-      if (error) {
-        console.error("Error consultando game_state:", error);
-        return;
-      }
-
       const existing = data?.state as Partial<GatoState> | undefined;
 
-      if (data && existing?.game_slug === "gato") {
-        setGameState({
-          ...DEFAULT_STATE,
-          ...existing,
-          board: Array.isArray(existing.board) ? existing.board : Array(9).fill(null),
-          symbols: existing.symbols ?? {},
-          winning_line: existing.winning_line ?? [],
-          rematch_votes: existing.rematch_votes ?? [],
-        });
+      if (
+        data &&
+        existing?.game_slug === "gato" &&
+        existing.board_size === boardSize
+      ) {
+        setGameState(normalizeState(existing));
         return;
       }
 
-      const fresh = buildFreshState(playerList);
+      const fresh = buildFreshState(
+        playerList,
+        boardSize,
+        winLength,
+        bonusWinLength,
+      );
 
       if (data) {
         await supabase
@@ -342,52 +423,39 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
         return;
       }
 
-      const { error: insertError } = await supabase.from("game_state").insert({
+      await supabase.from("game_state").insert({
         room_code: code,
         state: fresh,
         updated_at: new Date().toISOString(),
       });
 
-      if (insertError) {
-        console.error("Error creando game_state para gato:", insertError);
-        await refreshGameState();
-        return;
-      }
-
       setGameState(fresh);
     },
-    [supabase, code, refreshGameState]
+    [
+      supabase,
+      code,
+      boardSize,
+      winLength,
+      bonusWinLength,
+      normalizeState,
+    ],
   );
 
   const updateGameState = useCallback(
     async (updater: (prev: GatoState) => GatoState) => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("game_state")
         .select("state")
         .eq("room_code", code)
         .maybeSingle();
 
-      if (error) {
-        console.error("Error leyendo gato state:", error);
-        return;
-      }
-
       const prevRaw = data?.state as Partial<GatoState> | undefined;
-
-      const prev: GatoState = {
-        ...DEFAULT_STATE,
-        ...(prevRaw?.game_slug === "gato" ? prevRaw : {}),
-        board: Array.isArray(prevRaw?.board) ? prevRaw.board : Array(9).fill(null),
-        symbols: prevRaw?.symbols ?? {},
-        winning_line: prevRaw?.winning_line ?? [],
-        rematch_votes: prevRaw?.rematch_votes ?? [],
-      };
-
+      const prev = normalizeState(prevRaw);
       const next = updater(prev);
 
       await writeGameState(next);
     },
-    [supabase, code, writeGameState]
+    [supabase, code, normalizeState, writeGameState],
   );
 
   const awardRewardsIfNeeded = useCallback(
@@ -407,53 +475,42 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
       try {
         awardingRef.current = true;
 
-        await applyHeadToHeadMatchRewards({
+        await applyRewardsEngine({
           supabase,
-          winnerUserId: winner.user_id,
-          loserUserId: loser.user_id,
           gameType: "gato",
+          players: [
+            {
+              userId: winner.user_id,
+              placement: 1,
+              basePoints: state.is_bonus_win ? 7 : 4,
+            },
+            {
+              userId: loser.user_id,
+              placement: 2,
+              basePoints: 1,
+            },
+          ],
         });
 
         await updateGameState((prev) => ({
           ...prev,
           rewards_applied: true,
         }));
-      } catch (error) {
-        console.error("Error dando rewards de gato:", error);
       } finally {
         awardingRef.current = false;
       }
     },
-    [isHost, sortedPlayers, supabase, updateGameState]
+    [isHost, sortedPlayers, supabase, updateGameState],
   );
 
   const handleCellClick = async (index: number) => {
     setMessage("");
 
-    if (!bothPlayersPresent) {
-      setMessage("Esperando al segundo jugador.");
-      return;
-    }
-
-    if (!currentPlayerName || !currentPlayer) {
-      setMessage("Selecciona tu jugador primero.");
-      return;
-    }
-
-    if (gameState.match_over) {
-      setMessage("La partida ya terminó.");
-      return;
-    }
-
-    if (!isMyTurn) {
-      setMessage("Todavía no es tu turno.");
-      return;
-    }
-
-    if (gameState.board[index]) {
-      setMessage("Esa casilla ya está ocupada.");
-      return;
-    }
+    if (!bothPlayersPresent) return setMessage("Esperando al segundo jugador.");
+    if (!currentPlayerName || !currentPlayer) return setMessage("Selecciona tu jugador primero.");
+    if (gameState.match_over) return setMessage("La partida ya terminó.");
+    if (!isMyTurn) return setMessage("Todavía no es tu turno.");
+    if (gameState.board[index]) return setMessage("Esa casilla ya está ocupada.");
 
     await updateGameState((prev) => {
       if (prev.match_over) return prev;
@@ -466,7 +523,12 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
       const nextBoard = [...prev.board];
       nextBoard[index] = symbol;
 
-      const winnerResult = checkWinner(nextBoard);
+      const winnerResult = checkWinner(
+        nextBoard,
+        prev.board_size,
+        prev.win_length,
+        prev.bonus_win_length,
+      );
 
       if (winnerResult?.symbol) {
         return {
@@ -477,7 +539,10 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
           winning_line: winnerResult.line,
           is_draw: false,
           match_over: true,
-          result_text: `${currentPlayerName} ganó la partida`,
+          is_bonus_win: winnerResult.isBonus,
+          result_text: winnerResult.isBonus
+            ? `🔥 ${currentPlayerName} hizo victoria perfecta`
+            : `${currentPlayerName} ganó la partida`,
         };
       }
 
@@ -488,9 +553,6 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
           ...prev,
           board: nextBoard,
           current_turn: null,
-          winner: null,
-          winner_symbol: null,
-          winning_line: [],
           is_draw: true,
           match_over: true,
           result_text: "Empate",
@@ -510,14 +572,16 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
   };
 
   const goBackToRoom = useCallback(async () => {
-    const fresh = buildFreshState(sortedPlayers);
+    const fresh = buildFreshState(
+      sortedPlayers,
+      boardSize,
+      winLength,
+      bonusWinLength,
+    );
 
     await supabase
       .from("rooms")
-      .update({
-        status: "waiting",
-        started_at: null,
-      })
+      .update({ status: "waiting", started_at: null })
       .eq("code", code);
 
     await supabase
@@ -532,28 +596,40 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
       .eq("context", "game");
 
     await writeGameState(fresh);
-
     router.push(`/sala/${code}`);
-  }, [sortedPlayers, supabase, code, writeGameState, router]);
+  }, [
+    sortedPlayers,
+    boardSize,
+    winLength,
+    bonusWinLength,
+    supabase,
+    code,
+    writeGameState,
+    router,
+  ]);
 
   const handleRematch = async () => {
     if (!currentPlayerName) return;
 
     await updateGameState((prev) => {
-      const votes = Array.from(new Set([...(prev.rematch_votes ?? []), currentPlayerName]));
+      const votes = Array.from(
+        new Set([...(prev.rematch_votes ?? []), currentPlayerName]),
+      );
 
       const allAccepted =
         sortedPlayers.length >= 2 &&
         sortedPlayers.every((player) => votes.includes(player.player_name));
 
       if (allAccepted) {
-        return buildFreshState(sortedPlayers);
+        return buildFreshState(
+          sortedPlayers,
+          boardSize,
+          winLength,
+          bonusWinLength,
+        );
       }
 
-      return {
-        ...prev,
-        rematch_votes: votes,
-      };
+      return { ...prev, rematch_votes: votes };
     });
   };
 
@@ -568,13 +644,11 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
     const init = async () => {
       setLoading(true);
 
-      try {
-        const playerList = await fetchPlayers();
-        await fetchRoom();
-        await ensureGameStateRow(playerList);
-      } finally {
-        if (mounted) setLoading(false);
-      }
+      const playerList = await fetchPlayers();
+      await fetchRoom();
+      await ensureGameStateRow(playerList);
+
+      if (mounted) setLoading(false);
     };
 
     if (code) void init();
@@ -599,7 +673,7 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
         },
         async () => {
           await fetchPlayers();
-        }
+        },
       )
       .on(
         "postgres_changes",
@@ -611,7 +685,7 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
         },
         async () => {
           await refreshGameState();
-        }
+        },
       )
       .on(
         "postgres_changes",
@@ -633,7 +707,7 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
           } else {
             await fetchRoom();
           }
-        }
+        },
       )
       .subscribe();
 
@@ -651,7 +725,7 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
       <main className="flex min-h-screen items-center justify-center bg-black p-6 text-white">
         <div className="rounded-[32px] border border-orange-500/15 bg-zinc-950/90 p-10 text-center">
           <p className="text-2xl font-bold">Cargando El Gato...</p>
-          <p className="mt-2 text-white/60">Preparando tablero 3x3.</p>
+          <p className="mt-2 text-white/60">Preparando tablero.</p>
         </div>
       </main>
     );
@@ -662,15 +736,24 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
     (!currentPlayerName ||
       !sortedPlayers.some((player) => player.player_name === currentPlayerName));
 
+  const gridClass =
+    gameState.board_size === 7
+      ? "grid-cols-7 max-w-2xl gap-2"
+      : gameState.board_size === 5
+      ? "grid-cols-5 max-w-xl gap-2.5"
+      : "grid-cols-3 max-w-md gap-3";
+
+  const cellTextClass =
+    gameState.board_size === 7
+      ? "text-3xl md:text-5xl"
+      : gameState.board_size === 5
+      ? "text-4xl md:text-6xl"
+      : "text-6xl md:text-7xl";
+
   return (
     <main className="min-h-screen bg-black p-4 text-white md:p-8">
-      <div className="pointer-events-none fixed inset-0 opacity-40">
-        <div className="absolute left-1/2 top-0 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-orange-500/10 blur-3xl" />
-        <div className="absolute bottom-0 right-0 h-[320px] w-[320px] rounded-full bg-amber-500/10 blur-3xl" />
-      </div>
-
       <div className="relative mx-auto max-w-6xl">
-        <section className="mb-6 rounded-[32px] border border-orange-500/15 bg-zinc-950/90 p-6 shadow-[0_0_40px_rgba(249,115,22,0.06)]">
+        <section className="mb-6 rounded-[32px] border border-orange-500/15 bg-zinc-950/90 p-6">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-orange-300/80">
@@ -681,7 +764,14 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
                 Sala: <span className="font-bold text-orange-300">{code}</span>
               </p>
               <p className="text-white/65">
-                Estado: <span className="font-bold text-white">{roomStatus}</span>
+                Modo: <span className="font-bold text-white">{modeLabel}</span>
+              </p>
+              <p className="text-white/65">
+                Gana conectando{" "}
+                <span className="font-bold text-orange-300">{gameState.win_length}</span>
+                {gameState.bonus_win_length
+                  ? ` · Bonus conectando ${gameState.bonus_win_length}`
+                  : ""}
               </p>
             </div>
 
@@ -689,7 +779,7 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
               <button
                 type="button"
                 onClick={goBackToRoom}
-                className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-bold text-white transition hover:bg-white/10"
+                className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-bold transition hover:bg-white/10"
               >
                 Volver a sala
               </button>
@@ -697,7 +787,7 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
               <button
                 type="button"
                 onClick={goBackToRoom}
-                className="rounded-2xl bg-red-500 px-5 py-3 font-bold text-white transition hover:bg-red-400"
+                className="rounded-2xl bg-red-500 px-5 py-3 font-bold transition hover:bg-red-400"
               >
                 Terminar partida
               </button>
@@ -708,10 +798,7 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
         {needsIdentitySelection && (
           <section className="mb-6 rounded-[28px] border border-cyan-400/25 bg-cyan-500/10 p-5">
             <p className="text-lg font-bold text-cyan-200">
-              Este navegador todavía no sabe qué jugador eres
-            </p>
-            <p className="mt-1 text-white/65">
-              Selecciona tu jugador para poder jugar.
+              Selecciona qué jugador eres
             </p>
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -725,20 +812,9 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
                   <p className="text-lg font-bold">
                     {player.player_name} {player.is_host ? "👑" : ""}
                   </p>
-                  <p className="text-sm text-white/55">
-                    Usar esta identidad en este navegador
-                  </p>
                 </button>
               ))}
             </div>
-          </section>
-        )}
-
-        {!bothPlayersPresent && (
-          <section className="mb-6 rounded-[28px] border border-yellow-500/20 bg-yellow-500/10 p-5">
-            <p className="text-lg font-bold text-yellow-300">
-              Esperando al segundo jugador...
-            </p>
           </section>
         )}
 
@@ -758,11 +834,11 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
                 return (
                   <div
                     key={player.id}
-                    className={`rounded-3xl border p-5 transition ${
+                    className={`rounded-3xl border p-5 ${
                       winner
-                        ? "border-yellow-400/40 bg-yellow-500/10 shadow-[0_0_28px_rgba(250,204,21,0.12)]"
+                        ? "border-yellow-400/40 bg-yellow-500/10"
                         : active
-                        ? "border-orange-400/40 bg-orange-500/10 shadow-[0_0_28px_rgba(249,115,22,0.12)]"
+                        ? "border-orange-400/40 bg-orange-500/10"
                         : isMe
                         ? "border-emerald-400/35 bg-emerald-500/10"
                         : "border-white/10 bg-white/[0.03]"
@@ -782,33 +858,16 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
                         {symbol}
                       </div>
                     </div>
-
-                    {active && !gameState.match_over && (
-                      <p className="mt-3 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-3 py-2 text-sm font-bold text-orange-200">
-                        Turno actual
-                      </p>
-                    )}
                   </div>
                 );
               })}
             </div>
-
-            <div className="mt-5 rounded-3xl border border-white/10 bg-black/30 p-4">
-              <p className="text-sm text-white/55">Tu jugador</p>
-              <p className="mt-1 text-lg font-bold text-emerald-300">
-                {currentPlayerName || "No seleccionado"}
-              </p>
-              <p className="mt-3 text-sm text-white/55">Tu ficha</p>
-              <p className="mt-1 text-3xl font-black text-orange-300">
-                {mySymbol ?? "-"}
-              </p>
-            </div>
           </section>
 
-          <section className="rounded-[32px] border border-orange-500/15 bg-zinc-950/90 p-5 shadow-[0_0_40px_rgba(249,115,22,0.05)]">
+          <section className="rounded-[32px] border border-orange-500/15 bg-zinc-950/90 p-5">
             <div className="mb-5 text-center">
               <p className="text-sm font-semibold uppercase tracking-[0.18em] text-orange-300/80">
-                Tablero 3x3
+                Tablero {gameState.board_size}x{gameState.board_size}
               </p>
 
               <h2 className="mt-2 text-3xl font-extrabold">
@@ -828,7 +887,7 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
               )}
             </div>
 
-            <div className="mx-auto grid max-w-md grid-cols-3 gap-3">
+            <div className={`mx-auto grid ${gridClass}`}>
               {gameState.board.map((cell, index) => {
                 const isWinningCell = gameState.winning_line.includes(index);
 
@@ -844,14 +903,14 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
                       !!cell ||
                       gameState.match_over
                     }
-                    className={`aspect-square rounded-3xl border text-6xl font-black transition md:text-7xl ${
+                    className={`aspect-square rounded-2xl border font-black transition ${cellTextClass} ${
                       isWinningCell
-                        ? "border-yellow-400 bg-yellow-500/15 text-yellow-300 shadow-[0_0_28px_rgba(250,204,21,0.18)]"
+                        ? "border-yellow-400 bg-yellow-500/15 text-yellow-300"
                         : cell === "X"
                         ? "border-orange-500/35 bg-orange-500/10 text-orange-300"
                         : cell === "O"
                         ? "border-cyan-400/30 bg-cyan-500/10 text-cyan-200"
-                        : "border-white/10 bg-white/[0.04] text-white hover:border-orange-500/35 hover:bg-orange-500/10"
+                        : "border-white/10 bg-white/[0.04] hover:border-orange-500/35 hover:bg-orange-500/10"
                     } disabled:cursor-not-allowed disabled:opacity-80`}
                   >
                     {cell}
@@ -866,13 +925,19 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
                   Resultado
                 </p>
 
-                <h3 className="mt-2 text-3xl font-extrabold text-white">
-                  {gameState.is_draw ? "🤝 Empate" : `👑 ${gameState.winner}`}
+                <h3 className="mt-2 text-3xl font-extrabold">
+                  {gameState.is_draw
+                    ? "🤝 Empate"
+                    : gameState.is_bonus_win
+                    ? `🔥 ${gameState.winner}`
+                    : `👑 ${gameState.winner}`}
                 </h3>
 
                 <p className="mt-2 text-white/70">
                   {gameState.is_draw
                     ? "Se llenó el tablero sin ganador."
+                    : gameState.is_bonus_win
+                    ? "Victoria perfecta: conectó 7 en línea. +3 puntos bonus."
                     : `Ganó con ${gameState.winner_symbol}.`}
                 </p>
 
@@ -888,7 +953,7 @@ export default function GatoGame({ roomCode }: GatoGameProps) {
                   <button
                     type="button"
                     onClick={goBackToRoom}
-                    className="rounded-2xl border border-white/10 bg-white/5 px-6 py-3 font-bold text-white transition hover:bg-white/10"
+                    className="rounded-2xl border border-white/10 bg-white/5 px-6 py-3 font-bold transition hover:bg-white/10"
                   >
                     Volver a sala
                   </button>
