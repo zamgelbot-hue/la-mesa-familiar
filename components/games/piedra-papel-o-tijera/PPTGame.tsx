@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
 import { applyHeadToHeadMatchRewards } from "@/lib/gameRewards";
-import { applyRewardsEngine } from "@/lib/rewards/rewardEngine";
 import RoomChat from "@/components/RoomChat";
 import type { Choice, GameState, PPTGameProps, ProfileMap, RoomPlayer } from "./pptTypes";
 import {
@@ -19,6 +18,7 @@ import {
 } from "./pptUtils";
 
 const BOT_PLAYER_NAME = "Bot Familiar 🤖";
+const BOT_REWARD_COOLDOWN_MS = 60000;
 
 const BOT_CHOICES: Exclude<Choice, null>[] = ["piedra", "papel", "tijera"];
 
@@ -50,6 +50,64 @@ function withBotPlayer(
   }
 
   return [...realPlayers, buildBotPlayer(roomCode)];
+}
+
+async function applyBotWinReward({
+  supabase,
+  userId,
+}: {
+  supabase: any;
+  userId: string | null | undefined;
+}) {
+  if (!userId) return;
+  if (userId.startsWith("guest:")) return;
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("points, total_points_earned, last_reward_at")
+    .eq("id", userId)
+    .single();
+
+  if (profileError || !profile) return;
+
+  const lastRewardAt = profile.last_reward_at
+    ? new Date(profile.last_reward_at).getTime()
+    : 0;
+
+  const now = Date.now();
+
+  if (now - lastRewardAt < BOT_REWARD_COOLDOWN_MS) {
+    console.log("⏳ Reward VS Bot en cooldown");
+    return;
+  }
+
+  const rewardedAt = new Date().toISOString();
+
+  const { error: updateError } = await supabase
+    .from("profiles")
+    .update({
+      points: (profile.points ?? 0) + 1,
+      total_points_earned: (profile.total_points_earned ?? 0) + 1,
+      last_reward_at: rewardedAt,
+    })
+    .eq("id", userId);
+
+  if (updateError) {
+    console.error("Error dando reward VS Bot:", updateError);
+    return;
+  }
+
+  const { error: eventError } = await supabase.from("reward_events").insert({
+    user_id: userId,
+    game_type: "ppt_bot",
+    points_awarded: 1,
+    placement: 1,
+    created_at: rewardedAt,
+  });
+
+  if (eventError) {
+    console.error("Error guardando reward_event VS Bot:", eventError);
+  }
 }
 
 export default function PPTGame({
@@ -542,20 +600,13 @@ export default function PPTGame({
 
           if (!humanPlayer) return;
 
-          await applyRewardsEngine({
-            supabase,
-            gameType: "ppt_bot",
-            players: [
-              {
-                userId: humanPlayer.user_id,
-                placement: 1,
-                basePoints: 1,
-              },
-            ],
-          });
+await applyBotWinReward({
+  supabase,
+  userId: humanPlayer.user_id,
+});
 
-          await fetchProfilesForPlayers(sortedRealPlayers);
-          return;
+await fetchProfilesForPlayers(sortedRealPlayers);
+return;
         }
 
         if (sortedRealPlayers.length < 2) return;
