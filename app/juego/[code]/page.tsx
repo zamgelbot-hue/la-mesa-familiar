@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import PPTGame from "@/components/games/piedra-papel-o-tijera/PPTGame";
 import LoteriaGame from "@/components/games/loteria-mexicana/LoteriaGame";
 import QuestionGame from "@/components/games/pregunta/QuestionGame";
+import GatoGame from "@/components/games/gato/GatoGame";
 
 type RoomRow = {
   code: string;
@@ -171,6 +172,16 @@ export default function JuegoPage() {
   if (room.game_slug === "pregunta") {
     return (
       <QuestionGame
+        roomCode={code}
+        roomVariant={room.game_variant}
+        roomSettings={room.room_settings}
+      />
+    );
+  }
+
+  if (room.game_slug === "gato") {
+    return (
+      <GatoGame
         roomCode={code}
         roomVariant={room.game_variant}
         roomSettings={room.room_settings}
