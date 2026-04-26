@@ -1,4 +1,4 @@
-export type VariantOption = {
+  export type VariantOption = {
   key: string;
   label: string;
   description: string;
@@ -63,6 +63,12 @@ export const GAME_CONFIGS: Record<string, GameConfig> = {
         description: "Gana quien consiga 4 rondas primero.",
         available: true,
       },
+      {
+        key: "bot_bo3",
+        label: "Vs Bot",
+        description: "Juega contra la computadora. Recompensa mínima: 1 punto.",
+        available: true,
+      },
     ],
     tutorial: [
       "Piedra vence a Tijera",
@@ -92,6 +98,12 @@ export const GAME_CONFIGS: Record<string, GameConfig> = {
         key: "epico",
         label: "Épico 7x7",
         description: "Gana conectando 5. Bonus si conectas 7.",
+        available: true,
+      },
+      {
+        key: "bot_clasico",
+        label: "Vs Bot 3x3",
+        description: "Juega El Gato clásico contra la computadora. Recompensa mínima: 1 punto.",
         available: true,
       },
     ],
@@ -258,16 +270,18 @@ export function buildRoomSettings(
       bo3: { best_of: 3, rounds_to_win: 2 },
       bo5: { best_of: 5, rounds_to_win: 3 },
       bo7: { best_of: 7, rounds_to_win: 4 },
+      bot_bo3: { best_of: 3, rounds_to_win: 2 },
     };
 
     const selected = variantMap[variantKey] ?? variantMap.bo3;
 
     return {
-      mode: "match_series",
-      best_of: selected.best_of,
-      rounds_to_win: selected.rounds_to_win,
-      max_players: 2,
-    };
+  mode: "match_series",
+  best_of: selected.best_of,
+  rounds_to_win: selected.rounds_to_win,
+  max_players: variantKey === "bot_bo3" ? 1 : 2,
+  vs_bot: variantKey === "bot_bo3",
+};
   }
 
   if (gameSlug === "gato") {
@@ -294,17 +308,23 @@ export function buildRoomSettings(
         win_length: 5,
         bonus_win_length: 7,
       },
+      bot_clasico: {
+        board_size: 3,
+        win_length: 3,
+        bonus_win_length: null,
+      },
     };
 
     const selected = variantMap[variantKey] ?? variantMap.clasico;
 
     return {
-      mode: "classic_tictactoe",
-      board_size: selected.board_size,
-      win_length: selected.win_length,
-      bonus_win_length: selected.bonus_win_length,
-      max_players: 2,
-    };
+  mode: "classic_tictactoe",
+  board_size: selected.board_size,
+  win_length: selected.win_length,
+  bonus_win_length: selected.bonus_win_length,
+  max_players: variantKey === "bot_clasico" ? 1 : 2,
+  vs_bot: variantKey === "bot_clasico",
+};
   }
 
   return {
