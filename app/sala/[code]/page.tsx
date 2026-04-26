@@ -187,8 +187,9 @@ export default function SalaPage() {
   }, [sortedPlayers, currentPlayerName]);
 
   const isHost = !!currentPlayer?.is_host;
-  const roomMaxPlayers = room?.max_players ?? game?.max_players ?? 2;
-  const minPlayersToStart = game?.min_players ?? 2;
+  const isVsBot = room?.room_settings?.vs_bot === true;
+  const roomMaxPlayers = isVsBot ? 1 : room?.max_players ?? game?.max_players ?? 2;
+  const minPlayersToStart = isVsBot ? 1 : game?.min_players ?? 2;
   const variantLabel = getVariantLabel(room?.game_slug, room?.game_variant);
 
   const tutorialSteps = useMemo(() => {
@@ -197,9 +198,9 @@ export default function SalaPage() {
   }, [room?.game_slug]);
 
   const availableVariants = useMemo(() => {
-  if (!room?.game_slug) return [];
-  return getAvailableVariantsForGame(room.game_slug);
-}, [room?.game_slug]);
+    if (!room?.game_slug) return [];
+    return getAvailableVariantsForGame(room.game_slug);
+  }, [room?.game_slug]);
 
   const allReady = useMemo(() => {
     return (
@@ -223,49 +224,48 @@ export default function SalaPage() {
   }, []);
 
   const fetchRoom = useCallback(
-  async (retries = 10, delayMs = 700) => {
-    for (let attempt = 0; attempt < retries; attempt++) {
-      const { data, error } = await supabase
-        .from("rooms")
-        .select("*")
-        .eq("code", code)
-        .maybeSingle();
+    async (retries = 10, delayMs = 700) => {
+      for (let attempt = 0; attempt < retries; attempt++) {
+        const { data, error } = await supabase
+          .from("rooms")
+          .select("*")
+          .eq("code", code)
+          .maybeSingle();
 
-      if (error) {
-        console.error("Error cargando room:", error);
+        if (error) {
+          console.error("Error cargando room:", error);
+        }
+
+        if (data) {
+          const nextRoom = data as Room;
+          setRoom(nextRoom);
+          return nextRoom;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
 
-      if (data) {
-        const nextRoom = data as Room;
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from("rooms")
+        .select("*")
+        .ilike("code", code)
+        .maybeSingle();
+
+      if (fallbackError) {
+        console.error("Error cargando room fallback:", fallbackError);
+      }
+
+      if (fallbackData) {
+        const nextRoom = fallbackData as Room;
         setRoom(nextRoom);
         return nextRoom;
       }
 
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-
-    // Segundo intento extra por si el código viene con alguna diferencia rara
-    const { data: fallbackData, error: fallbackError } = await supabase
-      .from("rooms")
-      .select("*")
-      .ilike("code", code)
-      .maybeSingle();
-
-    if (fallbackError) {
-      console.error("Error cargando room fallback:", fallbackError);
-    }
-
-    if (fallbackData) {
-      const nextRoom = fallbackData as Room;
-      setRoom(nextRoom);
-      return nextRoom;
-    }
-
-    setRoom(null);
-    return null;
-  },
-  [supabase, code],
-);
+      setRoom(null);
+      return null;
+    },
+    [supabase, code],
+  );
 
   const fetchGame = useCallback(
     async (gameSlug?: string | null) => {
@@ -473,81 +473,76 @@ export default function SalaPage() {
   );
 
   useEffect(() => {
-  let active = true;
+    let active = true;
 
-  const timeout = window.setTimeout(() => {
-    if (active) {
-      setLoading(false);
-      setErrorMessage("La sala tardó demasiado en cargar. Intenta recargar.");
-    }
-  }, 12000);
-
-  const init = async () => {
-    setLoading(true);
-    setErrorMessage("");
-    autoJoinAttemptedRef.current = false;
-
-    try {
-      // 1) Primero cargamos la sala. NO dependemos de la sesión para esto.
-      const loadedRoom = await fetchRoom();
-      if (!active) return;
-
-      if (!loadedRoom) {
-        setErrorMessage("No se pudo encontrar esta sala.");
-        setLoading(false);
-        return;
-      }
-
-      // 2) Luego cargamos identidad. Si tarda o falla, la sala ya existe en pantalla.
-      const identity = await loadPlayerIdentity();
-      if (!active) return;
-
-      // 3) Cargamos jugadores.
-      const loadedPlayers = await fetchPlayers(identity);
-      if (!active) return;
-
-      // 4) Cargamos juego.
-      if (loadedRoom.game_slug) {
-        await fetchGame(loadedRoom.game_slug);
-      }
-
-      // 5) Auto-join solo si aplica.
-      const joined = await autoJoinIfNeeded(loadedRoom, loadedPlayers, identity);
-      if (!active) return;
-
-      if (joined) {
-        await fetchRoom();
-        await fetchPlayers(identity);
-      }
-    } catch (error) {
-      console.error("Error inicializando sala:", error);
+    const timeout = window.setTimeout(() => {
       if (active) {
-        setErrorMessage("No se pudo cargar la sala correctamente.");
-      }
-    } finally {
-      if (active) {
-        window.clearTimeout(timeout);
         setLoading(false);
+        setErrorMessage("La sala tardó demasiado en cargar. Intenta recargar.");
       }
+    }, 12000);
+
+    const init = async () => {
+      setLoading(true);
+      setErrorMessage("");
+      autoJoinAttemptedRef.current = false;
+
+      try {
+        const loadedRoom = await fetchRoom();
+        if (!active) return;
+
+        if (!loadedRoom) {
+          setErrorMessage("No se pudo encontrar esta sala.");
+          setLoading(false);
+          return;
+        }
+
+        const identity = await loadPlayerIdentity();
+        if (!active) return;
+
+        const loadedPlayers = await fetchPlayers(identity);
+        if (!active) return;
+
+        if (loadedRoom.game_slug) {
+          await fetchGame(loadedRoom.game_slug);
+        }
+
+        const joined = await autoJoinIfNeeded(loadedRoom, loadedPlayers, identity);
+        if (!active) return;
+
+        if (joined) {
+          await fetchRoom();
+          await fetchPlayers(identity);
+        }
+      } catch (error) {
+        console.error("Error inicializando sala:", error);
+        if (active) {
+          setErrorMessage("No se pudo cargar la sala correctamente.");
+        }
+      } finally {
+        if (active) {
+          window.clearTimeout(timeout);
+          setLoading(false);
+        }
+      }
+    };
+
+    if (code) {
+      void init();
     }
-  };
 
-  if (code) {
-    void init();
-  }
-
-  return () => {
-    active = false;
-    window.clearTimeout(timeout);
-  };
-}, [
-  code,
-  loadPlayerIdentity,
-  fetchRoom,
-  fetchPlayers,
-  fetchGame,
-  autoJoinIfNeeded,
-]);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [
+    code,
+    loadPlayerIdentity,
+    fetchRoom,
+    fetchPlayers,
+    fetchGame,
+    autoJoinIfNeeded,
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -605,22 +600,22 @@ export default function SalaPage() {
             }
 
             if (nextRoom.status === "closed") {
-  const me = players.find((p) => p.player_name === currentPlayerName);
+              const me = players.find((p) => p.player_name === currentPlayerName);
 
-  if (!me?.is_host) {
-    window.alert("El host cerró la sala. Serás enviado al inicio.");
-  }
+              if (!me?.is_host) {
+                window.alert("El host cerró la sala. Serás enviado al inicio.");
+              }
 
-  setTimeout(() => {
-    router.replace("/");
-  }, 100);
+              setTimeout(() => {
+                router.replace("/");
+              }, 100);
 
-  return;
-}
+              return;
+            }
 
-if (nextRoom.status === "playing") {
-  router.replace(`/juego/${code}`);
-}
+            if (nextRoom.status === "playing") {
+              router.replace(`/juego/${code}`);
+            }
           } else {
             const freshRoom = await fetchRoom();
 
@@ -636,15 +631,15 @@ if (nextRoom.status === "playing") {
       supabase.removeChannel(channel);
     };
   }, [
-  supabase,
-  code,
-  fetchPlayers,
-  fetchRoom,
-  fetchGame,
-  router,
-  players,
-  currentPlayerName,
-]);
+    supabase,
+    code,
+    fetchPlayers,
+    fetchRoom,
+    fetchGame,
+    router,
+    players,
+    currentPlayerName,
+  ]);
 
   useEffect(() => {
     if (room?.status === "playing") {
@@ -668,62 +663,59 @@ if (nextRoom.status === "playing") {
   };
 
   const handleBackHome = async () => {
-  if (!room) {
-    router.push("/");
-    return;
-  }
-
-  try {
-    const me =
-      currentPlayer ??
-      players.find((p) => p.player_name === currentPlayerName) ??
-      null;
-
-    if (isHost) {
-      const { error: closeError } = await supabase
-        .from("rooms")
-        .update({ status: "closed" })
-        .eq("code", code);
-
-      if (closeError) {
-        console.error("Error cerrando sala:", closeError);
-      }
-
-      const { error: deleteAllError } = await supabase
-        .from("room_players")
-        .delete()
-        .eq("room_code", code);
-
-      if (deleteAllError) {
-        console.error("Error borrando jugadores de sala:", deleteAllError);
-      }
-
+    if (!room) {
       router.push("/");
       return;
     }
 
-    // 🔹 IMPORTANTE: borrar por ID SIEMPRE
-    if (me?.id) {
-      const { error: deleteError } = await supabase
-        .from("room_players")
-        .delete()
-        .eq("id", me.id);
+    try {
+      const me =
+        currentPlayer ??
+        players.find((p) => p.player_name === currentPlayerName) ??
+        null;
 
-      if (deleteError) {
-        console.error("Error borrando jugador:", deleteError);
+      if (isHost) {
+        const { error: closeError } = await supabase
+          .from("rooms")
+          .update({ status: "closed" })
+          .eq("code", code);
+
+        if (closeError) {
+          console.error("Error cerrando sala:", closeError);
+        }
+
+        const { error: deleteAllError } = await supabase
+          .from("room_players")
+          .delete()
+          .eq("room_code", code);
+
+        if (deleteAllError) {
+          console.error("Error borrando jugadores de sala:", deleteAllError);
+        }
+
+        router.push("/");
+        return;
       }
+
+      if (me?.id) {
+        const { error: deleteError } = await supabase
+          .from("room_players")
+          .delete()
+          .eq("id", me.id);
+
+        if (deleteError) {
+          console.error("Error borrando jugador:", deleteError);
+        }
+      }
+
+      await fetchPlayers(playerIdentityRef.current);
+      router.push("/");
+    } catch (error) {
+      console.error("Error saliendo de la sala:", error);
+      router.push("/");
     }
+  };
 
-    // 🔹 fuerza refresh antes de salir (clave)
-    await fetchPlayers(playerIdentityRef.current);
-
-    router.push("/");
-  } catch (error) {
-    console.error("Error saliendo de la sala:", error);
-    router.push("/");
-  }
-};
-  
   const handleToggleReady = async () => {
     if (!currentPlayerName) return;
 
@@ -741,28 +733,34 @@ if (nextRoom.status === "playing") {
   };
 
   const handleChangeVariant = async (variantKey: string) => {
-  if (!room || !isHost) return;
-  if (room.status !== "waiting") return;
-  if (!room.game_slug) return;
+    if (!room || !isHost) return;
+    if (room.status !== "waiting") return;
+    if (!room.game_slug) return;
 
-  const nextSettings = buildRoomSettings(
-    room.game_slug,
-    variantKey,
-    roomMaxPlayers,
-  );
+    const nextSettings = buildRoomSettings(
+      room.game_slug,
+      variantKey,
+      roomMaxPlayers,
+    );
 
-  const { error } = await supabase
-    .from("rooms")
-    .update({
-      game_variant: variantKey,
-      room_settings: nextSettings,
-    })
-    .eq("code", code);
+    const nextMaxPlayers =
+      typeof nextSettings.max_players === "number"
+        ? nextSettings.max_players
+        : roomMaxPlayers;
 
-  if (error) {
-    console.error("Error cambiando variante:", error);
-  }
-};
+    const { error } = await supabase
+      .from("rooms")
+      .update({
+        game_variant: variantKey,
+        room_settings: nextSettings,
+        max_players: nextMaxPlayers,
+      })
+      .eq("code", code);
+
+    if (error) {
+      console.error("Error cambiando variante:", error);
+    }
+  };
 
   const handleStartGame = async () => {
     if (!room || !isHost || !allReady || sortedPlayers.length < minPlayersToStart) {
@@ -818,7 +816,7 @@ if (nextRoom.status === "playing") {
           <p className="text-3xl font-bold text-red-300">No encontramos esta sala.</p>
 
           <button
-          onClick={() => void handleBackHome()}
+            onClick={() => void handleBackHome()}
             className="mt-5 rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black"
           >
             Volver al inicio
@@ -861,13 +859,14 @@ if (nextRoom.status === "playing") {
               </h1>
 
               <p className="mt-3 text-base text-white/70 md:text-lg">
-                {sortedPlayers.length}/{roomMaxPlayers} jugadores —{" "}
+                {sortedPlayers.length}/{roomMaxPlayers}{" "}
+                {isVsBot ? "jugador" : "jugadores"} —{" "}
                 {joiningInvite
                   ? "Uniéndote a la sala..."
                   : starting
                     ? "Iniciando partida..."
                     : allReady
-                      ? "Todos listos"
+                      ? "Todo listo"
                       : sortedPlayers.length < minPlayersToStart
                         ? "Esperando jugadores..."
                         : "Esperando confirmación"}
@@ -877,6 +876,12 @@ if (nextRoom.status === "playing") {
                 Variante activa:{" "}
                 <span className="font-bold text-white">{variantLabel}</span>
               </p>
+
+              {isVsBot && (
+                <p className="mt-2 inline-flex rounded-full border border-cyan-400/25 bg-cyan-500/10 px-3 py-1 text-sm font-bold text-cyan-200">
+                  Modo contra bot · recompensa mínima 1 punto
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col gap-4 xl:items-end">
@@ -1019,16 +1024,36 @@ if (nextRoom.status === "playing") {
                 );
               })}
 
-              {Array.from({
-                length: Math.max(roomMaxPlayers - sortedPlayers.length, 0),
-              }).map((_, index) => (
-                <div
-                  key={`empty-slot-${index}`}
-                  className="rounded-[26px] border border-dashed border-white/10 bg-white/[0.03] px-5 py-8 text-center text-white/50"
-                >
-                  Esperando jugador...
+              {isVsBot && (
+                <div className="rounded-[26px] border border-cyan-400/20 bg-cyan-500/10 px-5 py-5">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-2xl font-extrabold md:text-3xl">
+                        Bot Familiar 🤖
+                      </p>
+                      <p className="mt-1 text-sm text-cyan-100/70 md:text-base">
+                        Rival automático
+                      </p>
+                    </div>
+
+                    <span className="rounded-full bg-cyan-500/15 px-5 py-2 text-sm font-bold text-cyan-200">
+                      Listo
+                    </span>
+                  </div>
                 </div>
-              ))}
+              )}
+
+              {!isVsBot &&
+                Array.from({
+                  length: Math.max(roomMaxPlayers - sortedPlayers.length, 0),
+                }).map((_, index) => (
+                  <div
+                    key={`empty-slot-${index}`}
+                    className="rounded-[26px] border border-dashed border-white/10 bg-white/[0.03] px-5 py-8 text-center text-white/50"
+                  >
+                    Esperando jugador...
+                  </div>
+                ))}
             </div>
 
             <div className="space-y-6">
@@ -1043,27 +1068,27 @@ if (nextRoom.status === "playing") {
                   </p>
 
                   <p className="mt-2 text-sm text-white/60">
-  Variante activa: {variantLabel}
-</p>
+                    Variante activa: {variantLabel}
+                  </p>
 
-{isHost && room?.status === "waiting" && availableVariants.length > 1 && (
-  <div className="mt-4 flex flex-wrap justify-center gap-2">
-    {availableVariants.map((variant) => (
-      <button
-        key={variant.key}
-        type="button"
-        onClick={() => handleChangeVariant(variant.key)}
-        className={`rounded-xl px-3 py-2 text-sm font-bold transition ${
-          room.game_variant === variant.key
-            ? "bg-orange-500 text-black"
-            : "bg-white/10 text-white hover:bg-white/20"
-        }`}
-      >
-        {variant.label}
-      </button>
-    ))}
-  </div>
-)}
+                  {isHost && room?.status === "waiting" && availableVariants.length > 1 && (
+                    <div className="mt-4 flex flex-wrap justify-center gap-2">
+                      {availableVariants.map((variant) => (
+                        <button
+                          key={variant.key}
+                          type="button"
+                          onClick={() => handleChangeVariant(variant.key)}
+                          className={`rounded-xl px-3 py-2 text-sm font-bold transition ${
+                            room.game_variant === variant.key
+                              ? "bg-orange-500 text-black"
+                              : "bg-white/10 text-white hover:bg-white/20"
+                          }`}
+                        >
+                          {variant.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1074,7 +1099,9 @@ if (nextRoom.status === "playing") {
 
                 <div className="mt-4 space-y-3">
                   <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
-                    <span className="text-sm text-white/60">Jugadores conectados</span>
+                    <span className="text-sm text-white/60">
+                      {isVsBot ? "Jugador conectado" : "Jugadores conectados"}
+                    </span>
                     <span className="font-bold">
                       {sortedPlayers.length}/{roomMaxPlayers}
                     </span>
@@ -1140,7 +1167,7 @@ if (nextRoom.status === "playing") {
                 }
                 className="rounded-2xl bg-orange-900/70 px-6 py-3.5 font-bold text-orange-100 transition hover:bg-orange-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {starting ? "Iniciando..." : "Iniciar partida"}
+                {starting ? "Iniciando..." : isVsBot ? "Iniciar contra bot" : "Iniciar partida"}
               </button>
             </div>
           )}
