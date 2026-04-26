@@ -73,7 +73,7 @@ export const GAME_CONFIGS: Record<string, GameConfig> = {
     ],
   },
 
-    gato: {
+  gato: {
     maxPlayersOptions: [2],
     variants: [
       {
@@ -270,7 +270,7 @@ export function buildRoomSettings(
     };
   }
 
-    if (gameSlug === "gato") {
+  if (gameSlug === "gato") {
     const variantMap: Record<
       string,
       {
@@ -306,6 +306,11 @@ export function buildRoomSettings(
       max_players: 2,
     };
   }
+
+  return {
+    max_players: maxPlayers,
+  };
+}
 
 export function getGameIcon(slug: string) {
   switch (slug) {
