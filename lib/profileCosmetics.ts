@@ -33,6 +33,11 @@ export const AVATARS = [
     label: "Guacamaya",
     image: "/avatars/avatar_pajaro_rojo.png",
   },
+    {
+    key: "avatar_mono",
+    label: "Mono Molesto",
+    image: "/avatars/avatar_mono.png",
+  },
 ];
 
 export const FRAMES = [
