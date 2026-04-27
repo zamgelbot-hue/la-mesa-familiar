@@ -75,6 +75,18 @@ const PREMIUM_AVATARS = [
   image: "/avatars/avatar_hamburguesa.png",
   price: 100,
 },
+  {
+  key: "avatar_chica",
+  label: "Chica Bella",
+  image: "/avatars/avatar_chica.png",
+  price: 120,
+},
+  {
+  key: "avatar_chico",
+  label: "Chico Gamer",
+  image: "/avatars/avatar_chico.png",
+  price: 120,
+},
 ];
 
 const BASE_FRAMES = [
