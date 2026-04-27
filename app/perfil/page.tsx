@@ -87,6 +87,18 @@ const PREMIUM_AVATARS = [
   image: "/avatars/avatar_chico.png",
   price: 120,
 },
+  {
+  key: "avatar_calculadora",
+  label: "Calculadora Pro",
+  image: "/avatars/avatar_calculadora.png",
+  price: 130,
+},
+{
+  key: "avatar_cerebro",
+  label: "Cerebro Pro",
+  image: "/avatars/avatar_cerebro.png",
+  price: 130,
+},
 ];
 
 const BASE_FRAMES = [
