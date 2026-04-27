@@ -38,6 +38,16 @@ export const AVATARS = [
     label: "Mono Molesto",
     image: "/avatars/avatar_mono.png",
   },
+  {
+  key: "avatar_lobo",
+  label: "Lobo",
+  image: "/avatars/avatar_lobo.png",
+},
+{
+  key: "avatar_cerdito",
+  label: "Cerdito",
+  image: "/avatars/avatar_cerdito.png",
+},
 ];
 
 export const FRAMES = [
