@@ -68,6 +68,16 @@ export const AVATARS = [
   label: "Chica Bella",
   image: "/avatars/avatar_chica.png",
 },
+  {
+  key: "avatar_calculadora",
+  label: "Calculadora Pro",
+  image: "/avatars/avatar_calculadora.png",
+},
+{
+  key: "avatar_cerebro",
+  label: "Cerebro Pro",
+  image: "/avatars/avatar_cerebro.png",
+},
 ];
 
 export const FRAMES = [
