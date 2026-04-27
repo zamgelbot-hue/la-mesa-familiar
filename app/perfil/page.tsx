@@ -45,6 +45,12 @@ const PREMIUM_AVATARS = [
     image: "/avatars/avatar_pajaro_rojo.png",
     price: 85,
   },
+  {
+  key: "avatar_mono",
+  label: "Mono molesto",
+  image: "/avatars/avatar_mono.png",
+  price: 75,
+},
 ];
 
 const BASE_FRAMES = [
