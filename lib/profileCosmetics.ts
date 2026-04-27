@@ -58,6 +58,16 @@ export const AVATARS = [
   label: "Sra Hamburguesa",
   image: "/avatars/avatar_hamburguesa.png",
 },
+  {
+  key: "avatar_chico",
+  label: "Chico Gamer",
+  image: "/avatars/avatar_chico.png",
+},
+{
+  key: "avatar_chica",
+  label: "Chica Bella",
+  image: "/avatars/avatar_chica.png",
+},
 ];
 
 export const FRAMES = [
