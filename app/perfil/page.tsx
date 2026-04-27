@@ -177,6 +177,42 @@ const PREMIUM_FRAMES = [
     image: "/frames/marco_selva.png",
     price: 110,
   },
+  {
+  key: "marco_comida",
+  label: "Marco Comida",
+  image: "/frames/marco_comida.png",
+  price: 100,
+},
+{
+  key: "marco_sabio",
+  label: "Marco Sabio",
+  image: "/frames/marco_sabio.png",
+  price: 110,
+},
+{
+  key: "marco_gamer",
+  label: "Marco Gamer",
+  image: "/frames/marco_gamer.png",
+  price: 110,
+},
+{
+  key: "marco_belleza",
+  label: "Marco Belleza",
+  image: "/frames/marco_belleza.png",
+  price: 110,
+},
+{
+  key: "marco_infernal",
+  label: "Marco Infernal",
+  image: "/frames/marco_infernal.png",
+  price: 200,
+},
+{
+  key: "marco_divino",
+  label: "Marco Divino",
+  image: "/frames/marco_divino.png",
+  price: 200,
+},
 ];
 
 type LeftTab = "preview" | "stats";
