@@ -99,6 +99,18 @@ const PREMIUM_AVATARS = [
   image: "/avatars/avatar_cerebro.png",
   price: 130,
 },
+  {
+  key: "avatar_demonio",
+  label: "Demonio",
+  image: "/avatars/avatar_demonio.png",
+  price: 150,
+},
+{
+  key: "avatar_angel",
+  label: "Ángel",
+  image: "/avatars/avatar_angel.png",
+  price: 150,
+},
 ];
 
 const BASE_FRAMES = [
