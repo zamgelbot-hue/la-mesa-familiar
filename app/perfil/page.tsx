@@ -51,6 +51,18 @@ const PREMIUM_AVATARS = [
   image: "/avatars/avatar_mono.png",
   price: 75,
 },
+  {
+  key: "avatar_lobo",
+  label: "Lobo Imponente",
+  image: "/avatars/avatar_lobo.png",
+  price: 90,
+},
+{
+  key: "avatar_cerdito",
+  label: "Cerdito Cute",
+  image: "/avatars/avatar_cerdito.png",
+  price: 90,
+},
 ];
 
 const BASE_FRAMES = [
