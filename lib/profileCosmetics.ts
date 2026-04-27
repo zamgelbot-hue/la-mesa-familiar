@@ -78,6 +78,16 @@ export const AVATARS = [
   label: "Cerebro Pro",
   image: "/avatars/avatar_cerebro.png",
 },
+  {
+  key: "avatar_demonio",
+  label: "Demonio",
+  image: "/avatars/avatar_demonio.png",
+},
+{
+  key: "avatar_angel",
+  label: "Ángel",
+  image: "/avatars/avatar_angel.png",
+},
 ];
 
 export const FRAMES = [
