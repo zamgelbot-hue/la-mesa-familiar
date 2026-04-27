@@ -144,6 +144,36 @@ export const FRAMES = [
     label: "Marco Selva",
     image: "/frames/marco_selva.png",
   },
+  {
+  key: "marco_comida",
+  label: "Marco Comida",
+  image: "/frames/marco_comida.png",
+},
+{
+  key: "marco_sabio",
+  label: "Marco Sabio",
+  image: "/frames/marco_sabio.png",
+},
+{
+  key: "marco_gamer",
+  label: "Marco Gamer",
+  image: "/frames/marco_gamer.png",
+},
+  {
+  key: "marco_belleza",
+  label: "Marco Belleza",
+  image: "/frames/marco_belleza.png",
+},
+{
+  key: "marco_infernal",
+  label: "Marco Infernal",
+  image: "/frames/marco_infernal.png",
+},
+{
+  key: "marco_divino",
+  label: "Marco Divino",
+  image: "/frames/marco_divino.png",
+},
 ];
 
 export function getAvatarByKey(key?: string | null) {
