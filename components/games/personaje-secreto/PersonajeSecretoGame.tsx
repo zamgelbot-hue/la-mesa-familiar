@@ -1087,107 +1087,114 @@ export default function PersonajeSecretoGame({
               </div>
             </div>
 
-<div className="rounded-[28px] border border-emerald-500/20 bg-zinc-950/90 p-5">
-  <h2 className="text-xl font-black text-emerald-300">
-    ✅ Pistas confirmadas
-  </h2>
+            <div className="rounded-[28px] border border-emerald-500/20 bg-zinc-950/90 p-5">
+              <h2 className="text-xl font-black text-emerald-300">
+                ✅ Pistas confirmadas
+              </h2>
 
-  <div className="mt-4 space-y-4">
-    {answeredQuestions.length === 0 && (
-      <p className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/50">
-        Aquí aparecerán las respuestas confirmadas de cada jugador.
-      </p>
-    )}
+              <div className="mt-4 space-y-4">
+                {answeredQuestions.length === 0 && (
+                  <p className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/50">
+                    Aquí aparecerán las respuestas confirmadas de cada jugador.
+                  </p>
+                )}
 
-    {answeredQuestionsByPlayer.map((group, index) => (
-      <div
-        key={group.playerKey}
-        className={
-          group.isMe
-            ? "rounded-2xl border border-orange-500/30 bg-orange-500/10 p-4"
-            : "rounded-2xl border border-sky-500/30 bg-sky-500/10 p-4"
-        }
-      >
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="font-black text-white">
-            {group.isMe
-              ? "🧑 Tus pistas"
-              : `${index === 0 ? "🕵️" : "🎭"} Pistas de ${group.playerName}`}
-          </h3>
+                {answeredQuestionsByPlayer.map((group, index) => (
+                  <div
+                    key={group.playerKey}
+                    className={
+                      group.isMe
+                        ? "rounded-2xl border border-orange-500/30 bg-orange-500/10 p-4"
+                        : "rounded-2xl border border-sky-500/30 bg-sky-500/10 p-4"
+                    }
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="font-black text-white">
+                        {group.isMe
+                          ? "🧑 Tus pistas"
+                          : `${index === 0 ? "🕵️" : "🎭"} Pistas de ${group.playerName}`}
+                      </h3>
 
-          <span
-            className={
-              group.isMe
-                ? "rounded-full bg-orange-500/15 px-2 py-1 text-xs font-bold text-orange-300"
-                : "rounded-full bg-sky-500/15 px-2 py-1 text-xs font-bold text-sky-300"
-            }
-          >
-            {group.clues.length}
-          </span>
-        </div>
+                      <span
+                        className={
+                          group.isMe
+                            ? "rounded-full bg-orange-500/15 px-2 py-1 text-xs font-bold text-orange-300"
+                            : "rounded-full bg-sky-500/15 px-2 py-1 text-xs font-bold text-sky-300"
+                        }
+                      >
+                        {group.clues.length}
+                      </span>
+                    </div>
 
-        <div className="mt-3 max-h-[220px] space-y-2 overflow-y-auto pr-1">
-          {group.clues.length === 0 && (
-            <p className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-white/45">
-              Sin pistas todavía.
-            </p>
-          )}
+                    <div className="mt-3 max-h-[220px] space-y-2 overflow-y-auto pr-1">
+                      {group.clues.length === 0 && (
+                        <p className="rounded-xl border border-white/10 bg-black/20 p-3 text-sm text-white/45">
+                          Sin pistas todavía.
+                        </p>
+                      )}
 
-          {group.clues.map((question) => (
-            <div
-              key={question.id}
-              className="rounded-xl border border-white/10 bg-black/25 px-3 py-2"
-            >
-              <p className="text-sm font-bold text-white">
-                {question.question}
-              </p>
+                      {group.clues.map((question) => (
+                        <div
+                          key={question.id}
+                          className="rounded-xl border border-white/10 bg-black/25 px-3 py-2"
+                        >
+                          <p className="text-sm font-bold text-white">
+                            {question.question}
+                          </p>
 
-              {question.answer && (
-                <p className="mt-1 text-sm text-white/70">
-                  {getPsAnswerEmoji(question.answer)}{" "}
-                  {getPsAnswerLabel(question.answer)}
-                </p>
-              )}
+                          {question.answer && (
+                            <p className="mt-1 text-sm text-white/70">
+                              {getPsAnswerEmoji(question.answer)}{" "}
+                              {getPsAnswerLabel(question.answer)}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
+
+            {gameState.guesses.length > 0 && (
+              <div className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5">
+                <h2 className="text-xl font-black">🎯 Intentos</h2>
+
+                <div className="mt-4 space-y-2">
+                  {gameState.guesses.map((guess) => (
+                    <div
+                      key={guess.id}
+                      className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3"
+                    >
+                      <p className="text-sm text-white/70">
+                        <span className="font-bold text-white">{guess.playerName}</span>{" "}
+                        intentó:{" "}
+                        <span className="font-bold text-orange-300">{guess.guess}</span>
+                      </p>
+
+                      <p
+                        className={
+                          guess.result === "correct"
+                            ? "text-sm font-bold text-emerald-300"
+                            : guess.result === "needs_confirmation"
+                              ? "text-sm font-bold text-yellow-300"
+                              : "text-sm font-bold text-red-300"
+                        }
+                      >
+                        {guess.result === "correct"
+                          ? "Correcto"
+                          : guess.result === "needs_confirmation"
+                            ? "Esperando confirmación"
+                            : "Incorrecto"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </aside>
+        </section>
       </div>
-    ))}
-  </div>
-</div>
-
-{gameState.guesses.length > 0 && (
-  <div className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5">
-    <h2 className="text-xl font-black">🎯 Intentos</h2>
-
-    <div className="mt-4 space-y-2">
-      {gameState.guesses.map((guess) => (
-        <div
-          key={guess.id}
-          className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3"
-        >
-          <p className="text-sm text-white/70">
-            <span className="font-bold text-white">{guess.playerName}</span>{" "}
-            intentó:{" "}
-            <span className="font-bold text-orange-300">{guess.guess}</span>
-          </p>
-          <p
-            className={
-              guess.result === "correct"
-                ? "text-sm font-bold text-emerald-300"
-                : guess.result === "needs_confirmation"
-                  ? "text-sm font-bold text-yellow-300"
-                  : "text-sm font-bold text-red-300"
-            }
-          >
-            {guess.result === "correct"
-              ? "Correcto"
-              : guess.result === "needs_confirmation"
-                ? "Esperando confirmación"
-                : "Incorrecto"}
-          </p>
-        </div>
-      ))}
-    </div>
-  </div>
-)}
+    </main>
+  );
+}
