@@ -10,6 +10,7 @@ import LoteriaGame from "@/components/games/loteria-mexicana/LoteriaGame";
 import QuestionGame from "@/components/games/pregunta/QuestionGame";
 import GatoGame from "@/components/games/gato/GatoGame";
 import PersonajeSecretoGame from "@/components/games/personaje-secreto/PersonajeSecretoGame";
+import GuerraTotalGame from "@/components/games/guerra-total/GuerraTotalGame";
 
 type RoomRow = {
   code: string;
@@ -195,6 +196,16 @@ export default function JuegoPage() {
   if (room.game_slug === "personaje-secreto") {
   return (
     <PersonajeSecretoGame
+      roomCode={code}
+      roomVariant={room.game_variant}
+      roomSettings={room.room_settings}
+    />
+  );
+}
+
+  if (room.game_slug === "guerra-total") {
+  return (
+    <GuerraTotalGame
       roomCode={code}
       roomVariant={room.game_variant}
       roomSettings={room.room_settings}
