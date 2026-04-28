@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
-import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
+import { getPlayerIdentity, type PlayerIdentity } from "@/lib/profile/getPlayerIdentity";
+import { getAvatarByKey, getFrameByKey } from "@/lib/profile/profileCosmetics";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import SiteHeader from "@/components/site/SiteHeader";
 
