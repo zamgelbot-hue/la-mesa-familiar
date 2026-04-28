@@ -1,4 +1,6 @@
-  export type VariantOption = {
+// 📍 lib/games/gameCatalog.ts
+
+export type VariantOption = {
   key: string;
   label: string;
   description: string;
@@ -114,6 +116,55 @@ export const GAME_CONFIGS: Record<string, GameConfig> = {
       "No puedes tocar una casilla ocupada",
       "Gana conectando la línea requerida",
       "En Épico 7x7 puedes ganar bonus conectando 7",
+    ],
+  },
+
+    "personaje-secreto": {
+    maxPlayersOptions: [2],
+    variants: [
+      {
+        key: "videojuegos",
+        label: "Videojuegos",
+        description: "Adivina personajes de videojuegos usando preguntas y pistas.",
+        available: true,
+      },
+      {
+        key: "peliculas",
+        label: "Películas",
+        description: "Personajes de películas, sagas y cine familiar.",
+        available: true,
+      },
+      {
+        key: "deportes",
+        label: "Deportes",
+        description: "Atletas, leyendas deportivas y figuras famosas.",
+        available: true,
+      },
+      {
+        key: "anime",
+        label: "Anime",
+        description: "Personajes de anime y manga.",
+        available: true,
+      },
+      {
+        key: "musica",
+        label: "Música",
+        description: "Cantantes, bandas y artistas conocidos.",
+        available: true,
+      },
+      {
+        key: "libre",
+        label: "Libre",
+        description: "Cualquier personaje famoso, ficticio o real.",
+        available: true,
+      },
+    ],
+    tutorial: [
+      "Cada jugador escribe un personaje secreto",
+      "El personaje queda oculto para el rival",
+      "Usa el chat para hacer preguntas y dar pistas",
+      "Cuando creas saber la respuesta, usa el botón Adivinar",
+      "Gana quien descubra primero el personaje del rival",
     ],
   },
 
@@ -265,6 +316,18 @@ export function buildRoomSettings(
     };
   }
 
+    if (gameSlug === "personaje-secreto") {
+    return {
+      mode: "secret_character",
+      category: variantKey,
+      max_players: 2,
+      min_players: 2,
+      allow_free_chat: true,
+      confirmation_enabled: true,
+      fuzzy_match_enabled: true,
+    };
+  }
+
   if (gameSlug === "piedra-papel-o-tijera") {
     const variantMap: Record<string, { best_of: number; rounds_to_win: number }> = {
       bo3: { best_of: 3, rounds_to_win: 2 },
@@ -342,6 +405,8 @@ export function getGameIcon(slug: string) {
       return "❓";
     case "gato":
       return "⭕";
+    case "personaje-secreto":
+      return "🕵️";
     case "domino":
       return "🁫";
     case "trivia-familiar":
