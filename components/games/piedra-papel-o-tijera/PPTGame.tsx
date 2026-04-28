@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
-import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
+import { getAvatarByKey, getFrameByKey } from "@/lib/profile/profileCosmetics";
 import { applyHeadToHeadMatchRewards } from "@/lib/gameRewards";
 import RoomChat from "@/components/RoomChat";
 import type { Choice, GameState, PPTGameProps, ProfileMap, RoomPlayer } from "./pptTypes";
