@@ -550,11 +550,64 @@ export default function PerfilPage() {
                 </div>
 
                 <h1 className="mt-6 text-4xl font-extrabold">{displayName || "Jugador"}</h1>
-                <p className="mt-2 text-white/60">
-                  {playerIdentity?.is_guest ? "Invitado" : "Usuario registrado"}
-                </p>
+<p className="mt-2 text-white/60">
+  {playerIdentity?.is_guest ? "Invitado" : "Usuario registrado"}
+</p>
 
-                <div className="mt-6 grid w-full gap-4 sm:grid-cols-2">
+<div className="mt-5 w-full rounded-3xl border border-yellow-500/30 bg-gradient-to-br from-yellow-500/10 via-black to-black p-6 text-left shadow-[0_0_60px_rgba(250,204,21,0.12)]">
+
+  <div className="flex items-center justify-between gap-4">
+    
+    {/* IZQUIERDA */}
+    <div className="flex items-center gap-4">
+      
+      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-yellow-500/10 text-4xl shadow-[0_0_25px_rgba(250,204,21,0.25)]">
+        {levelInfo.emblem}
+      </div>
+
+      <div>
+        <p className="text-xs uppercase tracking-[0.25em] text-yellow-300">
+          Nivel {levelInfo.level}
+        </p>
+
+        <p className="mt-1 text-3xl font-extrabold text-yellow-100">
+          {levelInfo.title}
+        </p>
+
+        <p className="mt-1 text-sm text-white/60">
+          {levelInfo.isMaxLevel
+            ? "Nivel máximo alcanzado"
+            : `Faltan ${levelInfo.xpNeededForNextLevel} XP`}
+        </p>
+      </div>
+    </div>
+
+    {/* DERECHA */}
+    <div className="rounded-full border border-yellow-400/40 bg-yellow-500/10 px-4 py-2 text-sm font-bold text-yellow-200 shadow-[0_0_15px_rgba(250,204,21,0.25)]">
+      {levelInfo.progressPercent}%
+    </div>
+  </div>
+
+  {/* BARRA */}
+  <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/10">
+    <div
+      className="h-full rounded-full bg-gradient-to-r from-yellow-400 to-orange-400 transition-all"
+      style={{ width: `${levelInfo.progressPercent}%` }}
+    />
+  </div>
+
+  {/* XP LABELS */}
+  <div className="mt-3 flex justify-between text-xs text-white/45">
+    <span>{levelInfo.currentLevelXp} XP</span>
+    <span>
+      {levelInfo.isMaxLevel
+        ? `${levelInfo.currentXp} XP`
+        : `${levelInfo.nextLevelXp} XP`}
+    </span>
+  </div>
+</div>
+
+<div className="mt-6 grid w-full gap-4 sm:grid-cols-2">
                   <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
                     <p className="text-sm uppercase tracking-[0.18em] text-white/50">Puntos</p>
                     <p className="mt-2 text-3xl font-extrabold">{points}</p>
