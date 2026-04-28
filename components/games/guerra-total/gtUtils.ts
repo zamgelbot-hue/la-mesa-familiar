@@ -135,12 +135,27 @@ export function getGtVariantTheme(variant?: string | null) {
     return {
       label: "Aire",
       icon: "✈️",
+      unitIcon: "✈️",
+      emptyIcon: "",
+      missIcon: "☁️",
+      hitIcon: "💥",
+      sunkIcon: "🔥",
       unitLabel: "Escuadrón",
       boardLabel: "Radar",
+      enemyLabel: "Zona aérea enemiga",
       waterLabel: "Cielo limpio",
       hitLabel: "Impacto aéreo",
       sunkLabel: "Derribado",
-      accent: "sky",
+      mineBoardClass:
+        "rounded-[28px] border border-sky-500/20 bg-sky-950/30 p-5",
+      enemyBoardClass:
+        "rounded-[28px] border border-slate-400/20 bg-slate-950/40 p-5",
+      shipCellClass: "border-sky-300/50 bg-sky-500/30 text-sky-100",
+      emptyCellClass:
+        "border-white/10 bg-white/[0.03] text-white/30 hover:border-sky-300/50",
+      missCellClass: "border-sky-200/30 bg-sky-500/15 text-sky-100",
+      hitCellClass: "border-red-400/50 bg-red-500/40 text-red-100",
+      sunkCellClass: "border-orange-400/60 bg-orange-500/50 text-orange-100",
     };
   }
 
@@ -148,24 +163,54 @@ export function getGtVariantTheme(variant?: string | null) {
     return {
       label: "Tierra",
       icon: "🪖",
+      unitIcon: "🪖",
+      emptyIcon: "",
+      missIcon: "🟫",
+      hitIcon: "💥",
+      sunkIcon: "🔥",
       unitLabel: "Unidad",
       boardLabel: "Campo",
+      enemyLabel: "Territorio enemigo",
       waterLabel: "Terreno vacío",
       hitLabel: "Impacto terrestre",
       sunkLabel: "Destruido",
-      accent: "emerald",
+      mineBoardClass:
+        "rounded-[28px] border border-emerald-500/20 bg-emerald-950/25 p-5",
+      enemyBoardClass:
+        "rounded-[28px] border border-amber-500/20 bg-amber-950/20 p-5",
+      shipCellClass: "border-emerald-400/50 bg-emerald-500/30 text-emerald-100",
+      emptyCellClass:
+        "border-white/10 bg-white/[0.03] text-white/30 hover:border-emerald-400/50",
+      missCellClass: "border-amber-400/30 bg-amber-700/20 text-amber-100",
+      hitCellClass: "border-red-400/50 bg-red-500/40 text-red-100",
+      sunkCellClass: "border-orange-400/60 bg-orange-500/50 text-orange-100",
     };
   }
 
   return {
     label: "Mar",
     icon: "🌊",
+    unitIcon: "🚢",
+    emptyIcon: "",
+    missIcon: "🌊",
+    hitIcon: "💥",
+    sunkIcon: "🔥",
     unitLabel: "Flota",
     boardLabel: "Océano",
+    enemyLabel: "Océano enemigo",
     waterLabel: "Agua",
     hitLabel: "Impacto",
     sunkLabel: "Hundido",
-    accent: "cyan",
+    mineBoardClass:
+      "rounded-[28px] border border-cyan-500/20 bg-cyan-950/25 p-5",
+    enemyBoardClass:
+      "rounded-[28px] border border-orange-500/20 bg-zinc-950/90 p-5",
+    shipCellClass: "border-cyan-400/40 bg-cyan-500/30 text-cyan-100",
+    emptyCellClass:
+      "border-white/10 bg-white/[0.03] text-white/30 hover:border-orange-400/50",
+    missCellClass: "border-sky-400/30 bg-sky-500/20 text-sky-100",
+    hitCellClass: "border-red-400/50 bg-red-500/40 text-red-100",
+    sunkCellClass: "border-orange-400/60 bg-orange-500/50 text-orange-100",
   };
 }
 
@@ -219,7 +264,12 @@ export function resolveShot(
   };
 }
 
-export function hasAlreadyShot(shots: GtShot[], attackerKey: string, targetKey: string, cell: GtCell) {
+export function hasAlreadyShot(
+  shots: GtShot[],
+  attackerKey: string,
+  targetKey: string,
+  cell: GtCell,
+) {
   return shots.some(
     (shot) =>
       shot.attackerKey === attackerKey &&
