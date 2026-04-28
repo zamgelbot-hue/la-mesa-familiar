@@ -4,9 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import PlayerAvatar from "@/components/PlayerAvatar";
-import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
+import { getAvatarByKey, getFrameByKey } from "@/lib/profile/profileCosmetics";
 import { createClient } from "@/lib/supabase/client";
-import type { PlayerIdentity } from "@/lib/getPlayerIdentity";
+import type { PlayerIdentity } from "@/lib/profile/getPlayerIdentity";
 
 type SiteHeaderProps = {
   playerIdentity?: PlayerIdentity | null;
