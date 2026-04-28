@@ -573,29 +573,29 @@ export default function GuerraTotalGame({
     return "sunk";
   };
 
-  const getCellClass = (status: string, clickable = false) => {
+    const getCellClass = (status: string, clickable = false) => {
     const base =
       "aspect-square rounded-lg border text-xs font-black transition flex items-center justify-center";
 
     const cursor = clickable ? " cursor-pointer hover:scale-[1.04]" : "";
 
     if (status === "ship") {
-      return `${base}${cursor} border-cyan-400/40 bg-cyan-500/30 text-cyan-100`;
+      return `${base}${cursor} ${theme.shipCellClass}`;
     }
 
     if (status === "hit" || status === "hit-received") {
-      return `${base}${cursor} border-red-400/50 bg-red-500/40 text-red-100`;
+      return `${base}${cursor} ${theme.hitCellClass}`;
     }
 
     if (status === "sunk") {
-      return `${base}${cursor} border-orange-400/60 bg-orange-500/50 text-orange-100`;
+      return `${base}${cursor} ${theme.sunkCellClass}`;
     }
 
     if (status === "water" || status === "miss-received") {
-      return `${base}${cursor} border-sky-400/30 bg-sky-500/20 text-sky-100`;
+      return `${base}${cursor} ${theme.missCellClass}`;
     }
 
-    return `${base}${cursor} border-white/10 bg-white/[0.03] text-white/30 hover:border-orange-400/50`;
+    return `${base}${cursor} ${theme.emptyCellClass}`;
   };
 
   const renderBoard = (kind: "mine" | "enemy") => {
@@ -619,15 +619,15 @@ export default function GuerraTotalGame({
               : gameState.phase === "battle" && isMyTurn && !!opponentKey;
 
           const label =
-            status === "ship"
-              ? theme.icon
-              : status === "hit" || status === "hit-received"
-                ? "💥"
-                : status === "sunk"
-                  ? "🔥"
-                  : status === "water" || status === "miss-received"
-                    ? "🌊"
-                    : "";
+  status === "ship"
+    ? theme.unitIcon
+    : status === "hit" || status === "hit-received"
+      ? theme.hitIcon
+      : status === "sunk"
+        ? theme.sunkIcon
+        : status === "water" || status === "miss-received"
+          ? theme.missIcon
+          : theme.emptyIcon;
 
           return (
             <button
@@ -955,7 +955,7 @@ export default function GuerraTotalGame({
             )}
 
             <section className="grid gap-5 lg:grid-cols-2">
-              <div className="rounded-[28px] border border-cyan-500/20 bg-zinc-950/90 p-5">
+              <div className={theme.mineBoardClass}>
                 <h2 className="text-xl font-black text-cyan-200">
                   🛡️ Mi {theme.boardLabel}
                 </h2>
@@ -966,7 +966,7 @@ export default function GuerraTotalGame({
                 <div className="mt-4">{renderBoard("mine")}</div>
               </div>
 
-              <div className="rounded-[28px] border border-orange-500/20 bg-zinc-950/90 p-5">
+              <div className={theme.enemyBoardClass}>
                 <h2 className="text-xl font-black text-orange-300">
                   🎯 Territorio enemigo
                 </h2>
