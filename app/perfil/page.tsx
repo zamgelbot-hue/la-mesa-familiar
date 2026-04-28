@@ -4,216 +4,16 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
+import { AVATARS, FRAMES } from "@/lib/profileCosmetics";
 
-const BASE_AVATARS = [
-  { key: "avatar_sun", emoji: "🌞", label: "Sol" },
-  { key: "avatar_moon", emoji: "🌙", label: "Luna" },
-  { key: "avatar_star", emoji: "⭐", label: "Estrella" },
-  { key: "avatar_rocket", emoji: "🚀", label: "Cohete" },
-  { key: "avatar_game", emoji: "🎮", label: "Gamer" },
-  { key: "avatar_guest", emoji: "🙂", label: "Invitado" },
-];
+const BASIC_AVATARS = AVATARS.filter((avatar) => avatar.tier === "basic");
+const STORE_AVATARS = AVATARS.filter((avatar) => avatar.tier !== "basic");
 
-const PREMIUM_AVATARS = [
-  {
-    key: "avatar_gato_naranja",
-    label: "Chopper",
-    image: "/avatars/avatar_gato_naranja.png",
-    price: 65,
-  },
-  {
-    key: "avatar_pug",
-    label: "Nala",
-    image: "/avatars/avatar_pug.png",
-    price: 65,
-  },
-  {
-    key: "avatar_delfin",
-    label: "Delfín",
-    image: "/avatars/avatar_delfin.png",
-    price: 65,
-  },
-  {
-    key: "avatar_panda",
-    label: "Panda",
-    image: "/avatars/avatar_panda.png",
-    price: 85,
-  },
-  {
-    key: "avatar_pajaro_rojo",
-    label: "Guacamaya",
-    image: "/avatars/avatar_pajaro_rojo.png",
-    price: 85,
-  },
-  {
-  key: "avatar_mono",
-  label: "Mono molesto",
-  image: "/avatars/avatar_mono.png",
-  price: 75,
-},
-  {
-  key: "avatar_lobo",
-  label: "Lobo Imponente",
-  image: "/avatars/avatar_lobo.png",
-  price: 90,
-},
-{
-  key: "avatar_cerdito",
-  label: "Cerdito Cute",
-  image: "/avatars/avatar_cerdito.png",
-  price: 90,
-},
-  {
-  key: "avatar_taco",
-  label: "Sr Taco",
-  image: "/avatars/avatar_taco.png",
-  price: 100,
-},
-{
-  key: "avatar_hamburguesa",
-  label: "Sra Hamburguesa",
-  image: "/avatars/avatar_hamburguesa.png",
-  price: 100,
-},
-  {
-  key: "avatar_chica",
-  label: "Chica Bella",
-  image: "/avatars/avatar_chica.png",
-  price: 120,
-},
-  {
-  key: "avatar_chico",
-  label: "Chico Gamer",
-  image: "/avatars/avatar_chico.png",
-  price: 120,
-},
-  {
-  key: "avatar_calculadora",
-  label: "Calculadora Pro",
-  image: "/avatars/avatar_calculadora.png",
-  price: 130,
-},
-{
-  key: "avatar_cerebro",
-  label: "Cerebro Pro",
-  image: "/avatars/avatar_cerebro.png",
-  price: 130,
-},
-  {
-  key: "avatar_demonio",
-  label: "Demonio",
-  image: "/avatars/avatar_demonio.png",
-  price: 150,
-},
-{
-  key: "avatar_angel",
-  label: "Ángel",
-  image: "/avatars/avatar_angel.png",
-  price: 150,
-},
-];
+const BASIC_FRAMES = FRAMES.filter((frame) => frame.tier === "basic");
+const STORE_FRAMES = FRAMES.filter((frame) => frame.tier !== "basic");
 
-const BASE_FRAMES = [
-  {
-    key: "frame_orange",
-    label: "Naranja",
-    ringClass: "border-orange-500 shadow-[0_0_18px_rgba(249,115,22,0.35)]",
-    dotClass: "bg-orange-400",
-  },
-  {
-    key: "frame_emerald",
-    label: "Esmeralda",
-    ringClass: "border-emerald-500 shadow-[0_0_18px_rgba(16,185,129,0.35)]",
-    dotClass: "bg-emerald-400",
-  },
-  {
-    key: "frame_blue",
-    label: "Azul",
-    ringClass: "border-sky-500 shadow-[0_0_18px_rgba(14,165,233,0.35)]",
-    dotClass: "bg-sky-400",
-  },
-  {
-    key: "frame_purple",
-    label: "Morado",
-    ringClass: "border-violet-500 shadow-[0_0_18px_rgba(139,92,246,0.35)]",
-    dotClass: "bg-violet-400",
-  },
-  {
-    key: "frame_gold",
-    label: "Dorado",
-    ringClass: "border-yellow-400 shadow-[0_0_18px_rgba(250,204,21,0.35)]",
-    dotClass: "bg-yellow-300",
-  },
-  {
-    key: "frame_guest",
-    label: "Invitado",
-    ringClass: "border-white/40 shadow-[0_0_18px_rgba(255,255,255,0.18)]",
-    dotClass: "bg-white/70",
-  },
-];
-
-const PREMIUM_FRAMES = [
-  {
-    key: "marco_perro",
-    label: "Marco Canino",
-    image: "/frames/marco_perro.png",
-    price: 85,
-  },
-  {
-    key: "marco_gato",
-    label: "Marco Felino",
-    image: "/frames/marco_gato.png",
-    price: 85,
-  },
-  {
-    key: "marco_oceano",
-    label: "Marco Océano",
-    image: "/frames/marco_oceano.png",
-    price: 110,
-  },
-  {
-    key: "marco_selva",
-    label: "Marco Selva",
-    image: "/frames/marco_selva.png",
-    price: 110,
-  },
-  {
-  key: "marco_comida",
-  label: "Marco Comida",
-  image: "/frames/marco_comida.png",
-  price: 100,
-},
-{
-  key: "marco_sabio",
-  label: "Marco Sabio",
-  image: "/frames/marco_sabio.png",
-  price: 110,
-},
-{
-  key: "marco_gamer",
-  label: "Marco Gamer",
-  image: "/frames/marco_gamer.png",
-  price: 110,
-},
-{
-  key: "marco_belleza",
-  label: "Marco Belleza",
-  image: "/frames/marco_belleza.png",
-  price: 110,
-},
-{
-  key: "marco_infernal",
-  label: "Marco Infernal",
-  image: "/frames/marco_infernal.png",
-  price: 200,
-},
-{
-  key: "marco_divino",
-  label: "Marco Divino",
-  image: "/frames/marco_divino.png",
-  price: 200,
-},
-];
+type StoreAvatar = (typeof STORE_AVATARS)[number];
+type StoreFrame = (typeof STORE_FRAMES)[number];
 
 type LeftTab = "preview" | "stats";
 type RightTab = "customization" | "shop";
@@ -253,6 +53,35 @@ const DEFAULT_OWNED_FRAMES = [
   "frame_gold",
   "frame_guest",
 ];
+
+function groupByGroup<T extends { group: string }>(items: T[]) {
+  return items.reduce(
+    (acc, item) => {
+      if (!acc[item.group]) acc[item.group] = [];
+      acc[item.group].push(item);
+      return acc;
+    },
+    {} as Record<string, T[]>
+  );
+}
+
+function getTierLabel(tier: string) {
+  if (tier === "legendary") return "Legendario";
+  if (tier === "collection") return "Colección";
+  return "Básico";
+}
+
+function getTierBadgeClass(tier: string) {
+  if (tier === "legendary") {
+    return "border-yellow-400/30 bg-yellow-500/10 text-yellow-200";
+  }
+
+  if (tier === "collection") {
+    return "border-cyan-400/25 bg-cyan-500/10 text-cyan-200";
+  }
+
+  return "border-white/10 bg-white/[0.04] text-white/60";
+}
 
 export default function PerfilPage() {
   const supabase = createClient();
@@ -345,43 +174,36 @@ export default function PerfilPage() {
     load();
   }, []);
 
-  const selectedBaseAvatar = useMemo(
-    () => BASE_AVATARS.find((avatar) => avatar.key === avatarKey) ?? null,
+  const selectedAvatar = useMemo(
+    () => AVATARS.find((avatar) => avatar.key === avatarKey) ?? AVATARS[0],
     [avatarKey]
   );
 
-  const selectedPremiumAvatar = useMemo(
-    () => PREMIUM_AVATARS.find((avatar) => avatar.key === avatarKey) ?? null,
-    [avatarKey]
-  );
-
-  const selectedBaseFrame = useMemo(
-    () => BASE_FRAMES.find((frame) => frame.key === frameKey) ?? null,
+  const selectedFrame = useMemo(
+    () => FRAMES.find((frame) => frame.key === frameKey) ?? FRAMES[0],
     [frameKey]
   );
 
-  const selectedPremiumFrame = useMemo(
-    () => PREMIUM_FRAMES.find((frame) => frame.key === frameKey) ?? null,
-    [frameKey]
-  );
-
-  const ownedPremiumAvatars = useMemo(
-    () => PREMIUM_AVATARS.filter((avatar) => ownedAvatars.includes(avatar.key)),
+  const ownedStoreAvatars = useMemo(
+    () => STORE_AVATARS.filter((avatar) => ownedAvatars.includes(avatar.key)),
     [ownedAvatars]
   );
 
-  const ownedPremiumFrames = useMemo(
-    () => PREMIUM_FRAMES.filter((frame) => ownedFrames.includes(frame.key)),
+  const ownedStoreFrames = useMemo(
+    () => STORE_FRAMES.filter((frame) => ownedFrames.includes(frame.key)),
     [ownedFrames]
   );
+
+  const groupedStoreAvatars = useMemo(() => groupByGroup(STORE_AVATARS), []);
+  const groupedStoreFrames = useMemo(() => groupByGroup(STORE_FRAMES), []);
 
   const winRate = useMemo(() => {
     if (!stats.games_played) return "0.0";
     return ((stats.games_won / stats.games_played) * 100).toFixed(1);
   }, [stats.games_played, stats.games_won]);
 
-  const purchasedAvatarsCount = ownedPremiumAvatars.length;
-  const purchasedFramesCount = ownedPremiumFrames.length;
+  const purchasedAvatarsCount = ownedStoreAvatars.length;
+  const purchasedFramesCount = ownedStoreFrames.length;
   const totalCosmeticsCount = purchasedAvatarsCount + purchasedFramesCount;
 
   const handleSaveProfile = async () => {
@@ -440,7 +262,7 @@ export default function PerfilPage() {
     }
   };
 
-  const handleBuyAvatar = async (avatar: (typeof PREMIUM_AVATARS)[number]) => {
+  const handleBuyAvatar = async (avatar: StoreAvatar) => {
     setMessage("");
     setErrorMessage("");
 
@@ -508,7 +330,7 @@ export default function PerfilPage() {
     }
   };
 
-  const handleBuyFrame = async (frame: (typeof PREMIUM_FRAMES)[number]) => {
+  const handleBuyFrame = async (frame: StoreFrame) => {
     setMessage("");
     setErrorMessage("");
 
@@ -627,27 +449,29 @@ export default function PerfilPage() {
             {leftTab === "preview" && (
               <div className="flex flex-col items-center text-center">
                 <div className="relative flex h-40 w-40 items-center justify-center rounded-full bg-black">
-                  {selectedPremiumFrame ? (
+                  {selectedFrame.image ? (
                     <img
-                      src={selectedPremiumFrame.image}
-                      alt={selectedPremiumFrame.label}
+                      src={selectedFrame.image}
+                      alt={selectedFrame.label}
                       className="absolute inset-0 h-full w-full object-contain"
                     />
                   ) : (
                     <div
-                      className={`absolute inset-0 rounded-full border-4 ${selectedBaseFrame?.ringClass ?? ""}`}
+                      className={`absolute inset-0 rounded-full border-4 ${
+                        selectedFrame.className ?? ""
+                      }`}
                     />
                   )}
 
-                  {selectedPremiumAvatar ? (
+                  {selectedAvatar.image ? (
                     <img
-                      src={selectedPremiumAvatar.image}
-                      alt={selectedPremiumAvatar.label}
+                      src={selectedAvatar.image}
+                      alt={selectedAvatar.label}
                       className="relative z-10 h-28 w-28 object-contain"
                     />
                   ) : (
                     <span className="relative z-10 text-6xl">
-                      {selectedBaseAvatar?.emoji ?? "🙂"}
+                      {selectedAvatar.emoji ?? "🙂"}
                     </span>
                   )}
                 </div>
@@ -665,19 +489,10 @@ export default function PerfilPage() {
 
                   <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
                     <p className="text-sm uppercase tracking-[0.18em] text-white/50">Correo</p>
-                    <p className="mt-2 text-lg font-bold break-all">
+                    <p className="mt-2 break-all text-lg font-bold">
                       {email || "No disponible"}
                     </p>
                   </div>
-                </div>
-
-                <div className="mt-6 w-full rounded-3xl border border-orange-500/15 bg-orange-500/5 p-5 text-left">
-                  <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
-                    Perfil
-                  </p>
-                  <p className="mt-2 text-white/70">
-                    Aquí ves tu identidad actual, tus puntos y cómo se verá tu avatar con el marco equipado.
-                  </p>
                 </div>
               </div>
             )}
@@ -695,159 +510,119 @@ export default function PerfilPage() {
                 </div>
 
                 <div className="mb-6 flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setStatsTab("performance")}
-                    className={`rounded-full border px-4 py-2 text-sm transition ${
-                      statsTab === "performance"
-                        ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
-                        : "border-white/10 bg-white/[0.03] text-white/65 hover:bg-white/[0.06]"
-                    }`}
-                  >
-                    Rendimiento
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setStatsTab("progress")}
-                    className={`rounded-full border px-4 py-2 text-sm transition ${
-                      statsTab === "progress"
-                        ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
-                        : "border-white/10 bg-white/[0.03] text-white/65 hover:bg-white/[0.06]"
-                    }`}
-                  >
-                    Progreso
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setStatsTab("collection")}
-                    className={`rounded-full border px-4 py-2 text-sm transition ${
-                      statsTab === "collection"
-                        ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
-                        : "border-white/10 bg-white/[0.03] text-white/65 hover:bg-white/[0.06]"
-                    }`}
-                  >
-                    Colección
-                  </button>
+                  {(["performance", "progress", "collection"] as StatsTab[]).map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => setStatsTab(item)}
+                      className={`rounded-full border px-4 py-2 text-sm transition ${
+                        statsTab === item
+                          ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
+                          : "border-white/10 bg-white/[0.03] text-white/65 hover:bg-white/[0.06]"
+                      }`}
+                    >
+                      {item === "performance"
+                        ? "Rendimiento"
+                        : item === "progress"
+                          ? "Progreso"
+                          : "Colección"}
+                    </button>
+                  ))}
                 </div>
 
                 {statsTab === "performance" && (
-                  <div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                          Partidas jugadas
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold">{stats.games_played}</p>
-                      </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                      <p className="text-sm uppercase tracking-[0.18em] text-white/50">
+                        Partidas jugadas
+                      </p>
+                      <p className="mt-2 text-3xl font-extrabold">{stats.games_played}</p>
+                    </div>
 
-                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                          Ganadas
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold text-emerald-400">
-                          {stats.games_won}
-                        </p>
-                      </div>
+                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                      <p className="text-sm uppercase tracking-[0.18em] text-white/50">
+                        Ganadas
+                      </p>
+                      <p className="mt-2 text-3xl font-extrabold text-emerald-400">
+                        {stats.games_won}
+                      </p>
+                    </div>
 
-                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                          Perdidas
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold text-red-400">
-                          {stats.games_lost}
-                        </p>
-                      </div>
+                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                      <p className="text-sm uppercase tracking-[0.18em] text-white/50">
+                        Perdidas
+                      </p>
+                      <p className="mt-2 text-3xl font-extrabold text-red-400">
+                        {stats.games_lost}
+                      </p>
+                    </div>
 
-                      <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 p-5">
-                        <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
-                          Win Rate
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold text-orange-200">
-                          {winRate}%
-                        </p>
-                      </div>
-
-                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:col-span-2">
-                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                          Mejor racha de victorias
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold text-yellow-300">
-                          {stats.best_win_streak}
-                        </p>
-                        <p className="mt-2 text-sm text-white/60">
-                          Racha actual: {stats.current_win_streak}
-                        </p>
-                      </div>
+                    <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 p-5">
+                      <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
+                        Win Rate
+                      </p>
+                      <p className="mt-2 text-3xl font-extrabold text-orange-200">
+                        {winRate}%
+                      </p>
                     </div>
                   </div>
                 )}
 
                 {statsTab === "progress" && (
-                  <div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                          Puntos actuales
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold">{points}</p>
-                      </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                      <p className="text-sm uppercase tracking-[0.18em] text-white/50">
+                        Puntos actuales
+                      </p>
+                      <p className="mt-2 text-3xl font-extrabold">{points}</p>
+                    </div>
 
-                      <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 p-5">
-                        <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
-                          Puntos acumulados
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold text-orange-200">
-                          {stats.total_points_earned}
-                        </p>
-                      </div>
+                    <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 p-5">
+                      <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
+                        Puntos acumulados
+                      </p>
+                      <p className="mt-2 text-3xl font-extrabold text-orange-200">
+                        {stats.total_points_earned}
+                      </p>
+                    </div>
 
-                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:col-span-2">
-                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                          Juego más jugado
-                        </p>
-                        <p className="mt-2 text-2xl font-extrabold">Piedra, Papel o Tijera</p>
-                        <p className="mt-2 text-sm text-white/60">
-                          Por ahora es el único modo disponible, así que domina tu historial.
-                        </p>
-                      </div>
+                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:col-span-2">
+                      <p className="text-sm uppercase tracking-[0.18em] text-white/50">
+                        Mejor racha de victorias
+                      </p>
+                      <p className="mt-2 text-3xl font-extrabold text-yellow-300">
+                        {stats.best_win_streak}
+                      </p>
+                      <p className="mt-2 text-sm text-white/60">
+                        Racha actual: {stats.current_win_streak}
+                      </p>
                     </div>
                   </div>
                 )}
 
                 {statsTab === "collection" && (
-                  <div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                          Avatares comprados
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold">
-                          {purchasedAvatarsCount}
-                        </p>
-                      </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                      <p className="text-sm uppercase tracking-[0.18em] text-white/50">
+                        Avatares comprados
+                      </p>
+                      <p className="mt-2 text-3xl font-extrabold">{purchasedAvatarsCount}</p>
+                    </div>
 
-                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                          Marcos comprados
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold">
-                          {purchasedFramesCount}
-                        </p>
-                      </div>
+                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                      <p className="text-sm uppercase tracking-[0.18em] text-white/50">
+                        Marcos comprados
+                      </p>
+                      <p className="mt-2 text-3xl font-extrabold">{purchasedFramesCount}</p>
+                    </div>
 
-                      <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 p-5 sm:col-span-2">
-                        <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
-                          Total de cosméticos premium
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold text-orange-200">
-                          {totalCosmeticsCount}
-                        </p>
-                        <p className="mt-2 text-sm text-white/60">
-                          Tu colección premium entre avatares y marcos.
-                        </p>
-                      </div>
+                    <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 p-5 sm:col-span-2">
+                      <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
+                        Total de cosméticos de tienda
+                      </p>
+                      <p className="mt-2 text-3xl font-extrabold text-orange-200">
+                        {totalCosmeticsCount}
+                      </p>
                     </div>
                   </div>
                 )}
@@ -883,34 +658,58 @@ export default function PerfilPage() {
             </div>
 
             {rightTab === "customization" && (
-              <>
+              <div className="space-y-6">
                 {playerIdentity?.is_guest && (
-                  <div className="mb-6 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 px-4 py-3 text-yellow-300">
+                  <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 px-4 py-3 text-yellow-300">
                     Estás viendo el perfil como invitado. Para guardar cambios permanentes necesitas una cuenta registrada.
                   </div>
                 )}
 
-                <div className="space-y-6">
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
-                      Nombre visible
-                    </label>
-                    <input
-                      type="text"
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      maxLength={20}
-                      className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
-                    />
-                  </div>
+                <div>
+                  <label className="mb-2 block text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
+                    Nombre visible
+                  </label>
+                  <input
+                    type="text"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    maxLength={20}
+                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
+                  />
+                </div>
 
+                <div>
+                  <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
+                    Avatares básicos
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {BASIC_AVATARS.map((avatar) => (
+                      <button
+                        key={avatar.key}
+                        type="button"
+                        onClick={() => setAvatarKey(avatar.key)}
+                        className={`rounded-2xl border p-4 text-center transition ${
+                          avatarKey === avatar.key
+                            ? "border-orange-500 bg-orange-500/10"
+                            : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
+                        }`}
+                      >
+                        <div className="text-3xl">{avatar.emoji}</div>
+                        <p className="mt-2 text-sm font-bold">{avatar.label}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {ownedStoreAvatars.length > 0 && (
                   <div>
                     <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
-                      Avatares básicos
+                      Avatares desbloqueados
                     </p>
 
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      {BASE_AVATARS.map((avatar) => (
+                      {ownedStoreAvatars.map((avatar) => (
                         <button
                           key={avatar.key}
                           type="button"
@@ -921,50 +720,61 @@ export default function PerfilPage() {
                               : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
                           }`}
                         >
-                          <div className="text-3xl">{avatar.emoji}</div>
-                          <p className="mt-2 text-sm font-bold">{avatar.label}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {ownedPremiumAvatars.length > 0 && (
-                    <div>
-                      <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
-                        Avatares premium desbloqueados
-                      </p>
-
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                        {ownedPremiumAvatars.map((avatar) => (
-                          <button
-                            key={avatar.key}
-                            type="button"
-                            onClick={() => setAvatarKey(avatar.key)}
-                            className={`rounded-2xl border p-4 text-center transition ${
-                              avatarKey === avatar.key
-                                ? "border-orange-500 bg-orange-500/10"
-                                : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
-                            }`}
-                          >
+                          {avatar.image && (
                             <img
                               src={avatar.image}
                               alt={avatar.label}
                               className="mx-auto h-14 w-14 object-contain"
                             />
-                            <p className="mt-2 text-sm font-bold">{avatar.label}</p>
-                          </button>
-                        ))}
-                      </div>
+                          )}
+                          <p className="mt-2 text-sm font-bold">{avatar.label}</p>
+                        </button>
+                      ))}
                     </div>
-                  )}
+                  </div>
+                )}
 
+                <div>
+                  <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
+                    Marcos básicos
+                  </p>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {BASIC_FRAMES.map((frame) => (
+                      <button
+                        key={frame.key}
+                        type="button"
+                        onClick={() => setFrameKey(frame.key)}
+                        className={`rounded-2xl border p-4 text-left transition ${
+                          frameKey === frame.key
+                            ? "border-orange-500 bg-orange-500/10"
+                            : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`flex h-10 w-10 items-center justify-center rounded-full border-4 bg-black ${
+                              frame.className ?? ""
+                            }`}
+                          />
+                          <div>
+                            <p className="font-bold">{frame.label}</p>
+                            <p className="text-xs text-white/60">Marco básico</p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {ownedStoreFrames.length > 0 && (
                   <div>
                     <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
-                      Marcos básicos
+                      Marcos desbloqueados
                     </p>
 
                     <div className="grid gap-3 sm:grid-cols-2">
-                      {BASE_FRAMES.map((frame) => (
+                      {ownedStoreFrames.map((frame) => (
                         <button
                           key={frame.key}
                           type="button"
@@ -976,92 +786,60 @@ export default function PerfilPage() {
                           }`}
                         >
                           <div className="flex items-center gap-3">
-                            <div
-                              className={`flex h-10 w-10 items-center justify-center rounded-full border-4 bg-black ${frame.ringClass}`}
-                            >
-                              <div className={`h-3 w-3 rounded-full ${frame.dotClass}`} />
+                            <div className="flex h-10 w-10 items-center justify-center">
+                              {frame.image && (
+                                <img
+                                  src={frame.image}
+                                  alt={frame.label}
+                                  className="max-h-10 max-w-10 object-contain"
+                                />
+                              )}
                             </div>
 
                             <div>
                               <p className="font-bold">{frame.label}</p>
-                              <p className="text-xs text-white/60">Marco básico</p>
+                              <p className="text-xs text-white/60">
+                                Marco {getTierLabel(frame.tier)}
+                              </p>
                             </div>
                           </div>
                         </button>
                       ))}
                     </div>
                   </div>
+                )}
 
-                  {ownedPremiumFrames.length > 0 && (
-                    <div>
-                      <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
-                        Marcos premium desbloqueados
-                      </p>
+                <button
+                  onClick={handleSaveProfile}
+                  disabled={saving || !!playerIdentity?.is_guest}
+                  className="w-full rounded-2xl bg-orange-500 px-5 py-3.5 text-lg font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {saving ? "Guardando..." : "Guardar perfil"}
+                </button>
 
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {ownedPremiumFrames.map((frame) => (
-                          <button
-                            key={frame.key}
-                            type="button"
-                            onClick={() => setFrameKey(frame.key)}
-                            className={`rounded-2xl border p-4 text-left transition ${
-                              frameKey === frame.key
-                                ? "border-orange-500 bg-orange-500/10"
-                                : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 items-center justify-center">
-                                <img
-                                  src={frame.image}
-                                  alt={frame.label}
-                                  className="max-h-10 max-w-10 object-contain"
-                                />
-                              </div>
+                {message && (
+                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-emerald-300">
+                    {message}
+                  </div>
+                )}
 
-                              <div>
-                                <p className="font-bold">{frame.label}</p>
-                                <p className="text-xs text-white/60">Marco premium</p>
-                              </div>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={handleSaveProfile}
-                    disabled={saving || !!playerIdentity?.is_guest}
-                    className="w-full rounded-2xl bg-orange-500 px-5 py-3.5 text-lg font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {saving ? "Guardando..." : "Guardar perfil"}
-                  </button>
-
-                  {message && (
-                    <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-emerald-300">
-                      {message}
-                    </div>
-                  )}
-
-                  {errorMessage && (
-                    <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
-                      {errorMessage}
-                    </div>
-                  )}
-                </div>
-              </>
+                {errorMessage && (
+                  <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
+                    {errorMessage}
+                  </div>
+                )}
+              </div>
             )}
 
             {rightTab === "shop" && (
               <div className="space-y-8">
                 <div className="rounded-3xl border border-orange-500/15 bg-orange-500/5 p-5">
                   <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
-                    Tienda básica
+                    Tienda
                   </p>
-                  <h2 className="mt-3 text-3xl font-extrabold">Cosméticos premium</h2>
+                  <h2 className="mt-3 text-3xl font-extrabold">Cosméticos</h2>
                   <p className="mt-2 text-white/70">
-                    Compra nuevos avatares y marcos usando tus puntos actuales.
+                    Compra avatares y marcos usando tus puntos actuales.
                   </p>
 
                   <div className="mt-5 rounded-2xl border border-white/10 bg-black/30 p-4">
@@ -1072,140 +850,176 @@ export default function PerfilPage() {
                   </div>
                 </div>
 
-                <div>
-                  <h3 className="text-xl font-bold">Avatares premium</h3>
+                <div className="space-y-8">
+                  <h3 className="text-2xl font-extrabold">Avatares</h3>
 
-                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                    {PREMIUM_AVATARS.map((avatar) => {
-                      const isOwned = ownedAvatars.includes(avatar.key);
-                      const isEquipped = avatarKey === avatar.key;
+                  {Object.entries(groupedStoreAvatars).map(([group, avatars]) => (
+                    <div key={group}>
+                      <h4 className="mb-4 text-lg font-bold text-orange-200">{group}</h4>
 
-                      return (
-                        <div
-                          key={avatar.key}
-                          className="rounded-3xl border border-white/10 bg-white/[0.03] p-5"
-                        >
-                          <div className="flex items-center gap-4">
-                            <img
-                              src={avatar.image}
-                              alt={avatar.label}
-                              className="h-16 w-16 object-contain"
-                            />
+                      <div className="grid grid-cols-2 gap-4">
+                        {avatars.map((avatar) => {
+                          const isOwned = ownedAvatars.includes(avatar.key);
+                          const isEquipped = avatarKey === avatar.key;
 
-                            <div>
-                              <p className="text-lg font-bold">{avatar.label}</p>
-                              <p className="text-white/60">Avatar premium</p>
+                          return (
+                            <div
+                              key={avatar.key}
+                              className="rounded-3xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-orange-500/25 hover:bg-white/[0.05]"
+                            >
+                              <div className="flex flex-col items-center text-center">
+                                {avatar.image && (
+                                  <img
+                                    src={avatar.image}
+                                    alt={avatar.label}
+                                    className="h-20 w-20 object-contain"
+                                  />
+                                )}
+
+                                <p className="mt-3 font-bold">{avatar.label}</p>
+
+                                <span
+                                  className={`mt-2 rounded-full border px-3 py-1 text-xs font-bold ${getTierBadgeClass(
+                                    avatar.tier
+                                  )}`}
+                                >
+                                  {getTierLabel(avatar.tier)}
+                                </span>
+
+                                <div className="mt-3 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-sm text-white/70">
+                                  {avatar.price} puntos
+                                </div>
+
+                                <div className="mt-4 w-full">
+                                  {isEquipped ? (
+                                    <button
+                                      type="button"
+                                      disabled
+                                      className="w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-bold text-emerald-300"
+                                    >
+                                      Equipado
+                                    </button>
+                                  ) : isOwned ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setAvatarKey(avatar.key);
+                                        setRightTab("customization");
+                                      }}
+                                      className="w-full rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-500/20"
+                                    >
+                                      Equipar
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleBuyAvatar(avatar)}
+                                      disabled={
+                                        buyingAvatarKey === avatar.key ||
+                                        !!playerIdentity?.is_guest
+                                      }
+                                      className="w-full rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm font-bold text-orange-200 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      {buyingAvatarKey === avatar.key
+                                        ? "Comprando..."
+                                        : "Comprar"}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          </div>
-
-                          <div className="mt-4 flex items-center justify-between gap-3">
-                            <div className="inline-flex rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-sm text-white/70">
-                              {avatar.price} puntos
-                            </div>
-
-                            {isEquipped ? (
-                              <button
-                                type="button"
-                                disabled
-                                className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-bold text-emerald-300 opacity-80"
-                              >
-                                Equipado
-                              </button>
-                            ) : isOwned ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setAvatarKey(avatar.key);
-                                  setRightTab("customization");
-                                }}
-                                className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-500/20"
-                              >
-                                Equipar
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleBuyAvatar(avatar)}
-                                disabled={buyingAvatarKey === avatar.key || !!playerIdentity?.is_guest}
-                                className="rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm font-bold text-orange-200 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {buyingAvatarKey === avatar.key ? "Comprando..." : "Comprar"}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
-                <div>
-                  <h3 className="text-xl font-bold">Marcos premium</h3>
+                <div className="space-y-8">
+                  <h3 className="text-2xl font-extrabold">Marcos</h3>
 
-                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                    {PREMIUM_FRAMES.map((frame) => {
-                      const isOwned = ownedFrames.includes(frame.key);
-                      const isEquipped = frameKey === frame.key;
+                  {Object.entries(groupedStoreFrames).map(([group, frames]) => (
+                    <div key={group}>
+                      <h4 className="mb-4 text-lg font-bold text-orange-200">{group}</h4>
 
-                      return (
-                        <div
-                          key={frame.key}
-                          className="rounded-3xl border border-white/10 bg-white/[0.03] p-5"
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className="flex h-16 w-16 items-center justify-center">
-                              <img
-                                src={frame.image}
-                                alt={frame.label}
-                                className="max-h-16 max-w-16 object-contain"
-                              />
+                      <div className="grid grid-cols-2 gap-4">
+                        {frames.map((frame) => {
+                          const isOwned = ownedFrames.includes(frame.key);
+                          const isEquipped = frameKey === frame.key;
+
+                          return (
+                            <div
+                              key={frame.key}
+                              className="rounded-3xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-orange-500/25 hover:bg-white/[0.05]"
+                            >
+                              <div className="flex flex-col items-center text-center">
+                                <div className="flex h-20 w-20 items-center justify-center">
+                                  {frame.image && (
+                                    <img
+                                      src={frame.image}
+                                      alt={frame.label}
+                                      className="max-h-20 max-w-20 object-contain"
+                                    />
+                                  )}
+                                </div>
+
+                                <p className="mt-3 font-bold">{frame.label}</p>
+
+                                <span
+                                  className={`mt-2 rounded-full border px-3 py-1 text-xs font-bold ${getTierBadgeClass(
+                                    frame.tier
+                                  )}`}
+                                >
+                                  {getTierLabel(frame.tier)}
+                                </span>
+
+                                <div className="mt-3 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-sm text-white/70">
+                                  {frame.price} puntos
+                                </div>
+
+                                <div className="mt-4 w-full">
+                                  {isEquipped ? (
+                                    <button
+                                      type="button"
+                                      disabled
+                                      className="w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-bold text-emerald-300"
+                                    >
+                                      Equipado
+                                    </button>
+                                  ) : isOwned ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setFrameKey(frame.key);
+                                        setRightTab("customization");
+                                      }}
+                                      className="w-full rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-500/20"
+                                    >
+                                      Equipar
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleBuyFrame(frame)}
+                                      disabled={
+                                        buyingFrameKey === frame.key ||
+                                        !!playerIdentity?.is_guest
+                                      }
+                                      className="w-full rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm font-bold text-orange-200 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      {buyingFrameKey === frame.key
+                                        ? "Comprando..."
+                                        : "Comprar"}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-
-                            <div>
-                              <p className="text-lg font-bold">{frame.label}</p>
-                              <p className="text-white/60">Marco premium</p>
-                            </div>
-                          </div>
-
-                          <div className="mt-4 flex items-center justify-between gap-3">
-                            <div className="inline-flex rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-sm text-white/70">
-                              {frame.price} puntos
-                            </div>
-
-                            {isEquipped ? (
-                              <button
-                                type="button"
-                                disabled
-                                className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-bold text-emerald-300 opacity-80"
-                              >
-                                Equipado
-                              </button>
-                            ) : isOwned ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setFrameKey(frame.key);
-                                  setRightTab("customization");
-                                }}
-                                className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-500/20"
-                              >
-                                Equipar
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleBuyFrame(frame)}
-                                disabled={buyingFrameKey === frame.key || !!playerIdentity?.is_guest}
-                                className="rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm font-bold text-orange-200 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                {buyingFrameKey === frame.key ? "Comprando..." : "Comprar"}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
                 {message && (
