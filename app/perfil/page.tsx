@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
 import { AVATARS, FRAMES } from "@/lib/profileCosmetics";
+import { getProfileLevelInfo } from "@/lib/profile/profileLevel";
 
 const BASIC_AVATARS = AVATARS.filter((avatar) => avatar.tier === "basic");
 const STORE_AVATARS = AVATARS.filter((avatar) => avatar.tier !== "basic");
@@ -284,6 +285,7 @@ export default function PerfilPage() {
       : 0;
 
   const playerRankLabel = getPlayerRankLabel(stats.games_played);
+  const levelInfo = getProfileLevelInfo(stats.total_points_earned);
   const winRateMessage = getWinRateMessage(winRateNumber);
   const comboTip = getComboTip(selectedAvatar.key, selectedFrame.key);
 
@@ -613,10 +615,10 @@ export default function PerfilPage() {
                     <p className="text-xs text-white/55">{getTierLabel(selectedFrame.tier)}</p>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                    <p className="text-2xl">🏆</p>
-                    <p className="mt-2 text-sm font-bold">Rango</p>
-                    <p className="text-xs text-white/55">{playerRankLabel}</p>
+                  <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-4">
+                    <p className="text-2xl">{levelInfo.emblem}</p>
+                    <p className="mt-2 text-sm font-bold">Nivel {levelInfo.level}</p>
+                    <p className="text-xs text-white/55">{levelInfo.title}</p>
                   </div>
                 </div>
               </div>
@@ -719,32 +721,47 @@ export default function PerfilPage() {
 
                 {statsTab === "progress" && (
                   <div className="space-y-4">
-                    <div className="rounded-[28px] border border-orange-500/20 bg-orange-500/5 p-5">
-                      <div className="flex items-center justify-between gap-4">
-                        <div>
-                          <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
-                            Meta de progreso
-                          </p>
-                          <p className="mt-2 text-3xl font-extrabold">
-                            {stats.total_points_earned}/{nextPointsGoal}
-                          </p>
-                          <p className="mt-2 text-sm text-white/60">
-                            Faltan {pointsToNextGoal} puntos para la siguiente meta.
-                          </p>
-                        </div>
+                    <div className="rounded-[28px] border border-yellow-500/20 bg-yellow-500/5 p-5 shadow-[0_0_35px_rgba(250,204,21,0.06)]">
+  <div className="flex items-center justify-between gap-4">
+    <div>
+      <p className="text-sm uppercase tracking-[0.18em] text-yellow-300">
+        Nivel {levelInfo.level}
+      </p>
 
-                        <div className="rounded-full border border-orange-500/25 bg-black/30 px-4 py-2 text-sm font-bold text-orange-200">
-                          {Math.max(0, Math.min(goalProgress, 100))}%
-                        </div>
-                      </div>
+      <p className="mt-2 text-3xl font-extrabold">
+        {levelInfo.emblem} {levelInfo.title}
+      </p>
 
-                      <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/10">
-                        <div
-                          className="h-full rounded-full bg-orange-500 transition-all"
-                          style={{ width: `${Math.max(0, Math.min(goalProgress, 100))}%` }}
-                        />
-                      </div>
-                    </div>
+      <p className="mt-2 text-sm text-white/60">
+        {levelInfo.isMaxLevel
+          ? "Ya alcanzaste el nivel máximo actual."
+          : `Faltan ${levelInfo.xpNeededForNextLevel} XP para nivel ${
+              levelInfo.level + 1
+            }.`}
+      </p>
+    </div>
+
+    <div className="rounded-full border border-yellow-500/25 bg-black/30 px-4 py-2 text-sm font-bold text-yellow-200">
+      {levelInfo.progressPercent}%
+    </div>
+  </div>
+
+  <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/10">
+    <div
+      className="h-full rounded-full bg-yellow-400 transition-all"
+      style={{ width: `${levelInfo.progressPercent}%` }}
+    />
+  </div>
+
+  <div className="mt-3 flex justify-between text-xs text-white/45">
+    <span>{levelInfo.currentLevelXp} XP</span>
+    <span>
+      {levelInfo.isMaxLevel
+        ? `${levelInfo.currentXp} XP`
+        : `${levelInfo.nextLevelXp} XP`}
+    </span>
+  </div>
+</div>
 
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
