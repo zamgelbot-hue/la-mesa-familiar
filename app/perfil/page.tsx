@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
-import { AVATARS, FRAMES } from "@/lib/profileCosmetics";
+import { getPlayerIdentity, type PlayerIdentity } from "@/lib/profile/getPlayerIdentity";
+import { AVATARS, FRAMES } from "@/lib/profile/profileCosmetics";
 import { getProfileLevelInfo } from "@/lib/profile/profileLevel";
 
 const BASIC_AVATARS = AVATARS.filter((avatar) => avatar.tier === "basic");
