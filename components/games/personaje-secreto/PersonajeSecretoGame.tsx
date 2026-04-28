@@ -49,6 +49,10 @@ export default function PersonajeSecretoGame({
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
   const winSoundPlayedRef = useRef(false);
+  const lastQuestionCountRef = useRef(0);
+  const lastAnsweredCountRef = useRef(0);
+  const lastGuessCountRef = useRef(0);
+  const lastTurnKeyRef = useRef<string | null>(null);
 
   const [room, setRoom] = useState<RoomRow | null>(null);
   const [players, setPlayers] = useState<RoomPlayerRow[]>([]);
@@ -236,40 +240,67 @@ export default function PersonajeSecretoGame({
     };
   };
 
-  const playWinSound = () => {
+    const playToneSequence = (
+    notes: number[],
+    type: OscillatorType = "triangle",
+    volume = 0.16,
+    duration = 0.18,
+  ) => {
     try {
       const AudioContextClass =
         window.AudioContext || (window as any).webkitAudioContext;
 
       const audioContext = new AudioContextClass();
-      const notes = [523.25, 659.25, 783.99, 1046.5];
 
       notes.forEach((frequency, index) => {
         const oscillator = audioContext.createOscillator();
         const gain = audioContext.createGain();
+        const startAt = audioContext.currentTime + index * 0.11;
 
-        oscillator.type = "triangle";
+        oscillator.type = type;
         oscillator.frequency.value = frequency;
 
-        gain.gain.setValueAtTime(0.0001, audioContext.currentTime + index * 0.12);
-        gain.gain.exponentialRampToValueAtTime(
-          0.22,
-          audioContext.currentTime + index * 0.12 + 0.03,
-        );
-        gain.gain.exponentialRampToValueAtTime(
-          0.0001,
-          audioContext.currentTime + index * 0.12 + 0.28,
-        );
+        gain.gain.setValueAtTime(0.0001, startAt);
+        gain.gain.exponentialRampToValueAtTime(volume, startAt + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
 
         oscillator.connect(gain);
         gain.connect(audioContext.destination);
 
-        oscillator.start(audioContext.currentTime + index * 0.12);
-        oscillator.stop(audioContext.currentTime + index * 0.12 + 0.3);
+        oscillator.start(startAt);
+        oscillator.stop(startAt + duration + 0.04);
       });
     } catch (error) {
       console.error("No se pudo reproducir sonido:", error);
     }
+  };
+
+  const playWinSound = () => {
+    playToneSequence([523.25, 659.25, 783.99, 1046.5], "triangle", 0.22, 0.28);
+  };
+
+  const playAskSound = () => {
+    playToneSequence([440, 587.33], "sine", 0.12, 0.16);
+  };
+
+  const playAnswerSound = () => {
+    playToneSequence([659.25, 523.25], "triangle", 0.12, 0.16);
+  };
+
+  const playWrongSound = () => {
+    playToneSequence([220, 196], "sawtooth", 0.09, 0.18);
+  };
+
+  const playConfirmSound = () => {
+    playToneSequence([392, 493.88, 587.33], "square", 0.08, 0.14);
+  };
+
+  const playTurnSound = () => {
+    playToneSequence([329.63, 392], "sine", 0.1, 0.14);
+  };
+
+  const playRematchSound = () => {
+    playToneSequence([392, 523.25, 392], "triangle", 0.13, 0.16);
   };
 
   const confirmSecret = async () => {
@@ -461,6 +492,8 @@ export default function PersonajeSecretoGame({
   };
 
   const handleRematch = async () => {
+    playRematchSound();
+    
     if (!room) return;
 
     const currentSettings = room.room_settings ?? {};
@@ -590,6 +623,64 @@ export default function PersonajeSecretoGame({
       winSoundPlayedRef.current = false;
     }
   }, [gameState.phase, gameState.winnerKey]);
+
+    useEffect(() => {
+    const questionCount = gameState.questions.length;
+    const answeredCount = gameState.questions.filter((q) => q.answer).length;
+    const guessCount = gameState.guesses.length;
+
+    if (
+      lastQuestionCountRef.current > 0 &&
+      questionCount > lastQuestionCountRef.current
+    ) {
+      playAskSound();
+    }
+
+    if (
+      lastAnsweredCountRef.current > 0 &&
+      answeredCount > lastAnsweredCountRef.current
+    ) {
+      playAnswerSound();
+    }
+
+    if (
+      lastGuessCountRef.current > 0 &&
+      guessCount > lastGuessCountRef.current
+    ) {
+      const latestGuess = gameState.guesses[0];
+
+      if (latestGuess?.result === "wrong") {
+        playWrongSound();
+      }
+
+      if (latestGuess?.result === "needs_confirmation") {
+        playConfirmSound();
+      }
+
+      if (latestGuess?.result === "correct") {
+        playWinSound();
+      }
+    }
+
+    if (
+      lastTurnKeyRef.current &&
+      gameState.currentTurnKey &&
+      lastTurnKeyRef.current !== gameState.currentTurnKey &&
+      gameState.phase === "playing"
+    ) {
+      playTurnSound();
+    }
+
+    lastQuestionCountRef.current = questionCount;
+    lastAnsweredCountRef.current = answeredCount;
+    lastGuessCountRef.current = guessCount;
+    lastTurnKeyRef.current = gameState.currentTurnKey;
+  }, [
+    gameState.questions,
+    gameState.guesses,
+    gameState.currentTurnKey,
+    gameState.phase,
+  ]);
 
   if (loading) {
     return (
