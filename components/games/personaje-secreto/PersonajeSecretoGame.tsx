@@ -10,9 +10,10 @@ import {
   createInitialPsGameState,
   getPsAnswerEmoji,
   getPsAnswerLabel,
+  getPsGuessResult,
   getPsPlayerKey,
   getPsSuggestedQuestions,
-  isClosePsGuess,
+  getRandomFirstTurn,
 } from "./psUtils";
 
 type PersonajeSecretoGameProps = {
@@ -85,6 +86,7 @@ export default function PersonajeSecretoGame({
   }, [sortedPlayers, currentPlayerName]);
 
   const currentPlayerKey = currentPlayer ? getPsPlayerKey(currentPlayer) : null;
+  const isHost = !!currentPlayer?.is_host;
 
   const opponent = useMemo(() => {
     if (!currentPlayerKey) return null;
@@ -94,9 +96,12 @@ export default function PersonajeSecretoGame({
   const opponentKey = opponent ? getPsPlayerKey(opponent) : null;
 
   const mySecret = currentPlayerKey ? gameState.secrets[currentPlayerKey] : null;
+
   const allPicked =
     sortedPlayers.length >= 2 &&
     sortedPlayers.every((p) => !!gameState.secrets[getPsPlayerKey(p)]);
+
+  const isMyTurn = !!currentPlayerKey && gameState.currentTurnKey === currentPlayerKey;
 
   const pendingQuestionsForMe = useMemo(() => {
     if (!currentPlayerKey) return [];
@@ -104,6 +109,13 @@ export default function PersonajeSecretoGame({
       (q) => q.toKey === currentPlayerKey && !q.answer,
     );
   }, [gameState.questions, currentPlayerKey]);
+
+  const pendingGuessesForMe = useMemo(() => {
+    if (!currentPlayerKey) return [];
+    return gameState.guesses.filter(
+      (g) => g.targetKey === currentPlayerKey && g.result === "needs_confirmation",
+    );
+  }, [gameState.guesses, currentPlayerKey]);
 
   const answeredQuestions = useMemo(() => {
     return gameState.questions.filter((q) => q.answer);
@@ -164,9 +176,7 @@ export default function PersonajeSecretoGame({
         console.error("Error actualizando Personaje Secreto:", error);
       } else {
         setGameState(nextState);
-        setRoom((prev) =>
-          prev ? { ...prev, room_settings: nextSettings } : prev,
-        );
+        setRoom((prev) => (prev ? { ...prev, room_settings: nextSettings } : prev));
       }
 
       setSaving(false);
@@ -186,9 +196,14 @@ export default function PersonajeSecretoGame({
       return;
     }
 
+    if (data?.status === "closed") {
+      router.replace("/");
+      return;
+    }
+
     setRoom((data ?? null) as RoomRow | null);
     setGameState(extractPsState(data?.room_settings));
-  }, [roomCode, supabase]);
+  }, [roomCode, router, supabase]);
 
   const loadPlayers = useCallback(async () => {
     const { data, error } = await supabase
@@ -204,6 +219,15 @@ export default function PersonajeSecretoGame({
 
     setPlayers((data ?? []) as RoomPlayerRow[]);
   }, [roomCode, supabase]);
+
+  const getOpponentTurn = () => {
+    if (!opponent || !opponentKey) return null;
+
+    return {
+      key: opponentKey,
+      name: opponent.player_name,
+    };
+  };
 
   const confirmSecret = async () => {
     if (!currentPlayer || !currentPlayerKey) return;
@@ -233,8 +257,15 @@ export default function PersonajeSecretoGame({
       const readyToPlay =
         playerKeys.length >= 2 && playerKeys.every((key) => !!next.secrets[key]);
 
-      if (readyToPlay) {
+      if (readyToPlay && next.phase === "picking") {
+        const first = getRandomFirstTurn(sortedPlayers);
+        const firstKey = first ? getPsPlayerKey(first) : playerKeys[0];
+
         next.phase = "playing";
+        next.currentTurnKey = firstKey;
+        next.currentTurnName =
+          sortedPlayers.find((p) => getPsPlayerKey(p) === firstKey)?.player_name ?? null;
+        next.turnNumber = 1;
       }
 
       return next;
@@ -245,6 +276,11 @@ export default function PersonajeSecretoGame({
 
   const askQuestion = async (presetQuestion?: string) => {
     if (!currentPlayer || !currentPlayerKey || !opponent || !opponentKey) return;
+
+    if (!isMyTurn) {
+      alert("Todavía no es tu turno.");
+      return;
+    }
 
     const cleanQuestion = (presetQuestion ?? questionInput).trim();
 
@@ -274,8 +310,13 @@ export default function PersonajeSecretoGame({
   };
 
   const answerQuestion = async (questionId: string, answer: PsAnswer) => {
+    if (!currentPlayer || !currentPlayerKey) return;
+
     await updatePsState((current) => ({
       ...current,
+      currentTurnKey: currentPlayerKey,
+      currentTurnName: currentPlayer.player_name,
+      turnNumber: (current.turnNumber ?? 0) + 1,
       questions: (current.questions ?? []).map((question) =>
         question.id === questionId
           ? {
@@ -289,7 +330,12 @@ export default function PersonajeSecretoGame({
   };
 
   const submitGuess = async () => {
-    if (!currentPlayer || !currentPlayerKey || !opponentKey) return;
+    if (!currentPlayer || !currentPlayerKey || !opponent || !opponentKey) return;
+
+    if (!isMyTurn) {
+      alert("Todavía no es tu turno.");
+      return;
+    }
 
     const cleanGuess = guessInput.trim();
 
@@ -305,7 +351,8 @@ export default function PersonajeSecretoGame({
       return;
     }
 
-    const correct = isClosePsGuess(cleanGuess, opponentSecret);
+    const result = getPsGuessResult(cleanGuess, opponentSecret);
+    const nextTurn = getOpponentTurn();
 
     await updatePsState((current) => {
       const nextGuess = {
@@ -313,21 +360,97 @@ export default function PersonajeSecretoGame({
         playerKey: currentPlayerKey,
         playerName: currentPlayer.player_name,
         targetKey: opponentKey,
+        targetName: opponent.player_name,
         guess: cleanGuess,
-        result: correct ? ("correct" as const) : ("wrong" as const),
+        result,
         createdAt: new Date().toISOString(),
+        resolvedAt: result === "needs_confirmation" ? null : new Date().toISOString(),
       };
 
       return {
         ...current,
-        phase: correct ? "finished" : current.phase,
-        winnerKey: correct ? currentPlayerKey : current.winnerKey,
-        winnerName: correct ? currentPlayer.player_name : current.winnerName,
+        phase: result === "correct" ? "finished" : current.phase,
+        winnerKey: result === "correct" ? currentPlayerKey : current.winnerKey,
+        winnerName: result === "correct" ? currentPlayer.player_name : current.winnerName,
+        currentTurnKey:
+          result === "correct" || result === "needs_confirmation"
+            ? current.currentTurnKey
+            : nextTurn?.key ?? current.currentTurnKey,
+        currentTurnName:
+          result === "correct" || result === "needs_confirmation"
+            ? current.currentTurnName
+            : nextTurn?.name ?? current.currentTurnName,
+        turnNumber:
+          result === "wrong" ? (current.turnNumber ?? 0) + 1 : current.turnNumber,
         guesses: [nextGuess, ...(current.guesses ?? [])].slice(0, 20),
       };
     });
 
     setGuessInput("");
+  };
+
+  const resolveGuessConfirmation = async (guessId: string, accepted: boolean) => {
+    if (!currentPlayer || !currentPlayerKey) return;
+
+    await updatePsState((current) => {
+      const guess = current.guesses.find((item) => item.id === guessId);
+      if (!guess) return current;
+
+      return {
+        ...current,
+        phase: accepted ? "finished" : current.phase,
+        winnerKey: accepted ? guess.playerKey : current.winnerKey,
+        winnerName: accepted ? guess.playerName : current.winnerName,
+        currentTurnKey: accepted ? current.currentTurnKey : currentPlayerKey,
+        currentTurnName: accepted ? current.currentTurnName : currentPlayer.player_name,
+        turnNumber: accepted ? current.turnNumber : (current.turnNumber ?? 0) + 1,
+        guesses: current.guesses.map((item) =>
+          item.id === guessId
+            ? {
+                ...item,
+                result: accepted ? "correct" : "wrong",
+                resolvedAt: new Date().toISOString(),
+              }
+            : item,
+        ),
+      };
+    });
+  };
+
+  const handleBackToSala = async () => {
+    const { error } = await supabase
+      .from("rooms")
+      .update({ status: "waiting" })
+      .eq("code", roomCode);
+
+    if (error) {
+      console.error("Error volviendo a sala:", error);
+      alert("No se pudo volver a sala.");
+      return;
+    }
+
+    router.replace(`/sala/${roomCode}`);
+  };
+
+  const handleCloseRoom = async () => {
+    if (!isHost) return;
+
+    const ok = window.confirm("¿Seguro que quieres terminar la sala?");
+    if (!ok) return;
+
+    const { error } = await supabase
+      .from("rooms")
+      .update({ status: "closed" })
+      .eq("code", roomCode);
+
+    if (error) {
+      console.error("Error cerrando sala:", error);
+      alert("No se pudo cerrar la sala.");
+      return;
+    }
+
+    await supabase.from("room_players").delete().eq("room_code", roomCode);
+    router.replace("/");
   };
 
   useEffect(() => {
@@ -394,7 +517,7 @@ export default function PersonajeSecretoGame({
                 La Mesa Familiar
               </p>
               <h1 className="mt-2 text-3xl font-black md:text-4xl">
-                Personaje Secreto
+                🕵️ Personaje Secreto
               </h1>
               <p className="mt-2 text-sm text-white/60">
                 Categoría:{" "}
@@ -402,20 +525,32 @@ export default function PersonajeSecretoGame({
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => router.push(`/sala/${roomCode}`)}
-              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white hover:bg-white/10"
-            >
-              Volver a sala
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleBackToSala}
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white hover:bg-white/10"
+              >
+                Volver a sala
+              </button>
+
+              {isHost && (
+                <button
+                  type="button"
+                  onClick={handleCloseRoom}
+                  className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200 hover:bg-red-500/20"
+                >
+                  Terminar sala
+                </button>
+              )}
+            </div>
           </div>
         </section>
 
         <section className="grid gap-5 lg:grid-cols-[1fr_420px]">
           <div className="space-y-5">
             <div className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5">
-              <h2 className="text-xl font-black">Estado de la partida</h2>
+              <h2 className="text-xl font-black">🧩 Estado de la partida</h2>
 
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 {sortedPlayers.map((player) => {
@@ -447,9 +582,21 @@ export default function PersonajeSecretoGame({
               </div>
             </div>
 
+            {gameState.phase === "playing" && (
+              <div className="rounded-[28px] border border-purple-500/20 bg-purple-500/10 p-5">
+                <h2 className="text-xl font-black text-purple-200">🎲 Turno actual</h2>
+                <p className="mt-2 text-white/70">
+                  Le toca a{" "}
+                  <span className="font-black text-white">
+                    {gameState.currentTurnName ?? "Jugador"}
+                  </span>
+                </p>
+              </div>
+            )}
+
             {gameState.phase === "picking" && !mySecret && (
               <div className="rounded-[28px] border border-orange-500/20 bg-zinc-950/90 p-5">
-                <h2 className="text-xl font-black">Elige tu personaje secreto</h2>
+                <h2 className="text-xl font-black">🎭 Elige tu personaje secreto</h2>
                 <p className="mt-2 text-sm text-white/60">
                   Escríbelo bien. El rival no podrá verlo.
                 </p>
@@ -477,7 +624,7 @@ export default function PersonajeSecretoGame({
             {gameState.phase === "picking" && mySecret && (
               <div className="rounded-[28px] border border-yellow-500/20 bg-yellow-500/10 p-5">
                 <h2 className="text-xl font-black text-yellow-200">
-                  Esperando al otro jugador...
+                  ⏳ Esperando al otro jugador...
                 </h2>
               </div>
             )}
@@ -486,10 +633,10 @@ export default function PersonajeSecretoGame({
               <>
                 <div className="rounded-[28px] border border-emerald-500/20 bg-zinc-950/90 p-5">
                   <h2 className="text-xl font-black text-emerald-300">
-                    Haz tu pregunta
+                    💬 Haz tu pregunta
                   </h2>
                   <p className="mt-2 text-sm text-white/60">
-                    El rival solo podrá responder con Sí, No o Probablemente.
+                    Solo puedes preguntar cuando sea tu turno.
                   </p>
 
                   <div className="mt-4 flex flex-col gap-3 md:flex-row">
@@ -497,12 +644,13 @@ export default function PersonajeSecretoGame({
                       value={questionInput}
                       onChange={(e) => setQuestionInput(e.target.value)}
                       placeholder="Ejemplo: ¿Tu personaje usa gorra?"
-                      className="min-h-[48px] flex-1 rounded-2xl border border-white/10 bg-black/40 px-4 text-white outline-none focus:border-emerald-400"
+                      disabled={!isMyTurn || pendingQuestionsForMe.length > 0}
+                      className="min-h-[48px] flex-1 rounded-2xl border border-white/10 bg-black/40 px-4 text-white outline-none focus:border-emerald-400 disabled:opacity-50"
                     />
 
                     <button
                       type="button"
-                      disabled={saving || !allPicked}
+                      disabled={saving || !allPicked || !isMyTurn || pendingQuestionsForMe.length > 0}
                       onClick={() => askQuestion()}
                       className="rounded-2xl bg-emerald-500 px-5 py-3 font-black text-black hover:bg-emerald-400 disabled:opacity-60"
                     >
@@ -511,25 +659,36 @@ export default function PersonajeSecretoGame({
                   </div>
                 </div>
 
-                <div className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5">
-                  <h2 className="text-xl font-black">Preguntas sugeridas</h2>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {suggestedQuestions.map((question) => (
-                      <button
-                        key={question}
-                        type="button"
-                        onClick={() => setQuestionInput(question)}
-                        className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-white/80 hover:border-orange-400/60 hover:bg-orange-500/10"
-                      >
-                        {question}
-                      </button>
-                    ))}
+                <div className="rounded-[28px] border border-sky-500/20 bg-zinc-950/90 p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-xl font-black text-sky-200">
+                      💡 Preguntas sugeridas
+                    </h2>
+                    <span className="text-xs font-bold text-white/40">
+                      Desliza ↓
+                    </span>
+                  </div>
+
+                  <div className="mt-4 max-h-[96px] overflow-y-auto pr-2">
+                    <div className="flex flex-wrap gap-2">
+                      {suggestedQuestions.map((question) => (
+                        <button
+                          key={question}
+                          type="button"
+                          onClick={() => setQuestionInput(question)}
+                          disabled={!isMyTurn}
+                          className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-white/80 hover:border-orange-400/60 hover:bg-orange-500/10 disabled:opacity-40"
+                        >
+                          {question}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
                 <div className="rounded-[28px] border border-orange-500/20 bg-zinc-950/90 p-5">
                   <h2 className="text-xl font-black text-orange-300">
-                    Adivinar personaje
+                    🕵️ Adivinar personaje
                   </h2>
 
                   <div className="mt-4 flex flex-col gap-3 md:flex-row">
@@ -537,12 +696,13 @@ export default function PersonajeSecretoGame({
                       value={guessInput}
                       onChange={(e) => setGuessInput(e.target.value)}
                       placeholder="Ejemplo: Mario Bros"
-                      className="min-h-[48px] flex-1 rounded-2xl border border-white/10 bg-black/40 px-4 text-white outline-none focus:border-orange-400"
+                      disabled={!isMyTurn || pendingGuessesForMe.length > 0}
+                      className="min-h-[48px] flex-1 rounded-2xl border border-white/10 bg-black/40 px-4 text-white outline-none focus:border-orange-400 disabled:opacity-50"
                     />
 
                     <button
                       type="button"
-                      disabled={saving || !allPicked}
+                      disabled={saving || !allPicked || !isMyTurn || pendingGuessesForMe.length > 0}
                       onClick={submitGuess}
                       className="rounded-2xl bg-orange-500 px-5 py-3 font-black text-black hover:bg-orange-400 disabled:opacity-60"
                     >
@@ -556,7 +716,7 @@ export default function PersonajeSecretoGame({
             {gameState.phase === "finished" && (
               <div className="rounded-[28px] border border-orange-500/30 bg-orange-500/10 p-6 text-center">
                 <p className="text-sm font-bold uppercase tracking-[0.2em] text-orange-300">
-                  Ganador
+                  🏆 Ganador
                 </p>
                 <h2 className="mt-2 text-4xl font-black">
                   {gameState.winnerName ?? "Jugador"}
@@ -566,10 +726,49 @@ export default function PersonajeSecretoGame({
           </div>
 
           <aside className="space-y-5">
+            {pendingGuessesForMe.length > 0 && (
+              <div className="rounded-[28px] border border-red-500/20 bg-red-500/10 p-5">
+                <h2 className="text-xl font-black text-red-200">
+                  ⚠️ Confirmación pendiente
+                </h2>
+
+                <div className="mt-4 space-y-3">
+                  {pendingGuessesForMe.map((guess) => (
+                    <div
+                      key={guess.id}
+                      className="rounded-2xl border border-white/10 bg-black/30 p-4"
+                    >
+                      <p className="text-sm text-white/60">
+                        {guess.playerName} cree que tu personaje es:
+                      </p>
+                      <p className="mt-2 text-xl font-black text-white">{guess.guess}</p>
+
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => resolveGuessConfirmation(guess.id, true)}
+                          className="rounded-xl bg-emerald-500 px-3 py-2 text-sm font-black text-black hover:bg-emerald-400"
+                        >
+                          Sí, correcto
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => resolveGuessConfirmation(guess.id, false)}
+                          className="rounded-xl bg-red-500 px-3 py-2 text-sm font-black text-white hover:bg-red-400"
+                        >
+                          No
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {pendingQuestionsForMe.length > 0 && (
               <div className="rounded-[28px] border border-yellow-500/20 bg-yellow-500/10 p-5">
                 <h2 className="text-xl font-black text-yellow-200">
-                  Te preguntaron
+                  ❓ Te preguntaron
                 </h2>
 
                 <div className="mt-4 space-y-3">
@@ -613,15 +812,12 @@ export default function PersonajeSecretoGame({
             )}
 
             <div className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5">
-              <h2 className="text-xl font-black">Chat de juego</h2>
-              <p className="mt-1 text-sm text-white/50">
-                Preguntas y respuestas oficiales de la partida.
-              </p>
+              <h2 className="text-xl font-black">💬 Chat de juego</h2>
 
-              <div className="mt-4 max-h-[520px] space-y-3 overflow-y-auto pr-1">
+              <div className="mt-4 max-h-[420px] space-y-3 overflow-y-auto pr-1">
                 {gameState.questions.length === 0 && (
                   <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/50">
-                    Todavía no hay preguntas. Haz la primera.
+                    Todavía no hay preguntas.
                   </div>
                 )}
 
@@ -638,9 +834,7 @@ export default function PersonajeSecretoGame({
                     {question.answer ? (
                       <p className="mt-3 rounded-xl bg-black/30 px-3 py-2 text-sm font-bold text-white/80">
                         {getPsAnswerEmoji(question.answer)} {question.toName}:{" "}
-                        <span className="text-white">
-                          {getPsAnswerLabel(question.answer)}
-                        </span>
+                        {getPsAnswerLabel(question.answer)}
                       </p>
                     ) : (
                       <p className="mt-3 text-sm font-bold text-yellow-300">
@@ -654,7 +848,7 @@ export default function PersonajeSecretoGame({
 
             <div className="rounded-[28px] border border-emerald-500/20 bg-zinc-950/90 p-5">
               <h2 className="text-xl font-black text-emerald-300">
-                Pistas confirmadas
+                ✅ Pistas confirmadas
               </h2>
 
               <div className="mt-4 space-y-2">
@@ -683,7 +877,7 @@ export default function PersonajeSecretoGame({
 
             {gameState.guesses.length > 0 && (
               <div className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5">
-                <h2 className="text-xl font-black">Intentos</h2>
+                <h2 className="text-xl font-black">🎯 Intentos</h2>
 
                 <div className="mt-4 space-y-2">
                   {gameState.guesses.map((guess) => (
@@ -700,10 +894,16 @@ export default function PersonajeSecretoGame({
                         className={
                           guess.result === "correct"
                             ? "text-sm font-bold text-emerald-300"
-                            : "text-sm font-bold text-red-300"
+                            : guess.result === "needs_confirmation"
+                              ? "text-sm font-bold text-yellow-300"
+                              : "text-sm font-bold text-red-300"
                         }
                       >
-                        {guess.result === "correct" ? "Correcto" : "Incorrecto"}
+                        {guess.result === "correct"
+                          ? "Correcto"
+                          : guess.result === "needs_confirmation"
+                            ? "Esperando confirmación"
+                            : "Incorrecto"}
                       </p>
                     </div>
                   ))}
