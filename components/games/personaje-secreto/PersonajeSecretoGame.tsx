@@ -4,12 +4,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import RoomChat from "@/components/RoomChat";
 import { createClient } from "@/lib/supabase/client";
-import type { PsGameState } from "./psTypes";
+import type { PsAnswer, PsGameState, PsQuestion } from "./psTypes";
 import {
   createInitialPsGameState,
+  getPsAnswerEmoji,
+  getPsAnswerLabel,
   getPsPlayerKey,
+  getPsSuggestedQuestions,
   isClosePsGuess,
 } from "./psUtils";
 
@@ -49,6 +51,7 @@ export default function PersonajeSecretoGame({
   const [room, setRoom] = useState<RoomRow | null>(null);
   const [players, setPlayers] = useState<RoomPlayerRow[]>([]);
   const [secretInput, setSecretInput] = useState("");
+  const [questionInput, setQuestionInput] = useState("");
   const [guessInput, setGuessInput] = useState("");
   const [gameState, setGameState] = useState<PsGameState>(createInitialPsGameState());
   const [loading, setLoading] = useState(true);
@@ -91,10 +94,24 @@ export default function PersonajeSecretoGame({
   const opponentKey = opponent ? getPsPlayerKey(opponent) : null;
 
   const mySecret = currentPlayerKey ? gameState.secrets[currentPlayerKey] : null;
-  const opponentHasPicked = opponentKey ? !!gameState.secrets[opponentKey] : false;
-  const allPicked = sortedPlayers.length >= 2 && sortedPlayers.every((p) => {
-    return !!gameState.secrets[getPsPlayerKey(p)];
-  });
+  const allPicked =
+    sortedPlayers.length >= 2 &&
+    sortedPlayers.every((p) => !!gameState.secrets[getPsPlayerKey(p)]);
+
+  const pendingQuestionsForMe = useMemo(() => {
+    if (!currentPlayerKey) return [];
+    return gameState.questions.filter(
+      (q) => q.toKey === currentPlayerKey && !q.answer,
+    );
+  }, [gameState.questions, currentPlayerKey]);
+
+  const answeredQuestions = useMemo(() => {
+    return gameState.questions.filter((q) => q.answer);
+  }, [gameState.questions]);
+
+  const suggestedQuestions = useMemo(() => {
+    return getPsSuggestedQuestions(roomVariant);
+  }, [roomVariant]);
 
   const categoryLabel = useMemo(() => {
     const labels: Record<string, string> = {
@@ -118,6 +135,7 @@ export default function PersonajeSecretoGame({
       ...createInitialPsGameState(),
       ...saved,
       secrets: saved.secrets ?? {},
+      questions: saved.questions ?? [],
       guesses: saved.guesses ?? [],
     };
   };
@@ -147,7 +165,7 @@ export default function PersonajeSecretoGame({
       } else {
         setGameState(nextState);
         setRoom((prev) =>
-          prev ? { ...prev, room_settings: nextSettings } : prev
+          prev ? { ...prev, room_settings: nextSettings } : prev,
         );
       }
 
@@ -225,6 +243,51 @@ export default function PersonajeSecretoGame({
     setSecretInput("");
   };
 
+  const askQuestion = async (presetQuestion?: string) => {
+    if (!currentPlayer || !currentPlayerKey || !opponent || !opponentKey) return;
+
+    const cleanQuestion = (presetQuestion ?? questionInput).trim();
+
+    if (cleanQuestion.length < 4) {
+      alert("Escribe una pregunta válida.");
+      return;
+    }
+
+    const question: PsQuestion = {
+      id: crypto.randomUUID(),
+      fromKey: currentPlayerKey,
+      fromName: currentPlayer.player_name,
+      toKey: opponentKey,
+      toName: opponent.player_name,
+      question: cleanQuestion,
+      answer: null,
+      answeredAt: null,
+      createdAt: new Date().toISOString(),
+    };
+
+    await updatePsState((current) => ({
+      ...current,
+      questions: [question, ...(current.questions ?? [])].slice(0, 60),
+    }));
+
+    setQuestionInput("");
+  };
+
+  const answerQuestion = async (questionId: string, answer: PsAnswer) => {
+    await updatePsState((current) => ({
+      ...current,
+      questions: (current.questions ?? []).map((question) =>
+        question.id === questionId
+          ? {
+              ...question,
+              answer,
+              answeredAt: new Date().toISOString(),
+            }
+          : question,
+      ),
+    }));
+  };
+
   const submitGuess = async () => {
     if (!currentPlayer || !currentPlayerKey || !opponentKey) return;
 
@@ -251,7 +314,7 @@ export default function PersonajeSecretoGame({
         playerName: currentPlayer.player_name,
         targetKey: opponentKey,
         guess: cleanGuess,
-        result: correct ? "correct" as const : "wrong" as const,
+        result: correct ? ("correct" as const) : ("wrong" as const),
         createdAt: new Date().toISOString(),
       };
 
@@ -334,7 +397,8 @@ export default function PersonajeSecretoGame({
                 Personaje Secreto
               </h1>
               <p className="mt-2 text-sm text-white/60">
-                Categoría: <span className="font-bold text-orange-300">{categoryLabel}</span>
+                Categoría:{" "}
+                <span className="font-bold text-orange-300">{categoryLabel}</span>
               </p>
             </div>
 
@@ -348,7 +412,7 @@ export default function PersonajeSecretoGame({
           </div>
         </section>
 
-        <section className="grid gap-5 lg:grid-cols-[1fr_380px]">
+        <section className="grid gap-5 lg:grid-cols-[1fr_420px]">
           <div className="space-y-5">
             <div className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5">
               <h2 className="text-xl font-black">Estado de la partida</h2>
@@ -387,7 +451,7 @@ export default function PersonajeSecretoGame({
               <div className="rounded-[28px] border border-orange-500/20 bg-zinc-950/90 p-5">
                 <h2 className="text-xl font-black">Elige tu personaje secreto</h2>
                 <p className="mt-2 text-sm text-white/60">
-                  Escríbelo bien, pero no te preocupes: el sistema acepta respuestas parecidas.
+                  Escríbelo bien. El rival no podrá verlo.
                 </p>
 
                 <div className="mt-4 flex flex-col gap-3 md:flex-row">
@@ -415,41 +479,78 @@ export default function PersonajeSecretoGame({
                 <h2 className="text-xl font-black text-yellow-200">
                   Esperando al otro jugador...
                 </h2>
-                <p className="mt-2 text-white/70">
-                  Tu personaje ya quedó guardado. Tu rival{" "}
-                  {opponentHasPicked ? "también eligió." : "todavía está eligiendo."}
-                </p>
               </div>
             )}
 
             {gameState.phase === "playing" && (
-              <div className="rounded-[28px] border border-emerald-500/20 bg-zinc-950/90 p-5">
-                <h2 className="text-xl font-black text-emerald-300">
-                  ¡La partida ya empezó!
-                </h2>
-                <p className="mt-2 text-sm text-white/60">
-                  Usa el chat para hacer preguntas. Cuando creas saber la respuesta,
-                  escribe el personaje aquí abajo.
-                </p>
+              <>
+                <div className="rounded-[28px] border border-emerald-500/20 bg-zinc-950/90 p-5">
+                  <h2 className="text-xl font-black text-emerald-300">
+                    Haz tu pregunta
+                  </h2>
+                  <p className="mt-2 text-sm text-white/60">
+                    El rival solo podrá responder con Sí, No o Probablemente.
+                  </p>
 
-                <div className="mt-4 flex flex-col gap-3 md:flex-row">
-                  <input
-                    value={guessInput}
-                    onChange={(e) => setGuessInput(e.target.value)}
-                    placeholder="Adivinar personaje..."
-                    className="min-h-[48px] flex-1 rounded-2xl border border-white/10 bg-black/40 px-4 text-white outline-none focus:border-emerald-400"
-                  />
+                  <div className="mt-4 flex flex-col gap-3 md:flex-row">
+                    <input
+                      value={questionInput}
+                      onChange={(e) => setQuestionInput(e.target.value)}
+                      placeholder="Ejemplo: ¿Tu personaje usa gorra?"
+                      className="min-h-[48px] flex-1 rounded-2xl border border-white/10 bg-black/40 px-4 text-white outline-none focus:border-emerald-400"
+                    />
 
-                  <button
-                    type="button"
-                    disabled={saving || !allPicked}
-                    onClick={submitGuess}
-                    className="rounded-2xl bg-emerald-500 px-5 py-3 font-black text-black hover:bg-emerald-400 disabled:opacity-60"
-                  >
-                    Adivinar
-                  </button>
+                    <button
+                      type="button"
+                      disabled={saving || !allPicked}
+                      onClick={() => askQuestion()}
+                      className="rounded-2xl bg-emerald-500 px-5 py-3 font-black text-black hover:bg-emerald-400 disabled:opacity-60"
+                    >
+                      Preguntar
+                    </button>
+                  </div>
                 </div>
-              </div>
+
+                <div className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5">
+                  <h2 className="text-xl font-black">Preguntas sugeridas</h2>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {suggestedQuestions.map((question) => (
+                      <button
+                        key={question}
+                        type="button"
+                        onClick={() => setQuestionInput(question)}
+                        className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-white/80 hover:border-orange-400/60 hover:bg-orange-500/10"
+                      >
+                        {question}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-[28px] border border-orange-500/20 bg-zinc-950/90 p-5">
+                  <h2 className="text-xl font-black text-orange-300">
+                    Adivinar personaje
+                  </h2>
+
+                  <div className="mt-4 flex flex-col gap-3 md:flex-row">
+                    <input
+                      value={guessInput}
+                      onChange={(e) => setGuessInput(e.target.value)}
+                      placeholder="Ejemplo: Mario Bros"
+                      className="min-h-[48px] flex-1 rounded-2xl border border-white/10 bg-black/40 px-4 text-white outline-none focus:border-orange-400"
+                    />
+
+                    <button
+                      type="button"
+                      disabled={saving || !allPicked}
+                      onClick={submitGuess}
+                      className="rounded-2xl bg-orange-500 px-5 py-3 font-black text-black hover:bg-orange-400 disabled:opacity-60"
+                    >
+                      Adivinar
+                    </button>
+                  </div>
+                </div>
+              </>
             )}
 
             {gameState.phase === "finished" && (
@@ -462,10 +563,127 @@ export default function PersonajeSecretoGame({
                 </h2>
               </div>
             )}
+          </div>
+
+          <aside className="space-y-5">
+            {pendingQuestionsForMe.length > 0 && (
+              <div className="rounded-[28px] border border-yellow-500/20 bg-yellow-500/10 p-5">
+                <h2 className="text-xl font-black text-yellow-200">
+                  Te preguntaron
+                </h2>
+
+                <div className="mt-4 space-y-3">
+                  {pendingQuestionsForMe.map((question) => (
+                    <div
+                      key={question.id}
+                      className="rounded-2xl border border-white/10 bg-black/30 p-4"
+                    >
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-white/40">
+                        {question.fromName}
+                      </p>
+                      <p className="mt-2 font-bold text-white">{question.question}</p>
+
+                      <div className="mt-4 grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => answerQuestion(question.id, "si")}
+                          className="rounded-xl bg-emerald-500 px-3 py-2 text-sm font-black text-black hover:bg-emerald-400"
+                        >
+                          Sí
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => answerQuestion(question.id, "no")}
+                          className="rounded-xl bg-red-500 px-3 py-2 text-sm font-black text-white hover:bg-red-400"
+                        >
+                          No
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => answerQuestion(question.id, "probablemente")}
+                          className="rounded-xl bg-yellow-400 px-3 py-2 text-sm font-black text-black hover:bg-yellow-300"
+                        >
+                          Prob.
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5">
+              <h2 className="text-xl font-black">Chat de juego</h2>
+              <p className="mt-1 text-sm text-white/50">
+                Preguntas y respuestas oficiales de la partida.
+              </p>
+
+              <div className="mt-4 max-h-[520px] space-y-3 overflow-y-auto pr-1">
+                {gameState.questions.length === 0 && (
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/50">
+                    Todavía no hay preguntas. Haz la primera.
+                  </div>
+                )}
+
+                {gameState.questions.map((question) => (
+                  <div
+                    key={question.id}
+                    className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
+                  >
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-orange-300/80">
+                      {question.fromName} preguntó
+                    </p>
+                    <p className="mt-2 font-bold">{question.question}</p>
+
+                    {question.answer ? (
+                      <p className="mt-3 rounded-xl bg-black/30 px-3 py-2 text-sm font-bold text-white/80">
+                        {getPsAnswerEmoji(question.answer)} {question.toName}:{" "}
+                        <span className="text-white">
+                          {getPsAnswerLabel(question.answer)}
+                        </span>
+                      </p>
+                    ) : (
+                      <p className="mt-3 text-sm font-bold text-yellow-300">
+                        Esperando respuesta...
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[28px] border border-emerald-500/20 bg-zinc-950/90 p-5">
+              <h2 className="text-xl font-black text-emerald-300">
+                Pistas confirmadas
+              </h2>
+
+              <div className="mt-4 space-y-2">
+                {answeredQuestions.length === 0 && (
+                  <p className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/50">
+                    Aquí aparecerán las respuestas confirmadas.
+                  </p>
+                )}
+
+                {answeredQuestions.map((question) => (
+                  <div
+                    key={question.id}
+                    className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3"
+                  >
+                    <p className="text-sm font-bold">{question.question}</p>
+                    {question.answer && (
+                      <p className="mt-1 text-sm text-white/70">
+                        {getPsAnswerEmoji(question.answer)}{" "}
+                        {getPsAnswerLabel(question.answer)}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
 
             {gameState.guesses.length > 0 && (
               <div className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5">
-                <h2 className="text-xl font-black">Intentos recientes</h2>
+                <h2 className="text-xl font-black">Intentos</h2>
 
                 <div className="mt-4 space-y-2">
                   {gameState.guesses.map((guess) => (
@@ -492,11 +710,6 @@ export default function PersonajeSecretoGame({
                 </div>
               </div>
             )}
-          </div>
-
-          <aside className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-4">
-            <h2 className="mb-3 text-xl font-black">Chat de pistas</h2>
-            <RoomChat roomCode={roomCode} />
           </aside>
         </section>
       </div>
