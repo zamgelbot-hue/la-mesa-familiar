@@ -4,6 +4,8 @@ export type PsPhase = "picking" | "playing" | "finished";
 
 export type PsAnswer = "si" | "no" | "probablemente";
 
+export type PsGuessResult = "correct" | "wrong" | "needs_confirmation";
+
 export type PsPlayerSecret = {
   playerKey: string;
   playerName: string;
@@ -28,15 +30,20 @@ export type PsGuess = {
   playerKey: string;
   playerName: string;
   targetKey: string;
+  targetName: string;
   guess: string;
-  result: "correct" | "wrong" | "needs_confirmation";
+  result: PsGuessResult;
   createdAt: string;
+  resolvedAt: string | null;
 };
 
 export type PsGameState = {
   phase: PsPhase;
   winnerKey: string | null;
   winnerName: string | null;
+  currentTurnKey: string | null;
+  currentTurnName: string | null;
+  turnNumber: number;
   secrets: Record<string, PsPlayerSecret>;
   questions: PsQuestion[];
   guesses: PsGuess[];
