@@ -1,3 +1,5 @@
+// 📍 app/juego/[code]/page.tsx
+
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -7,6 +9,7 @@ import PPTGame from "@/components/games/piedra-papel-o-tijera/PPTGame";
 import LoteriaGame from "@/components/games/loteria-mexicana/LoteriaGame";
 import QuestionGame from "@/components/games/pregunta/QuestionGame";
 import GatoGame from "@/components/games/gato/GatoGame";
+import PersonajeSecretoGame from "@/components/games/personaje-secreto/PersonajeSecretoGame";
 
 type RoomRow = {
   code: string;
@@ -188,6 +191,16 @@ export default function JuegoPage() {
       />
     );
   }
+
+  if (room.game_slug === "personaje-secreto") {
+  return (
+    <PersonajeSecretoGame
+      roomCode={code}
+      roomVariant={room.game_variant}
+      roomSettings={room.room_settings}
+    />
+  );
+}
 
   return (
     <main className="min-h-screen bg-black px-6 py-12 text-white">
