@@ -48,6 +48,7 @@ export default function PersonajeSecretoGame({
   const router = useRouter();
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
+  const winSoundPlayedRef = useRef(false);
 
   const [room, setRoom] = useState<RoomRow | null>(null);
   const [players, setPlayers] = useState<RoomPlayerRow[]>([]);
@@ -94,7 +95,6 @@ export default function PersonajeSecretoGame({
   }, [sortedPlayers, currentPlayerKey]);
 
   const opponentKey = opponent ? getPsPlayerKey(opponent) : null;
-
   const mySecret = currentPlayerKey ? gameState.secrets[currentPlayerKey] : null;
 
   const allPicked =
@@ -196,13 +196,20 @@ export default function PersonajeSecretoGame({
       return;
     }
 
-    if (data?.status === "closed") {
+    if (!data) return;
+
+    if (data.status === "closed") {
       router.replace("/");
       return;
     }
 
-    setRoom((data ?? null) as RoomRow | null);
-    setGameState(extractPsState(data?.room_settings));
+    if (data.status === "waiting") {
+      router.replace(`/sala/${roomCode}`);
+      return;
+    }
+
+    setRoom(data as RoomRow);
+    setGameState(extractPsState(data.room_settings));
   }, [roomCode, router, supabase]);
 
   const loadPlayers = useCallback(async () => {
@@ -227,6 +234,42 @@ export default function PersonajeSecretoGame({
       key: opponentKey,
       name: opponent.player_name,
     };
+  };
+
+  const playWinSound = () => {
+    try {
+      const AudioContextClass =
+        window.AudioContext || (window as any).webkitAudioContext;
+
+      const audioContext = new AudioContextClass();
+      const notes = [523.25, 659.25, 783.99, 1046.5];
+
+      notes.forEach((frequency, index) => {
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+
+        oscillator.type = "triangle";
+        oscillator.frequency.value = frequency;
+
+        gain.gain.setValueAtTime(0.0001, audioContext.currentTime + index * 0.12);
+        gain.gain.exponentialRampToValueAtTime(
+          0.22,
+          audioContext.currentTime + index * 0.12 + 0.03,
+        );
+        gain.gain.exponentialRampToValueAtTime(
+          0.0001,
+          audioContext.currentTime + index * 0.12 + 0.28,
+        );
+
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+
+        oscillator.start(audioContext.currentTime + index * 0.12);
+        oscillator.stop(audioContext.currentTime + index * 0.12 + 0.3);
+      });
+    } catch (error) {
+      console.error("No se pudo reproducir sonido:", error);
+    }
   };
 
   const confirmSecret = async () => {
@@ -417,7 +460,45 @@ export default function PersonajeSecretoGame({
     });
   };
 
+  const handleRematch = async () => {
+    if (!room) return;
+
+    const currentSettings = room.room_settings ?? {};
+    const nextSettings = {
+      ...currentSettings,
+      personaje_secreto: createInitialPsGameState(),
+    };
+
+    const { error } = await supabase
+      .from("rooms")
+      .update({
+        status: "playing",
+        room_settings: nextSettings,
+      })
+      .eq("code", roomCode);
+
+    if (error) {
+      console.error("Error iniciando revancha:", error);
+      alert("No se pudo iniciar la revancha.");
+      return;
+    }
+
+    setSecretInput("");
+    setQuestionInput("");
+    setGuessInput("");
+    setGameState(createInitialPsGameState());
+    setRoom((prev) =>
+      prev ? { ...prev, status: "playing", room_settings: nextSettings } : prev,
+    );
+  };
+
   const handleBackToSala = async () => {
+    const ok = window.confirm(
+      "¿Quieres volver a sala? Todos los jugadores regresarán a la sala.",
+    );
+
+    if (!ok) return;
+
     const { error } = await supabase
       .from("rooms")
       .update({ status: "waiting" })
@@ -496,6 +577,19 @@ export default function PersonajeSecretoGame({
       supabase.removeChannel(channel);
     };
   }, [supabase, roomCode, loadRoom, loadPlayers]);
+
+  useEffect(() => {
+    if (gameState.phase === "finished" && gameState.winnerKey) {
+      if (!winSoundPlayedRef.current) {
+        winSoundPlayedRef.current = true;
+        playWinSound();
+      }
+    }
+
+    if (gameState.phase !== "finished") {
+      winSoundPlayedRef.current = false;
+    }
+  }, [gameState.phase, gameState.winnerKey]);
 
   if (loading) {
     return (
@@ -714,13 +808,55 @@ export default function PersonajeSecretoGame({
             )}
 
             {gameState.phase === "finished" && (
-              <div className="rounded-[28px] border border-orange-500/30 bg-orange-500/10 p-6 text-center">
-                <p className="text-sm font-bold uppercase tracking-[0.2em] text-orange-300">
-                  🏆 Ganador
-                </p>
-                <h2 className="mt-2 text-4xl font-black">
-                  {gameState.winnerName ?? "Jugador"}
-                </h2>
+              <div className="relative overflow-hidden rounded-[32px] border border-orange-500/40 bg-gradient-to-br from-orange-500/20 via-zinc-950 to-yellow-500/10 p-8 text-center shadow-[0_0_60px_rgba(249,115,22,0.18)]">
+                <div className="pointer-events-none absolute inset-0 opacity-20">
+                  <div className="absolute left-8 top-6 text-5xl">🎉</div>
+                  <div className="absolute right-10 top-10 text-5xl">🏆</div>
+                  <div className="absolute bottom-8 left-12 text-5xl">✨</div>
+                  <div className="absolute bottom-6 right-14 text-5xl">🎊</div>
+                </div>
+
+                <div className="relative z-10">
+                  <p className="text-sm font-black uppercase tracking-[0.24em] text-orange-300">
+                    Ganador de la partida
+                  </p>
+
+                  <h2 className="mt-3 text-5xl font-black text-white md:text-6xl">
+                    {gameState.winnerName ?? "Jugador"}
+                  </h2>
+
+                  <p className="mx-auto mt-3 max-w-xl text-sm text-white/60">
+                    Descubrió el personaje secreto y ganó la partida.
+                  </p>
+
+                  <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={handleRematch}
+                      className="rounded-2xl bg-orange-500 px-6 py-3 font-black text-black hover:bg-orange-400"
+                    >
+                      Revancha
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleBackToSala}
+                      className="rounded-2xl border border-white/10 bg-white/5 px-6 py-3 font-black text-white hover:bg-white/10"
+                    >
+                      Volver a sala
+                    </button>
+
+                    {isHost && (
+                      <button
+                        type="button"
+                        onClick={handleCloseRoom}
+                        className="rounded-2xl border border-red-500/30 bg-red-500/10 px-6 py-3 font-black text-red-200 hover:bg-red-500/20"
+                      >
+                        Terminar sala
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </div>
