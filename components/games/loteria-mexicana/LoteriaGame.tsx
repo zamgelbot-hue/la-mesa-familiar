@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   getPlayerIdentity,
   type PlayerIdentity,
-} from "@/lib/getPlayerIdentity";
+} from "@/lib/profile/getPlayerIdentity";
 import { applySingleWinnerMatchRewards } from "@/lib/gameRewards";
 import LoteriaBoard from "./LoteriaBoard";
 import LoteriaCalledCards from "./LoteriaCalledCards";
