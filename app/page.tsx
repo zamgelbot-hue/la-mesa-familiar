@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { getPlayerIdentity, type PlayerIdentity } from "@/lib/getPlayerIdentity";
-import { getAvatarByKey, getFrameByKey } from "@/lib/profileCosmetics";
+import { getPlayerIdentity, type PlayerIdentity } from "@/lib/profile/getPlayerIdentity";
+import { getAvatarByKey, getFrameByKey } from "@/lib/profile/profileCosmetics";
 import SiteHeader from "@/components/site/SiteHeader";
 import HomeFooter from "@/components/site/HomeFooter";
 import {
