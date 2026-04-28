@@ -658,7 +658,6 @@ export default function PersonajeSecretoGame({
       }
 
       if (latestGuess?.result === "correct") {
-        playWinSound();
       }
     }
 
