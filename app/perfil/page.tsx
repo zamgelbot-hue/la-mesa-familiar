@@ -100,13 +100,27 @@ function getComboTip(avatarKey: string, frameKey: string) {
     return "Tip: Nala combina perfecto con Marco Canino 🐶";
   }
 
-  if (avatarKey === "avatar_taco" || avatarKey === "avatar_hamburguesa") {
-    if (frameKey !== "marco_comida") {
-      return "Tip: los avatares de comida lucen mejor con Marco Comida 🌮";
-    }
+  if ((avatarKey === "avatar_taco" || avatarKey === "avatar_hamburguesa") && frameKey !== "marco_comida") {
+    return "Tip: los avatares de comida lucen mejor con Marco Comida 🌮";
   }
 
   return "Tu combinación actual se ve lista para la mesa.";
+}
+
+function getPlayerRankLabel(gamesPlayed: number) {
+  if (gamesPlayed >= 100) return "Leyenda familiar";
+  if (gamesPlayed >= 50) return "Veterano de la mesa";
+  if (gamesPlayed >= 25) return "Jugador activo";
+  if (gamesPlayed >= 10) return "En crecimiento";
+  return "Nuevo jugador";
+}
+
+function getWinRateMessage(winRate: number) {
+  if (winRate >= 70) return "Dominio fuerte";
+  if (winRate >= 55) return "Muy buen ritmo";
+  if (winRate >= 45) return "Competencia pareja";
+  if (winRate > 0) return "A seguir subiendo";
+  return "Sin historial todavía";
 }
 
 export default function PerfilPage() {
@@ -243,20 +257,34 @@ export default function PerfilPage() {
     ? ownedFrameGroupTab
     : ownedFrameGroups[0];
 
-  const winRate = useMemo(() => {
-    if (!stats.games_played) return "0.0";
-    return ((stats.games_won / stats.games_played) * 100).toFixed(1);
-  }, [stats.games_played, stats.games_won]);
+  const winRateNumber = stats.games_played > 0 ? (stats.games_won / stats.games_played) * 100 : 0;
+  const winRate = winRateNumber.toFixed(1);
+  const winDifference = stats.games_won - stats.games_lost;
 
   const purchasedAvatarsCount = ownedStoreAvatars.length;
   const purchasedFramesCount = ownedStoreFrames.length;
   const totalCosmeticsCount = purchasedAvatarsCount + purchasedFramesCount;
+
   const totalStoreCosmetics = STORE_AVATARS.length + STORE_FRAMES.length;
   const collectionPercent =
-    totalStoreCosmetics > 0
-      ? Math.round((totalCosmeticsCount / totalStoreCosmetics) * 100)
+    totalStoreCosmetics > 0 ? Math.round((totalCosmeticsCount / totalStoreCosmetics) * 100) : 0;
+
+  const avatarCollectionPercent =
+    STORE_AVATARS.length > 0 ? Math.round((purchasedAvatarsCount / STORE_AVATARS.length) * 100) : 0;
+
+  const frameCollectionPercent =
+    STORE_FRAMES.length > 0 ? Math.round((purchasedFramesCount / STORE_FRAMES.length) * 100) : 0;
+
+  const nextPointsGoal = Math.max(500, Math.ceil((stats.total_points_earned + 1) / 500) * 500);
+  const pointsToNextGoal = Math.max(nextPointsGoal - stats.total_points_earned, 0);
+  const previousGoal = Math.max(0, nextPointsGoal - 500);
+  const goalProgress =
+    nextPointsGoal > previousGoal
+      ? Math.round(((stats.total_points_earned - previousGoal) / (nextPointsGoal - previousGoal)) * 100)
       : 0;
 
+  const playerRankLabel = getPlayerRankLabel(stats.games_played);
+  const winRateMessage = getWinRateMessage(winRateNumber);
   const comboTip = getComboTip(selectedAvatar.key, selectedFrame.key);
 
   const handleSaveProfile = async () => {
@@ -587,10 +615,8 @@ export default function PerfilPage() {
 
                   <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
                     <p className="text-2xl">🏆</p>
-                    <p className="mt-2 text-sm font-bold">Logro</p>
-                    <p className="text-xs text-white/55">
-                      {totalCosmeticsCount > 0 ? "Coleccionista" : "Nuevo jugador"}
-                    </p>
+                    <p className="mt-2 text-sm font-bold">Rango</p>
+                    <p className="text-xs text-white/55">{playerRankLabel}</p>
                   </div>
                 </div>
               </div>
@@ -627,98 +653,201 @@ export default function PerfilPage() {
                 </div>
 
                 {statsTab === "performance" && (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                      <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                        Partidas jugadas
-                      </p>
-                      <p className="mt-2 text-3xl font-extrabold">{stats.games_played}</p>
+                  <div className="space-y-4">
+                    <div className="rounded-[28px] border border-orange-500/20 bg-orange-500/5 p-5">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
+                            {playerRankLabel}
+                          </p>
+                          <p className="mt-2 text-4xl font-extrabold text-orange-100">
+                            {winRate}% WR
+                          </p>
+                          <p className="mt-2 text-sm text-white/60">{winRateMessage}</p>
+                        </div>
+
+                        <div className="rounded-full border border-orange-500/25 bg-black/30 px-4 py-2 text-sm font-bold text-orange-200">
+                          {winDifference >= 0 ? `+${winDifference}` : winDifference} saldo
+                        </div>
+                      </div>
+
+                      <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className="h-full rounded-full bg-orange-500 transition-all"
+                          style={{ width: `${Math.min(winRateNumber, 100)}%` }}
+                        />
+                      </div>
                     </div>
 
-                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                      <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                        Ganadas
-                      </p>
-                      <p className="mt-2 text-3xl font-extrabold text-emerald-400">
-                        {stats.games_won}
-                      </p>
-                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
+                          Partidas jugadas
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold">{stats.games_played}</p>
+                      </div>
 
-                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                      <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                        Perdidas
-                      </p>
-                      <p className="mt-2 text-3xl font-extrabold text-red-400">
-                        {stats.games_lost}
-                      </p>
-                    </div>
+                      <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/5 p-5">
+                        <p className="text-sm uppercase tracking-[0.18em] text-emerald-300">
+                          Ganadas
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold text-emerald-400">
+                          {stats.games_won}
+                        </p>
+                      </div>
 
-                    <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 p-5">
-                      <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
-                        Win Rate
-                      </p>
-                      <p className="mt-2 text-3xl font-extrabold text-orange-200">
-                        {winRate}%
-                      </p>
+                      <div className="rounded-3xl border border-red-500/20 bg-red-500/5 p-5">
+                        <p className="text-sm uppercase tracking-[0.18em] text-red-300">
+                          Perdidas
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold text-red-400">
+                          {stats.games_lost}
+                        </p>
+                      </div>
+
+                      <div className="rounded-3xl border border-yellow-500/20 bg-yellow-500/5 p-5">
+                        <p className="text-sm uppercase tracking-[0.18em] text-yellow-300">
+                          Racha actual
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold text-yellow-300">
+                          {stats.current_win_streak}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {statsTab === "progress" && (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                      <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                        Puntos actuales
-                      </p>
-                      <p className="mt-2 text-3xl font-extrabold">{points}</p>
+                  <div className="space-y-4">
+                    <div className="rounded-[28px] border border-orange-500/20 bg-orange-500/5 p-5">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
+                            Meta de progreso
+                          </p>
+                          <p className="mt-2 text-3xl font-extrabold">
+                            {stats.total_points_earned}/{nextPointsGoal}
+                          </p>
+                          <p className="mt-2 text-sm text-white/60">
+                            Faltan {pointsToNextGoal} puntos para la siguiente meta.
+                          </p>
+                        </div>
+
+                        <div className="rounded-full border border-orange-500/25 bg-black/30 px-4 py-2 text-sm font-bold text-orange-200">
+                          {Math.max(0, Math.min(goalProgress, 100))}%
+                        </div>
+                      </div>
+
+                      <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className="h-full rounded-full bg-orange-500 transition-all"
+                          style={{ width: `${Math.max(0, Math.min(goalProgress, 100))}%` }}
+                        />
+                      </div>
                     </div>
 
-                    <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 p-5">
-                      <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
-                        Puntos acumulados
-                      </p>
-                      <p className="mt-2 text-3xl font-extrabold text-orange-200">
-                        {stats.total_points_earned}
-                      </p>
-                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
+                          Puntos actuales
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold">{points}</p>
+                      </div>
 
-                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:col-span-2">
-                      <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                        Mejor racha de victorias
-                      </p>
-                      <p className="mt-2 text-3xl font-extrabold text-yellow-300">
-                        {stats.best_win_streak}
-                      </p>
-                      <p className="mt-2 text-sm text-white/60">
-                        Racha actual: {stats.current_win_streak}
-                      </p>
+                      <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 p-5">
+                        <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
+                          Puntos acumulados
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold text-orange-200">
+                          {stats.total_points_earned}
+                        </p>
+                      </div>
+
+                      <div className="rounded-3xl border border-yellow-500/20 bg-yellow-500/5 p-5 sm:col-span-2">
+                        <p className="text-sm uppercase tracking-[0.18em] text-yellow-300">
+                          Mejor racha de victorias
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold text-yellow-300">
+                          {stats.best_win_streak}
+                        </p>
+                        <p className="mt-2 text-sm text-white/60">
+                          Racha actual: {stats.current_win_streak}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )}
 
                 {statsTab === "collection" && (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                      <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                        Avatares comprados
-                      </p>
-                      <p className="mt-2 text-3xl font-extrabold">{purchasedAvatarsCount}</p>
+                  <div className="space-y-4">
+                    <div className="rounded-[28px] border border-orange-500/20 bg-orange-500/5 p-5">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
+                            Colección total
+                          </p>
+                          <p className="mt-2 text-3xl font-extrabold">
+                            {totalCosmeticsCount}/{totalStoreCosmetics}
+                          </p>
+                          <p className="mt-2 text-sm text-white/60">
+                            Avanza tu colección comprando cosméticos en la tienda.
+                          </p>
+                        </div>
+
+                        <div className="rounded-full border border-orange-500/25 bg-black/30 px-4 py-2 text-sm font-bold text-orange-200">
+                          {collectionPercent}%
+                        </div>
+                      </div>
+
+                      <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className="h-full rounded-full bg-orange-500 transition-all"
+                          style={{ width: `${collectionPercent}%` }}
+                        />
+                      </div>
                     </div>
 
-                    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                      <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                        Marcos comprados
-                      </p>
-                      <p className="mt-2 text-3xl font-extrabold">{purchasedFramesCount}</p>
-                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="rounded-3xl border border-cyan-500/20 bg-cyan-500/5 p-5">
+                        <p className="text-sm uppercase tracking-[0.18em] text-cyan-300">
+                          Avatares
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold">
+                          {purchasedAvatarsCount}/{STORE_AVATARS.length}
+                        </p>
+                        <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className="h-full rounded-full bg-cyan-400"
+                            style={{ width: `${avatarCollectionPercent}%` }}
+                          />
+                        </div>
+                      </div>
 
-                    <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 p-5 sm:col-span-2">
-                      <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
-                        Total de cosméticos
-                      </p>
-                      <p className="mt-2 text-3xl font-extrabold text-orange-200">
-                        {totalCosmeticsCount}/{totalStoreCosmetics}
-                      </p>
+                      <div className="rounded-3xl border border-violet-500/20 bg-violet-500/5 p-5">
+                        <p className="text-sm uppercase tracking-[0.18em] text-violet-300">
+                          Marcos
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold">
+                          {purchasedFramesCount}/{STORE_FRAMES.length}
+                        </p>
+                        <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className="h-full rounded-full bg-violet-400"
+                            style={{ width: `${frameCollectionPercent}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLeftTab("preview");
+                          setRightTab("shop");
+                        }}
+                        className="rounded-3xl border border-orange-500/25 bg-orange-500 px-5 py-4 font-extrabold text-black transition hover:bg-orange-400 sm:col-span-2"
+                      >
+                        Ir a la tienda ✨
+                      </button>
                     </div>
                   </div>
                 )}
