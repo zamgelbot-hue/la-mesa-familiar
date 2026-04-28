@@ -83,6 +83,32 @@ function getTierBadgeClass(tier: string) {
   return "border-white/10 bg-white/[0.04] text-white/60";
 }
 
+function getComboTip(avatarKey: string, frameKey: string) {
+  if (avatarKey === "avatar_demonio" && frameKey !== "marco_infernal") {
+    return "Tip: combina Demonio con Marco Infernal para un estilo legendario 🔥";
+  }
+
+  if (avatarKey === "avatar_angel" && frameKey !== "marco_divino") {
+    return "Tip: combina Ángel con Marco Divino para completar el look celestial ✨";
+  }
+
+  if (avatarKey === "avatar_gato_naranja" && frameKey !== "marco_gato") {
+    return "Tip: Chopper combina perfecto con Marco Felino 🐾";
+  }
+
+  if (avatarKey === "avatar_pug" && frameKey !== "marco_perro") {
+    return "Tip: Nala combina perfecto con Marco Canino 🐶";
+  }
+
+  if (avatarKey === "avatar_taco" || avatarKey === "avatar_hamburguesa") {
+    if (frameKey !== "marco_comida") {
+      return "Tip: los avatares de comida lucen mejor con Marco Comida 🌮";
+    }
+  }
+
+  return "Tu combinación actual se ve lista para la mesa.";
+}
+
 export default function PerfilPage() {
   const supabase = createClient();
 
@@ -104,6 +130,9 @@ export default function PerfilPage() {
   const [leftTab, setLeftTab] = useState<LeftTab>("preview");
   const [rightTab, setRightTab] = useState<RightTab>("customization");
   const [statsTab, setStatsTab] = useState<StatsTab>("performance");
+
+  const [ownedAvatarGroupTab, setOwnedAvatarGroupTab] = useState<string>("Mascotas");
+  const [ownedFrameGroupTab, setOwnedFrameGroupTab] = useState<string>("Mascotas");
 
   const [stats, setStats] = useState<ProfileStats>(DEFAULT_STATS);
   const [points, setPoints] = useState<number>(0);
@@ -149,17 +178,13 @@ export default function PerfilPage() {
 
           setPoints(profileData.points ?? 0);
 
-          const dbOwnedAvatars = profileData.owned_avatars ?? [];
-          const mergedOwnedAvatars = Array.from(
-            new Set([...DEFAULT_OWNED_AVATARS, ...dbOwnedAvatars])
+          setOwnedAvatars(
+            Array.from(new Set([...DEFAULT_OWNED_AVATARS, ...(profileData.owned_avatars ?? [])]))
           );
-          setOwnedAvatars(mergedOwnedAvatars);
 
-          const dbOwnedFrames = profileData.owned_frames ?? [];
-          const mergedOwnedFrames = Array.from(
-            new Set([...DEFAULT_OWNED_FRAMES, ...dbOwnedFrames])
+          setOwnedFrames(
+            Array.from(new Set([...DEFAULT_OWNED_FRAMES, ...(profileData.owned_frames ?? [])]))
           );
-          setOwnedFrames(mergedOwnedFrames);
         }
       }
     }
@@ -197,6 +222,27 @@ export default function PerfilPage() {
   const groupedStoreAvatars = useMemo(() => groupByGroup(STORE_AVATARS), []);
   const groupedStoreFrames = useMemo(() => groupByGroup(STORE_FRAMES), []);
 
+  const groupedOwnedAvatars = useMemo(
+    () => groupByGroup(ownedStoreAvatars),
+    [ownedStoreAvatars]
+  );
+
+  const groupedOwnedFrames = useMemo(
+    () => groupByGroup(ownedStoreFrames),
+    [ownedStoreFrames]
+  );
+
+  const ownedAvatarGroups = Object.keys(groupedOwnedAvatars);
+  const ownedFrameGroups = Object.keys(groupedOwnedFrames);
+
+  const activeOwnedAvatarGroup = ownedAvatarGroups.includes(ownedAvatarGroupTab)
+    ? ownedAvatarGroupTab
+    : ownedAvatarGroups[0];
+
+  const activeOwnedFrameGroup = ownedFrameGroups.includes(ownedFrameGroupTab)
+    ? ownedFrameGroupTab
+    : ownedFrameGroups[0];
+
   const winRate = useMemo(() => {
     if (!stats.games_played) return "0.0";
     return ((stats.games_won / stats.games_played) * 100).toFixed(1);
@@ -205,6 +251,13 @@ export default function PerfilPage() {
   const purchasedAvatarsCount = ownedStoreAvatars.length;
   const purchasedFramesCount = ownedStoreFrames.length;
   const totalCosmeticsCount = purchasedAvatarsCount + purchasedFramesCount;
+  const totalStoreCosmetics = STORE_AVATARS.length + STORE_FRAMES.length;
+  const collectionPercent =
+    totalStoreCosmetics > 0
+      ? Math.round((totalCosmeticsCount / totalStoreCosmetics) * 100)
+      : 0;
+
+  const comboTip = getComboTip(selectedAvatar.key, selectedFrame.key);
 
   const handleSaveProfile = async () => {
     setMessage("");
@@ -244,15 +297,9 @@ export default function PerfilPage() {
         return;
       }
 
-      const { error: authError } = await supabase.auth.updateUser({
-        data: {
-          display_name: normalizedName,
-        },
+      await supabase.auth.updateUser({
+        data: { display_name: normalizedName },
       });
-
-      if (authError) {
-        console.error("Error actualizando metadata de usuario:", authError);
-      }
 
       setMessage("Perfil actualizado correctamente.");
       await loadProfileData();
@@ -308,13 +355,11 @@ export default function PerfilPage() {
         return;
       }
 
-      const updatedOwned = [...currentOwned, avatar.key];
-
       const { error: updateError } = await supabase
         .from("profiles")
         .update({
           points: currentPoints - avatar.price,
-          owned_avatars: updatedOwned,
+          owned_avatars: [...currentOwned, avatar.key],
         })
         .eq("id", playerIdentity.user_id);
 
@@ -376,13 +421,11 @@ export default function PerfilPage() {
         return;
       }
 
-      const updatedOwned = [...currentOwned, frame.key];
-
       const { error: updateError } = await supabase
         .from("profiles")
         .update({
           points: currentPoints - frame.price,
-          owned_frames: updatedOwned,
+          owned_frames: [...currentOwned, frame.key],
         })
         .eq("id", playerIdentity.user_id);
 
@@ -448,7 +491,7 @@ export default function PerfilPage() {
 
             {leftTab === "preview" && (
               <div className="flex flex-col items-center text-center">
-                <div className="relative flex h-40 w-40 items-center justify-center rounded-full bg-black">
+                <div className="relative flex h-48 w-48 items-center justify-center rounded-full bg-black shadow-[0_0_45px_rgba(249,115,22,0.12)]">
                   {selectedFrame.image ? (
                     <img
                       src={selectedFrame.image}
@@ -467,10 +510,10 @@ export default function PerfilPage() {
                     <img
                       src={selectedAvatar.image}
                       alt={selectedAvatar.label}
-                      className="relative z-10 h-28 w-28 object-contain"
+                      className="relative z-10 h-32 w-32 object-contain"
                     />
                   ) : (
-                    <span className="relative z-10 text-6xl">
+                    <span className="relative z-10 text-7xl">
                       {selectedAvatar.emoji ?? "🙂"}
                     </span>
                   )}
@@ -494,6 +537,62 @@ export default function PerfilPage() {
                     </p>
                   </div>
                 </div>
+
+                <div className="mt-6 w-full rounded-3xl border border-orange-500/15 bg-orange-500/5 p-5 text-left">
+                  <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
+                    Combo actual
+                  </p>
+                  <p className="mt-2 text-xl font-extrabold">
+                    {selectedAvatar.label} + {selectedFrame.label}
+                  </p>
+                  <p className="mt-2 text-sm text-white/65">{comboTip}</p>
+                </div>
+
+                <div className="mt-4 w-full rounded-3xl border border-white/10 bg-white/[0.03] p-5 text-left">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm uppercase tracking-[0.18em] text-white/50">
+                        Colección
+                      </p>
+                      <p className="mt-2 text-2xl font-extrabold">
+                        {totalCosmeticsCount}/{totalStoreCosmetics}
+                      </p>
+                    </div>
+
+                    <div className="rounded-full border border-orange-500/20 bg-orange-500/10 px-4 py-2 text-sm font-bold text-orange-200">
+                      {collectionPercent}%
+                    </div>
+                  </div>
+
+                  <div className="mt-4 h-3 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-orange-500 transition-all"
+                      style={{ width: `${collectionPercent}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4 grid w-full gap-3 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-2xl">🎭</p>
+                    <p className="mt-2 text-sm font-bold">Avatar</p>
+                    <p className="text-xs text-white/55">{getTierLabel(selectedAvatar.tier)}</p>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-2xl">🖼️</p>
+                    <p className="mt-2 text-sm font-bold">Marco</p>
+                    <p className="text-xs text-white/55">{getTierLabel(selectedFrame.tier)}</p>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                    <p className="text-2xl">🏆</p>
+                    <p className="mt-2 text-sm font-bold">Logro</p>
+                    <p className="text-xs text-white/55">
+                      {totalCosmeticsCount > 0 ? "Coleccionista" : "Nuevo jugador"}
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -504,9 +603,6 @@ export default function PerfilPage() {
                     Estadísticas del jugador
                   </p>
                   <h2 className="mt-3 text-3xl font-extrabold">Tu rendimiento</h2>
-                  <p className="mt-2 text-white/65">
-                    Aquí podrás ver tu progreso general, colección y avance dentro del juego.
-                  </p>
                 </div>
 
                 <div className="mb-6 flex flex-wrap gap-3">
@@ -618,10 +714,10 @@ export default function PerfilPage() {
 
                     <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 p-5 sm:col-span-2">
                       <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
-                        Total de cosméticos de tienda
+                        Total de cosméticos
                       </p>
                       <p className="mt-2 text-3xl font-extrabold text-orange-200">
-                        {totalCosmeticsCount}
+                        {totalCosmeticsCount}/{totalStoreCosmetics}
                       </p>
                     </div>
                   </div>
@@ -653,18 +749,12 @@ export default function PerfilPage() {
                     : "border-white/10 bg-white/[0.03] text-white/65 hover:bg-white/[0.06]"
                 }`}
               >
-                Tienda
+                Tienda ✨
               </button>
             </div>
 
             {rightTab === "customization" && (
               <div className="space-y-6">
-                {playerIdentity?.is_guest && (
-                  <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 px-4 py-3 text-yellow-300">
-                    Estás viendo el perfil como invitado. Para guardar cambios permanentes necesitas una cuenta registrada.
-                  </div>
-                )}
-
                 <div>
                   <label className="mb-2 block text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
                     Nombre visible
@@ -708,8 +798,25 @@ export default function PerfilPage() {
                       Avatares desbloqueados
                     </p>
 
+                    <div className="mb-4 flex flex-wrap gap-2">
+                      {ownedAvatarGroups.map((group) => (
+                        <button
+                          key={group}
+                          type="button"
+                          onClick={() => setOwnedAvatarGroupTab(group)}
+                          className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
+                            activeOwnedAvatarGroup === group
+                              ? "border-orange-500/40 bg-orange-500/15 text-orange-200"
+                              : "border-white/10 bg-white/[0.03] text-white/60 hover:bg-white/[0.06]"
+                          }`}
+                        >
+                          {group}
+                        </button>
+                      ))}
+                    </div>
+
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      {ownedStoreAvatars.map((avatar) => (
+                      {(groupedOwnedAvatars[activeOwnedAvatarGroup] ?? []).map((avatar) => (
                         <button
                           key={avatar.key}
                           type="button"
@@ -773,8 +880,25 @@ export default function PerfilPage() {
                       Marcos desbloqueados
                     </p>
 
+                    <div className="mb-4 flex flex-wrap gap-2">
+                      {ownedFrameGroups.map((group) => (
+                        <button
+                          key={group}
+                          type="button"
+                          onClick={() => setOwnedFrameGroupTab(group)}
+                          className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
+                            activeOwnedFrameGroup === group
+                              ? "border-orange-500/40 bg-orange-500/15 text-orange-200"
+                              : "border-white/10 bg-white/[0.03] text-white/60 hover:bg-white/[0.06]"
+                          }`}
+                        >
+                          {group}
+                        </button>
+                      ))}
+                    </div>
+
                     <div className="grid gap-3 sm:grid-cols-2">
-                      {ownedStoreFrames.map((frame) => (
+                      {(groupedOwnedFrames[activeOwnedFrameGroup] ?? []).map((frame) => (
                         <button
                           key={frame.key}
                           type="button"
