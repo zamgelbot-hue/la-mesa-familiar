@@ -119,6 +119,39 @@ export const GAME_CONFIGS: Record<string, GameConfig> = {
     ],
   },
 
+    "guerra-total": {
+    maxPlayersOptions: [2],
+    variants: [
+      {
+        key: "mar",
+        label: "Mar",
+        description: "Batalla clásica con flotas sobre el océano.",
+        available: true,
+      },
+      {
+        key: "aire",
+        label: "Aire",
+        description: "Combate estratégico con escuadrones y radar.",
+        available: true,
+      },
+      {
+        key: "tierra",
+        label: "Tierra",
+        description: "Combate terrestre con unidades y campo de batalla.",
+        available: true,
+      },
+    ],
+    tutorial: [
+      "Coloca todas tus unidades en tu tablero",
+      "Confirma tu formación cuando termines",
+      "Ataca el territorio enemigo por turnos",
+      "Agua significa que fallaste",
+      "Impacto significa que dañaste una unidad",
+      "Hundido significa que destruiste una unidad completa",
+      "Gana quien destruya todas las unidades enemigas",
+    ],
+  },
+
     "personaje-secreto": {
     maxPlayersOptions: [2],
     variants: [
@@ -254,6 +287,16 @@ export function buildRoomSettings(
       board_size: 4,
       win_condition: "tabla",
       max_players: maxPlayers,
+    };
+  }
+
+    if (gameSlug === "guerra-total") {
+    return {
+      mode: "strategic_battle",
+      battle_variant: variantKey,
+      board_size: 8,
+      max_players: 2,
+      min_players: 2,
     };
   }
 
@@ -405,6 +448,8 @@ export function getGameIcon(slug: string) {
       return "❓";
     case "gato":
       return "⭕";
+    case "guerra-total":
+      return "💥";
     case "personaje-secreto":
       return "🕵️";
     case "domino":
