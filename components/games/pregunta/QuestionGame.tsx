@@ -8,7 +8,7 @@ import { applyQuestionGameProfileRewards } from "@/lib/games/pregunta/questionPr
 import {
   getPlayerIdentity,
   type PlayerIdentity,
-} from "@/lib/getPlayerIdentity";
+} from "@/lib/profile/getPlayerIdentity";
 import {
   applyRoundResultsToPlayers,
   buildFinalStandings,
