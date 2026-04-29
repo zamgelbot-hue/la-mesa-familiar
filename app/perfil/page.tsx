@@ -497,7 +497,7 @@ export default function PerfilPage() {
               <button
                 type="button"
                 onClick={() => setLeftTab("preview")}
-                className={`rounded-full border px-4 py-2 text-sm transition ${
+                className={`rounded-2xl border px-6 py-3 text-base font-black transition ${
                   leftTab === "preview"
                     ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
                     : "border-white/10 bg-white/[0.03] text-white/65 hover:bg-white/[0.06]"
@@ -509,7 +509,7 @@ export default function PerfilPage() {
               <button
                 type="button"
                 onClick={() => setLeftTab("stats")}
-                className={`rounded-full border px-4 py-2 text-sm transition ${
+                className={`rounded-2xl border px-6 py-3 text-base font-black transition ${
                   leftTab === "stats"
                     ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
                     : "border-white/10 bg-white/[0.03] text-white/65 hover:bg-white/[0.06]"
@@ -692,7 +692,7 @@ export default function PerfilPage() {
                       key={item}
                       type="button"
                       onClick={() => setStatsTab(item)}
-                      className={`rounded-full border px-4 py-2 text-sm transition ${
+                      className={`rounded-2xl border px-6 py-3 text-base font-black transition ${
                         statsTab === item
                           ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
                           : "border-white/10 bg-white/[0.03] text-white/65 hover:bg-white/[0.06]"
@@ -925,12 +925,12 @@ export default function PerfilPage() {
             )}
           </section>
 
-          <section className="rounded-[34px] border border-orange-500/15 bg-zinc-950/90 p-8 shadow-[0_0_40px_rgba(249,115,22,0.05)] md:p-10">
+                     <section className="rounded-[34px] border border-orange-500/15 bg-zinc-950/90 p-8 shadow-[0_0_40px_rgba(249,115,22,0.05)] md:p-10">
             <div className="mb-6 flex flex-wrap gap-3">
               <button
                 type="button"
                 onClick={() => setRightTab("customization")}
-                className={`rounded-full border px-4 py-2 text-sm transition ${
+                className={`rounded-2xl border px-6 py-3 text-base font-black transition ${
                   rightTab === "customization"
                     ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
                     : "border-white/10 bg-white/[0.03] text-white/65 hover:bg-white/[0.06]"
@@ -942,7 +942,7 @@ export default function PerfilPage() {
               <button
                 type="button"
                 onClick={() => setRightTab("shop")}
-                className={`rounded-full border px-4 py-2 text-sm transition ${
+                className={`rounded-2xl border px-6 py-3 text-base font-black transition ${
                   rightTab === "shop"
                     ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
                     : "border-white/10 bg-white/[0.03] text-white/65 hover:bg-white/[0.06]"
@@ -955,15 +955,14 @@ export default function PerfilPage() {
             {rightTab === "customization" && (
               <div className="space-y-6">
                 <div>
-                  <label className="mb-2 block text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
+                  <label className="mb-3 block text-base font-black uppercase tracking-[0.22em] text-orange-300">
                     Nombre visible
                   </label>
+
                   <input
-                    type="text"
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    maxLength={20}
-                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
+                    className="w-full rounded-2xl border border-orange-500/25 bg-black px-5 py-4 text-lg font-bold text-white outline-none transition focus:border-orange-500/70"
                   />
                 </div>
 
@@ -984,7 +983,16 @@ export default function PerfilPage() {
                             : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
                         }`}
                       >
-                        <div className="text-3xl">{avatar.emoji}</div>
+                        {avatar.image ? (
+                          <img
+                            src={avatar.image}
+                            alt={avatar.label}
+                            className="mx-auto h-14 w-14 object-contain"
+                          />
+                        ) : (
+                          <p className="text-3xl">{avatar.emoji ?? "🙂"}</p>
+                        )}
+
                         <p className="mt-2 text-sm font-bold">{avatar.label}</p>
                       </button>
                     ))}
