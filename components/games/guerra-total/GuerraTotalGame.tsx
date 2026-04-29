@@ -593,30 +593,40 @@ export default function GuerraTotalGame({
     return theme.unitIcons[ship.id] ?? theme.icon;
   };
 
-    const getCellClass = (status: string, clickable = false) => {
-    const base =
-      "aspect-square rounded-lg border text-xs font-black transition flex items-center justify-center";
+  const getCellClass = (status: string, clickable = false) => {
+  const base =
+    "aspect-square rounded-lg border font-black transition flex items-center justify-center leading-none";
 
-    const cursor = clickable ? " cursor-pointer hover:scale-[1.04]" : "";
+  const cursor = clickable ? " cursor-pointer hover:scale-[1.06]" : "";
 
-    if (status === "ship") {
-      return `${base}${cursor} ${theme.shipCellClass}`;
-    }
+  let size = "text-[2.2rem] md:text-[2.5rem] lg:text-[2.8rem]";
 
-    if (status === "hit" || status === "hit-received") {
-      return `${base}${cursor} ${theme.hitCellClass}`;
-    }
+  if (status === "hit" || status === "hit-received") {
+    size = "text-[2.6rem] md:text-[3rem] lg:text-[3.3rem]";
+  }
 
-    if (status === "sunk") {
-      return `${base}${cursor} ${theme.sunkCellClass}`;
-    }
+  if (status === "sunk") {
+    size = "text-[2.8rem] md:text-[3.3rem] lg:text-[3.6rem]";
+  }
 
-    if (status === "water" || status === "miss-received") {
-      return `${base}${cursor} ${theme.missCellClass}`;
-    }
+  if (status === "ship") {
+    return `${base} ${size}${cursor} ${theme.shipCellClass}`;
+  }
 
-    return `${base}${cursor} ${theme.emptyCellClass}`;
-  };
+  if (status === "hit" || status === "hit-received") {
+    return `${base} ${size}${cursor} ${theme.hitCellClass}`;
+  }
+
+  if (status === "sunk") {
+    return `${base} ${size}${cursor} ${theme.sunkCellClass}`;
+  }
+
+  if (status === "water" || status === "miss-received") {
+    return `${base} ${size}${cursor} ${theme.missCellClass}`;
+  }
+
+  return `${base} ${size}${cursor} ${theme.emptyCellClass}`;
+};
 
   const renderBoard = (kind: "mine" | "enemy") => {
     return (
@@ -664,7 +674,9 @@ export default function GuerraTotalGame({
               className={getCellClass(status, clickable)}
               title={`${cell.row + 1}-${cell.col + 1}`}
             >
-              {label}
+              <span className="transform scale-[1.1]">
+                {label}
+              </span>
             </button>
           );
         })}
