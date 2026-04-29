@@ -549,16 +549,19 @@ export default function GuerraTotalGame({
 
   const getMyCellStatus = (cell: GtCell) => {
     const ship = myBoard?.ships.find((item) => isCellInList(cell, item.cells));
-    const shot = myBoard?.shotsReceived.find((item) => item.cell.row === cell.row && item.cell.col === cell.col);
+    const wasShot = myBoard?.shotsReceived.find((item) =>
+      item.cell.row === cell.row && item.cell.col === cell.col
+    );
 
-    if (shot?.result === "water") return "miss-received";
-    if (shot?.result === "hit" || shot?.result === "sunk") return "hit-received";
+    if (ship?.sunk && wasShot) return "sunk";
+    if (ship && wasShot) return "hit-received";
+    if (wasShot?.result === "water") return "miss-received";
     if (ship) return "ship";
 
     return "empty";
   };
 
-  const getEnemyCellStatus = (cell: GtCell) => {
+    const getEnemyCellStatus = (cell: GtCell) => {
     const shot = gameState.shots.find(
       (item) =>
         item.attackerKey === currentPlayerKey &&
@@ -568,9 +571,26 @@ export default function GuerraTotalGame({
     );
 
     if (!shot) return "unknown";
+
+    const sunkShip = opponentBoard?.ships.find(
+      (ship) => ship.sunk && isCellInList(cell, ship.cells),
+    );
+
+    if (sunkShip) return "sunk";
     if (shot.result === "water") return "water";
     if (shot.result === "hit") return "hit";
+
     return "sunk";
+  };
+
+    const getShipIconForCell = (kind: "mine" | "enemy", cell: GtCell) => {
+    const board = kind === "mine" ? myBoard : opponentBoard;
+
+    const ship = board?.ships.find((item) => isCellInList(cell, item.cells));
+
+    if (!ship) return theme.icon;
+
+    return theme.unitIcons[ship.id] ?? theme.icon;
   };
 
     const getCellClass = (status: string, clickable = false) => {
@@ -618,16 +638,16 @@ export default function GuerraTotalGame({
               ? gameState.phase === "placing" && !myBoard?.ready
               : gameState.phase === "battle" && isMyTurn && !!opponentKey;
 
-          const label =
-  status === "ship"
-    ? theme.unitIcon
-    : status === "hit" || status === "hit-received"
-      ? theme.hitIcon
-      : status === "sunk"
-        ? theme.sunkIcon
-        : status === "water" || status === "miss-received"
-          ? theme.missIcon
-          : theme.emptyIcon;
+                    const label =
+            status === "ship"
+              ? getShipIconForCell(kind, cell)
+              : status === "hit" || status === "hit-received"
+                ? theme.hitIcon
+                : status === "sunk"
+                  ? theme.sunkIcon
+                  : status === "water" || status === "miss-received"
+                    ? theme.missIcon
+                    : theme.emptyIcon;
 
           return (
             <button
