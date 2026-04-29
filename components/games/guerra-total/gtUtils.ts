@@ -121,7 +121,6 @@ export function allShipsPlaced(board?: GtPlayerBoard | null) {
 
 export function allShipsSunk(board?: GtPlayerBoard | null) {
   if (!board || board.ships.length === 0) return false;
-
   return board.ships.every((ship) => ship.sunk);
 }
 
@@ -135,7 +134,15 @@ export function getGtVariantTheme(variant?: string | null) {
     return {
       label: "Aire",
       icon: "✈️",
-      unitIcon: "✈️",
+      unitIcons: {
+        carrier: "🛩️",
+        "destroyer-a": "🚁",
+        "destroyer-b": "🚁",
+        "submarine-a": "🛰️",
+        "submarine-b": "🛰️",
+        "scout-a": "🛸",
+        "scout-b": "🛸",
+      } as Record<string, string>,
       emptyIcon: "",
       missIcon: "☁️",
       hitIcon: "💥",
@@ -150,12 +157,12 @@ export function getGtVariantTheme(variant?: string | null) {
         "rounded-[28px] border border-sky-500/20 bg-sky-950/30 p-5",
       enemyBoardClass:
         "rounded-[28px] border border-slate-400/20 bg-slate-950/40 p-5",
-      shipCellClass: "border-sky-300/50 bg-sky-500/30 text-sky-100",
+      shipCellClass: "border-slate-200/40 bg-slate-400/25 text-slate-50",
       emptyCellClass:
         "border-white/10 bg-white/[0.03] text-white/30 hover:border-sky-300/50",
       missCellClass: "border-sky-200/30 bg-sky-500/15 text-sky-100",
       hitCellClass: "border-red-400/50 bg-red-500/40 text-red-100",
-      sunkCellClass: "border-orange-400/60 bg-orange-500/50 text-orange-100",
+      sunkCellClass: "border-orange-400/70 bg-orange-500/60 text-orange-50",
     };
   }
 
@@ -163,7 +170,15 @@ export function getGtVariantTheme(variant?: string | null) {
     return {
       label: "Tierra",
       icon: "🪖",
-      unitIcon: "🪖",
+      unitIcons: {
+        carrier: "🛡️",
+        "destroyer-a": "🚜",
+        "destroyer-b": "🚜",
+        "submarine-a": "💣",
+        "submarine-b": "💣",
+        "scout-a": "🪖",
+        "scout-b": "🪖",
+      } as Record<string, string>,
       emptyIcon: "",
       missIcon: "🟫",
       hitIcon: "💥",
@@ -178,19 +193,27 @@ export function getGtVariantTheme(variant?: string | null) {
         "rounded-[28px] border border-emerald-500/20 bg-emerald-950/25 p-5",
       enemyBoardClass:
         "rounded-[28px] border border-amber-500/20 bg-amber-950/20 p-5",
-      shipCellClass: "border-emerald-400/50 bg-emerald-500/30 text-emerald-100",
+      shipCellClass: "border-lime-300/40 bg-lime-600/25 text-lime-50",
       emptyCellClass:
         "border-white/10 bg-white/[0.03] text-white/30 hover:border-emerald-400/50",
       missCellClass: "border-amber-400/30 bg-amber-700/20 text-amber-100",
       hitCellClass: "border-red-400/50 bg-red-500/40 text-red-100",
-      sunkCellClass: "border-orange-400/60 bg-orange-500/50 text-orange-100",
+      sunkCellClass: "border-orange-400/70 bg-orange-500/60 text-orange-50",
     };
   }
 
   return {
     label: "Mar",
     icon: "🌊",
-    unitIcon: "🚢",
+    unitIcons: {
+      carrier: "🚢",
+      "destroyer-a": "⛴️",
+      "destroyer-b": "⛴️",
+      "submarine-a": "🌫️",
+      "submarine-b": "🌫️",
+      "scout-a": "🛟",
+      "scout-b": "🛟",
+    } as Record<string, string>,
     emptyIcon: "",
     missIcon: "🌊",
     hitIcon: "💥",
@@ -205,12 +228,12 @@ export function getGtVariantTheme(variant?: string | null) {
       "rounded-[28px] border border-cyan-500/20 bg-cyan-950/25 p-5",
     enemyBoardClass:
       "rounded-[28px] border border-orange-500/20 bg-zinc-950/90 p-5",
-    shipCellClass: "border-cyan-400/40 bg-cyan-500/30 text-cyan-100",
+    shipCellClass: "border-slate-200/40 bg-slate-500/25 text-slate-50",
     emptyCellClass:
       "border-white/10 bg-white/[0.03] text-white/30 hover:border-orange-400/50",
     missCellClass: "border-sky-400/30 bg-sky-500/20 text-sky-100",
     hitCellClass: "border-red-400/50 bg-red-500/40 text-red-100",
-    sunkCellClass: "border-orange-400/60 bg-orange-500/50 text-orange-100",
+    sunkCellClass: "border-orange-400/70 bg-orange-500/60 text-orange-50",
   };
 }
 
