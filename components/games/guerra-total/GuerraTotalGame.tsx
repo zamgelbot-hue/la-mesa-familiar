@@ -715,7 +715,19 @@ const previewIsValid = useMemo(() => {
             className={getCellClass(status, clickable)}
             title={`${cell.row + 1}-${cell.col + 1}`}
           >
-            <span className="transform scale-[1.1]">{label}</span>
+            <span
+  className={
+    status === "hit" || status === "hit-received"
+      ? "animate-ping transform scale-[1.15]"
+      : status === "sunk"
+        ? "animate-pulse transform scale-[1.2]"
+        : status === "preview-valid" || status === "preview-invalid"
+          ? "transform scale-[1.05] opacity-80"
+          : "transform scale-[1.1]"
+  }
+>
+  {label}
+</span>
           </button>
         );
       })}
