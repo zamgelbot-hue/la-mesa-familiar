@@ -67,6 +67,7 @@ export default function GuerraTotalGame({
   );
   const [selectedShipId, setSelectedShipId] = useState(GT_SHIP_TEMPLATES[0].id);
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
+  const [hoveredCell, setHoveredCell] = useState<GtCell | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -121,6 +122,18 @@ export default function GuerraTotalGame({
   const placedShipIds = useMemo(() => {
     return new Set((myBoard?.ships ?? []).map((ship) => ship.id));
   }, [myBoard]);
+
+  const previewCells = useMemo(() => {
+  if (!hoveredCell || gameState.phase !== "placing" || myBoard?.ready) return [];
+
+  return buildShipCells(hoveredCell, selectedTemplate.size, orientation);
+}, [hoveredCell, gameState.phase, myBoard?.ready, selectedTemplate.size, orientation]);
+
+const previewIsValid = useMemo(() => {
+  if (!hoveredCell || previewCells.length === 0) return false;
+
+  return isPlacementValid(previewCells, myBoard?.ships ?? [], boardSize);
+}, [hoveredCell, previewCells, myBoard?.ships, boardSize]);
 
   const allPlayersReady =
     sortedPlayers.length >= 2 &&
@@ -595,7 +608,7 @@ export default function GuerraTotalGame({
 
   const getCellClass = (status: string, clickable = false) => {
   const base =
-    "aspect-square rounded-lg border font-black transition flex items-center justify-center leading-none";
+    "aspect-square rounded-lg border font-black transition flex items-center justify-center leading-none overflow-hidden";
 
   const cursor = clickable ? " cursor-pointer hover:scale-[1.06]" : "";
 
@@ -607,6 +620,14 @@ export default function GuerraTotalGame({
 
   if (status === "sunk") {
     size = "text-[2.8rem] md:text-[3.3rem] lg:text-[3.6rem]";
+  }
+
+  if (status === "preview-valid") {
+    return `${base} ${size}${cursor} border-emerald-400/70 bg-emerald-500/20 text-emerald-200 shadow-[0_0_18px_rgba(16,185,129,0.25)]`;
+  }
+
+  if (status === "preview-invalid") {
+    return `${base} ${size}${cursor} border-red-400/70 bg-red-500/20 text-red-200 shadow-[0_0_18px_rgba(239,68,68,0.25)]`;
   }
 
   if (status === "ship") {
@@ -629,27 +650,42 @@ export default function GuerraTotalGame({
 };
 
   const renderBoard = (kind: "mine" | "enemy") => {
-    return (
-      <div
-        className="grid gap-1"
-        style={{ gridTemplateColumns: `repeat(${boardSize}, minmax(0, 1fr))` }}
-      >
-        {Array.from({ length: boardSize * boardSize }, (_, index) => {
-          const cell = {
-            row: Math.floor(index / boardSize),
-            col: index % boardSize,
-          };
+  return (
+    <div
+      className="grid gap-1"
+      style={{ gridTemplateColumns: `repeat(${boardSize}, minmax(0, 1fr))` }}
+      onMouseLeave={() => setHoveredCell(null)}
+    >
+      {Array.from({ length: boardSize * boardSize }, (_, index) => {
+        const cell = {
+          row: Math.floor(index / boardSize),
+          col: index % boardSize,
+        };
 
-          const status =
-            kind === "mine" ? getMyCellStatus(cell) : getEnemyCellStatus(cell);
+        const realStatus =
+          kind === "mine" ? getMyCellStatus(cell) : getEnemyCellStatus(cell);
 
-          const clickable =
-            kind === "mine"
-              ? gameState.phase === "placing" && !myBoard?.ready
-              : gameState.phase === "battle" && isMyTurn && !!opponentKey;
+        const isPreviewCell =
+          kind === "mine" &&
+          gameState.phase === "placing" &&
+          !myBoard?.ready &&
+          isCellInList(cell, previewCells);
 
-                    const label =
-            status === "ship"
+        const status = isPreviewCell
+          ? previewIsValid
+            ? "preview-valid"
+            : "preview-invalid"
+          : realStatus;
+
+        const clickable =
+          kind === "mine"
+            ? gameState.phase === "placing" && !myBoard?.ready
+            : gameState.phase === "battle" && isMyTurn && !!opponentKey;
+
+        const label =
+          status === "preview-valid" || status === "preview-invalid"
+            ? theme.unitIcons[selectedTemplate.id] ?? theme.icon
+            : status === "ship"
               ? getShipIconForCell(kind, cell)
               : status === "hit" || status === "hit-received"
                 ? theme.hitIcon
@@ -659,30 +695,33 @@ export default function GuerraTotalGame({
                     ? theme.missIcon
                     : theme.emptyIcon;
 
-          return (
-            <button
-              key={cellKey(cell)}
-              type="button"
-              disabled={!clickable || saving}
-              onClick={() => {
-                if (kind === "mine") {
-                  void handlePlaceShip(cell);
-                } else {
-                  void handleAttack(cell);
-                }
-              }}
-              className={getCellClass(status, clickable)}
-              title={`${cell.row + 1}-${cell.col + 1}`}
-            >
-              <span className="transform scale-[1.1]">
-                {label}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    );
-  };
+        return (
+          <button
+            key={cellKey(cell)}
+            type="button"
+            disabled={!clickable || saving}
+            onMouseEnter={() => {
+              if (kind === "mine" && gameState.phase === "placing" && !myBoard?.ready) {
+                setHoveredCell(cell);
+              }
+            }}
+            onClick={() => {
+              if (kind === "mine") {
+                void handlePlaceShip(cell);
+              } else {
+                void handleAttack(cell);
+              }
+            }}
+            className={getCellClass(status, clickable)}
+            title={`${cell.row + 1}-${cell.col + 1}`}
+          >
+            <span className="transform scale-[1.1]">{label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+};
 
   useEffect(() => {
     const boot = async () => {
@@ -845,41 +884,83 @@ export default function GuerraTotalGame({
             </div>
 
             {gameState.phase === "placing" && (
-              <div className="rounded-[28px] border border-cyan-500/20 bg-zinc-950/90 p-5">
-                <h2 className="text-xl font-black text-cyan-200">
-                  🛠️ Colocar {theme.unitLabel}
-                </h2>
+  <div className="rounded-[28px] border border-cyan-500/20 bg-zinc-950/90 p-5">
+    <h2 className="text-xl font-black text-cyan-200">
+      🛠️ Colocar {theme.unitLabel}
+    </h2>
 
-                <div className="mt-4 space-y-3">
-                  <select
-                    value={selectedShipId}
-                    onChange={(e) => setSelectedShipId(e.target.value)}
-                    disabled={myBoard?.ready}
-                    className="min-h-[46px] w-full rounded-2xl border border-white/10 bg-black/40 px-4 text-white outline-none"
-                  >
-                    {GT_SHIP_TEMPLATES.map((ship) => (
-                      <option
-                        key={ship.id}
-                        value={ship.id}
-                        disabled={placedShipIds.has(ship.id)}
-                      >
-                        {ship.name} · {ship.size} casillas
-                      </option>
-                    ))}
-                  </select>
+    <div className="mt-4 space-y-3">
+      <div className="space-y-3">
+        <p className="text-sm font-bold text-white/60">Selecciona unidad</p>
 
-                  <button
-                    type="button"
-                    disabled={myBoard?.ready}
-                    onClick={() =>
-                      setOrientation((current) =>
-                        current === "horizontal" ? "vertical" : "horizontal",
-                      )
-                    }
-                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-black text-white hover:bg-white/10 disabled:opacity-50"
-                  >
-                    Orientación: {orientation === "horizontal" ? "Horizontal" : "Vertical"}
-                  </button>
+        <div className="grid gap-2">
+          {GT_SHIP_TEMPLATES.map((ship) => {
+            const isSelected = selectedShipId === ship.id;
+            const isPlaced = placedShipIds.has(ship.id);
+
+      return (
+        <button
+          key={ship.id}
+          type="button"
+          disabled={myBoard?.ready || isPlaced}
+          onClick={() => setSelectedShipId(ship.id)}
+          className={
+            isSelected
+              ? "flex items-center justify-between rounded-2xl border border-orange-400 bg-orange-500/20 px-4 py-3 text-left shadow-[0_0_22px_rgba(249,115,22,0.18)]"
+              : isPlaced
+                ? "flex items-center justify-between rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-left opacity-60"
+                : "flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left hover:bg-white/[0.08]"
+          }
+        >
+          <span>
+            <span className="block font-black text-white">
+              {theme.unitIcons[ship.id] ?? theme.icon} {ship.name}
+            </span>
+            <span className="text-xs font-bold text-white/50">
+              {ship.size} casillas
+            </span>
+          </span>
+
+          <span className="text-xs font-black">
+            {isPlaced ? "LISTA" : isSelected ? "ACTIVA" : "ELEGIR"}
+          </span>
+        </button>
+      );
+    })}
+  </div>
+</div>
+
+<div className="space-y-2">
+  <p className="text-sm font-bold text-white/60">Orientación</p>
+
+  <div className="grid grid-cols-2 gap-2">
+    <button
+      type="button"
+      disabled={myBoard?.ready}
+      onClick={() => setOrientation("horizontal")}
+      className={
+        orientation === "horizontal"
+          ? "rounded-2xl border border-orange-400 bg-orange-500 px-4 py-3 font-black text-black"
+          : "rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-black text-white hover:bg-white/10"
+      }
+    >
+      Horizontal
+    </button>
+
+    <button
+      type="button"
+      disabled={myBoard?.ready}
+      onClick={() => setOrientation("vertical")}
+      className={
+        orientation === "vertical"
+          ? "rounded-2xl border border-orange-400 bg-orange-500 px-4 py-3 font-black text-black"
+          : "rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-black text-white hover:bg-white/10"
+      }
+    >
+      Vertical
+    </button>
+  </div>
+</div>
 
                   <button
                     type="button"
