@@ -15,16 +15,12 @@ export type MemoramaPlayerScore = {
   pairs: number;
 };
 
-export type MemoramaTurnPick = {
-  cardId: string;
-  pairId: string;
-};
-
 export type MemoramaGameState = {
   phase: MemoramaPhase;
   cards: MemoramaCard[];
   flippedCardIds: string[];
   matchedCardIds: string[];
+  matchedPairOwners: Record<string, string>;
   currentTurnKey: string | null;
   currentTurnName: string | null;
   scores: Record<string, MemoramaPlayerScore>;
