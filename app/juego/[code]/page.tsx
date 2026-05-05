@@ -11,6 +11,7 @@ import QuestionGame from "@/components/games/pregunta/QuestionGame";
 import GatoGame from "@/components/games/gato/GatoGame";
 import PersonajeSecretoGame from "@/components/games/personaje-secreto/PersonajeSecretoGame";
 import GuerraTotalGame from "@/components/games/guerra-total/GuerraTotalGame";
+import MemoramaGame from "@/components/games/memorama/MemoramaGame";
 
 type RoomRow = {
   code: string;
@@ -209,6 +210,14 @@ export default function JuegoPage() {
       roomCode={code}
       roomVariant={room.game_variant}
       roomSettings={room.room_settings}
+    />
+  );
+}
+
+  if (room.game_slug === "memorama") {
+  return (
+    <MemoramaGame
+      roomCode={code}
     />
   );
 }
