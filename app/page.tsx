@@ -61,6 +61,12 @@ type OpenRoom = {
   last_activity_at: string | null;
 };
 
+type FriendshipRow = {
+  requester_id: string;
+  addressee_id: string;
+  status: string;
+};
+
 const DEFAULT_STATS: HomeStats = {
   activePlayers: 0,
   classicGames: 0,
@@ -72,7 +78,7 @@ const getPlayerStorageKey = (roomCode: string) => `lmf:player:${roomCode}`;
 const savePlayerIdentity = (
   roomCode: string,
   playerName: string,
-  isHost: boolean
+  isHost: boolean,
 ) => {
   if (typeof window === "undefined") return;
 
@@ -107,9 +113,11 @@ const savePlayerIdentity = (
 function generateRoomCode(length = 6) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let result = "";
-  for (let i = 0; i < length; i++) {
+
+  for (let i = 0; i < length; i += 1) {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
+
   return result;
 }
 
@@ -120,27 +128,32 @@ export default function HomePage() {
 
   const [games, setGames] = useState<Game[]>([]);
   const [stats, setStats] = useState<HomeStats>(DEFAULT_STATS);
+
   const [selectedGameSlug, setSelectedGameSlug] = useState("piedra-papel-o-tijera");
   const [selectedVariantKey, setSelectedVariantKey] = useState("bo3");
   const [maxPlayers, setMaxPlayers] = useState(2);
+  const [roomVisibility, setRoomVisibility] = useState<RoomVisibility>("private");
+
   const [joinCode, setJoinCode] = useState("");
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
   const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(null);
+
   const [topPlayers, setTopPlayers] = useState<TopPlayer[]>([]);
   const [loadingTopPlayers, setLoadingTopPlayers] = useState(true);
 
-  const [roomVisibility, setRoomVisibility] = useState<RoomVisibility>("private");
   const [publicRooms, setPublicRooms] = useState<OpenRoom[]>([]);
   const [loadingPublicRooms, setLoadingPublicRooms] = useState(true);
+
   const [friendRooms, setFriendRooms] = useState<OpenRoom[]>([]);
   const [loadingFriendRooms, setLoadingFriendRooms] = useState(true);
 
   const selectedGame = useMemo(
     () => games.find((game) => game.slug === selectedGameSlug) ?? null,
-    [games, selectedGameSlug]
+    [games, selectedGameSlug],
   );
 
   const selectedGameConfig = useMemo(() => {
@@ -166,7 +179,6 @@ export default function HomePage() {
         const bAvailable = b.status === "available" ? 0 : 1;
 
         if (aAvailable !== bAvailable) return aAvailable - bAvailable;
-
         return a.sort_order - b.sort_order;
       });
   }, [games]);
@@ -178,9 +190,12 @@ export default function HomePage() {
       setMaxPlayers(selectedGameConfig.maxPlayersOptions[0]);
     }
 
-    const availableVariants = selectedGameConfig.variants.filter((variant) => variant.available);
+    const availableVariants = selectedGameConfig.variants.filter(
+      (variant) => variant.available,
+    );
+
     const currentIsValid = availableVariants.some(
-      (variant) => variant.key === selectedVariantKey
+      (variant) => variant.key === selectedVariantKey,
     );
 
     if (!currentIsValid) {
@@ -191,7 +206,7 @@ export default function HomePage() {
   const renderProfileAvatar = (
     avatar: { emoji?: string; image?: string; label?: string },
     frame: { className?: string; image?: string; label?: string },
-    size: "sm" | "md" = "sm"
+    size: "sm" | "md" = "sm",
   ) => {
     const wrapperSize = size === "sm" ? "h-10 w-10" : "h-16 w-16";
     const avatarSize = size === "sm" ? "h-7 w-7" : "h-10 w-10";
@@ -199,7 +214,9 @@ export default function HomePage() {
     const borderSize = size === "sm" ? "border-2" : "border-4";
 
     return (
-      <div className={`relative flex ${wrapperSize} items-center justify-center rounded-full bg-black`}>
+      <div
+        className={`relative flex ${wrapperSize} items-center justify-center rounded-full bg-black`}
+      >
         {frame.image ? (
           <img
             src={frame.image}
@@ -263,7 +280,7 @@ export default function HomePage() {
     setGames(list);
 
     const firstAvailable = list.find(
-      (game) => game.status === "available" && game.slug !== "loteria"
+      (game) => game.status === "available" && game.slug !== "loteria",
     );
 
     if (firstAvailable) {
@@ -325,7 +342,7 @@ export default function HomePage() {
       const { data, error } = await supabase
         .from("profiles")
         .select(
-          "id, display_name, points, games_played, games_won, games_lost, total_points_earned, best_win_streak, avatar_key, frame_key"
+          "id, display_name, points, games_played, games_won, games_lost, total_points_earned, best_win_streak, avatar_key, frame_key",
         )
         .not("display_name", "is", null)
         .order("points", { ascending: false })
@@ -375,89 +392,89 @@ export default function HomePage() {
   }, [supabase]);
 
   const loadFriendRooms = useCallback(async () => {
-  try {
-    setLoadingFriendRooms(true);
+    try {
+      setLoadingFriendRooms(true);
 
-    if (!playerIdentity?.user_id || playerIdentity.is_guest) {
-      setFriendRooms([]);
-      return;
-    }
+      if (!playerIdentity?.user_id || playerIdentity.is_guest) {
+        setFriendRooms([]);
+        return;
+      }
 
-    const oneHourAgo = new Date(Date.now() - 1000 * 60 * 60).toISOString();
+      const oneHourAgo = new Date(Date.now() - 1000 * 60 * 60).toISOString();
 
-    const { data: friendships, error: friendshipsError } = await supabase
-      .from("friendships")
-      .select("requester_id, addressee_id, status")
-      .eq("status", "accepted")
-      .or(
-        `requester_id.eq.${playerIdentity.user_id},addressee_id.eq.${playerIdentity.user_id}`,
+      const { data: friendships, error: friendshipsError } = await supabase
+        .from("friendships")
+        .select("requester_id, addressee_id, status")
+        .eq("status", "accepted")
+        .or(
+          `requester_id.eq.${playerIdentity.user_id},addressee_id.eq.${playerIdentity.user_id}`,
+        );
+
+      if (friendshipsError) {
+        console.error("Error cargando amistades para salas:", friendshipsError);
+        setFriendRooms([]);
+        return;
+      }
+
+      const friendIds = Array.from(
+        new Set(
+          ((friendships ?? []) as FriendshipRow[]).map((friendship) =>
+            friendship.requester_id === playerIdentity.user_id
+              ? friendship.addressee_id
+              : friendship.requester_id,
+          ),
+        ),
       );
 
-    if (friendshipsError) {
-      console.error("Error cargando amistades para salas:", friendshipsError);
-      setFriendRooms([]);
-      return;
+      if (friendIds.length === 0) {
+        setFriendRooms([]);
+        return;
+      }
+
+      const { data: rooms, error: roomsError } = await supabase
+        .from("rooms")
+        .select(
+          "code, status, game_slug, game_variant, max_players, visibility, created_by, created_at, last_activity_at",
+        )
+        .eq("visibility", "friends")
+        .in("status", ["waiting"])
+        .in("created_by", friendIds)
+        .gte("last_activity_at", oneHourAgo)
+        .order("last_activity_at", { ascending: false })
+        .limit(12);
+
+      if (roomsError) {
+        console.error("Error cargando salas de amigos:", roomsError);
+        setFriendRooms([]);
+        return;
+      }
+
+      setFriendRooms((rooms ?? []) as OpenRoom[]);
+    } finally {
+      setLoadingFriendRooms(false);
     }
-
-    const friendIds = Array.from(
-      new Set(
-        (friendships ?? []).map((friendship) =>
-          friendship.requester_id === playerIdentity.user_id
-            ? friendship.addressee_id
-            : friendship.requester_id,
-        ),
-      ),
-    );
-
-    if (friendIds.length === 0) {
-      setFriendRooms([]);
-      return;
-    }
-
-    const { data: rooms, error: roomsError } = await supabase
-      .from("rooms")
-      .select(
-        "code, status, game_slug, game_variant, max_players, visibility, created_by, created_at, last_activity_at",
-      )
-      .eq("visibility", "friends")
-      .in("status", ["waiting"])
-      .in("created_by", friendIds)
-      .gte("last_activity_at", oneHourAgo)
-      .order("last_activity_at", { ascending: false })
-      .limit(12);
-
-    if (roomsError) {
-      console.error("Error cargando salas de amigos:", roomsError);
-      setFriendRooms([]);
-      return;
-    }
-
-    setFriendRooms((rooms ?? []) as OpenRoom[]);
-  } finally {
-    setLoadingFriendRooms(false);
-  }
-}, [supabase, playerIdentity?.user_id, playerIdentity?.is_guest]);
+  }, [supabase, playerIdentity?.user_id, playerIdentity?.is_guest]);
 
   useEffect(() => {
-  loadGames();
-  loadStats();
-  loadPlayerIdentity();
-  loadTopPlayers();
-  loadPublicRooms();
-}, [loadGames, loadStats, loadPlayerIdentity, loadTopPlayers, loadPublicRooms]);
+    loadGames();
+    loadStats();
+    loadPlayerIdentity();
+    loadTopPlayers();
+    loadPublicRooms();
+  }, [loadGames, loadStats, loadPlayerIdentity, loadTopPlayers, loadPublicRooms]);
 
-useEffect(() => {
-  loadFriendRooms();
-}, [loadFriendRooms]);
+  useEffect(() => {
+    loadFriendRooms();
+  }, [loadFriendRooms]);
 
   useEffect(() => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(() => {
-  loadPlayerIdentity();
-  loadTopPlayers();
-  loadPublicRooms();
-});
+      loadPlayerIdentity();
+      loadTopPlayers();
+      loadPublicRooms();
+    });
 
     return () => {
       subscription.unsubscribe();
@@ -501,7 +518,7 @@ useEffect(() => {
       const roomSettings = buildRoomSettings(
         selectedGame.slug,
         finalVariantKey,
-        finalMaxPlayers
+        finalMaxPlayers,
       );
 
       while (!created && attempts < 5) {
@@ -603,6 +620,7 @@ useEffect(() => {
         if (player.user_id && playerIdentity.user_id) {
           return player.user_id === playerIdentity.user_id;
         }
+
         return !player.user_id && player.player_name === playerIdentity.name;
       });
 
@@ -621,6 +639,7 @@ useEffect(() => {
 
       let finalName = playerIdentity.name;
       const nameAlreadyUsed = list.some((player) => player.player_name === finalName);
+
       if (nameAlreadyUsed) {
         finalName = `${playerIdentity.name} 2`;
       }
@@ -684,11 +703,11 @@ useEffect(() => {
     return (
       <div
         key={`${label}-${openRoom.code}`}
-        className="rounded-3xl border border-white/10 bg-white/[0.03] p-4"
+        className="rounded-2xl border border-white/10 bg-black/25 p-4"
       >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-lg font-extrabold">
+            <p className="text-base font-extrabold">
               {getGameIcon(openRoom.game_slug ?? "")} {gameName}
             </p>
 
@@ -713,7 +732,7 @@ useEffect(() => {
             type="button"
             disabled={!playerIdentity}
             onClick={() => router.push(`/sala/${openRoom.code}`)}
-            className="rounded-2xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-2xl bg-orange-500 px-4 py-2 text-sm font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Unirse
           </button>
@@ -765,7 +784,8 @@ useEffect(() => {
                 <div className="inline-flex items-center gap-3 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
                   {renderProfileAvatar(selectedAvatar, selectedFrame, "sm")}
                   <span>
-                    Jugando como: {playerIdentity.name} {playerIdentity.is_guest ? "(Invitado)" : ""}
+                    Jugando como: {playerIdentity.name}{" "}
+                    {playerIdentity.is_guest ? "(Invitado)" : ""}
                   </span>
                 </div>
 
@@ -788,7 +808,9 @@ useEffect(() => {
                 <p className="text-sm font-semibold uppercase tracking-[0.18em] text-orange-300/80">
                   Top jugadores
                 </p>
-                <h2 className="mt-2 text-2xl font-bold text-white">Los mejores de la mesa</h2>
+                <h2 className="mt-2 text-2xl font-bold text-white">
+                  Los mejores de la mesa
+                </h2>
                 <p className="mt-1 text-sm text-white/60">
                   Los 3 jugadores con más puntos actuales.
                 </p>
@@ -821,13 +843,16 @@ useEffect(() => {
                   const gamesWon = player.games_won ?? 0;
                   const winRate =
                     gamesPlayed > 0 ? ((gamesWon / gamesPlayed) * 100).toFixed(1) : null;
-                  const isMe = !!playerIdentity?.user_id && player.id === playerIdentity.user_id;
+                  const isMe =
+                    !!playerIdentity?.user_id && player.id === playerIdentity.user_id;
 
                   return (
                     <div
                       key={player.id}
                       className={`rounded-[28px] border p-5 transition hover:border-orange-500/30 hover:bg-white/[0.05] ${getTopPositionStyles(position)} ${
-                        isMe ? "ring-2 ring-emerald-400/50 shadow-[0_0_25px_rgba(16,185,129,0.12)]" : ""
+                        isMe
+                          ? "ring-2 ring-emerald-400/50 shadow-[0_0_25px_rgba(16,185,129,0.12)]"
+                          : ""
                       }`}
                     >
                       <div className="mb-4 flex items-center justify-between">
@@ -871,8 +896,8 @@ useEffect(() => {
               </div>
             )}
           </div>
-        
-                   <div className="mx-auto mt-14 grid max-w-4xl gap-6 md:grid-cols-2">
+
+          <div className="mx-auto mt-14 grid max-w-4xl gap-6 md:grid-cols-2">
             <div className="rounded-[30px] border border-orange-500/15 bg-zinc-950/90 p-7 shadow-[0_0_40px_rgba(249,115,22,0.05)] transition hover:border-orange-500/25 hover:shadow-[0_0_60px_rgba(249,115,22,0.08)]">
               <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-orange-500/10 text-4xl text-orange-500">
                 +
@@ -901,6 +926,7 @@ useEffect(() => {
                     setSelectedGameSlug(nextSlug);
                     setSelectedVariantKey(getDefaultVariantForGame(nextSlug));
                     setMaxPlayers(getDefaultMaxPlayersForGame(nextSlug));
+                    setRoomVisibility("private");
                   }}
                   className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
                 >
@@ -953,7 +979,7 @@ useEffect(() => {
                               >
                                 {num}
                               </button>
-                            )
+                            ),
                           )}
                         </div>
 
@@ -985,14 +1011,16 @@ useEffect(() => {
                                   !isAvailable
                                     ? "cursor-not-allowed border-white/10 bg-white/[0.03] opacity-60"
                                     : isSelected
-                                    ? "border-orange-500/40 bg-orange-500/10"
-                                    : "border-white/10 bg-white/5 hover:bg-white/10"
+                                      ? "border-orange-500/40 bg-orange-500/10"
+                                      : "border-white/10 bg-white/5 hover:bg-white/10"
                                 }`}
                               >
                                 <div className="flex items-start justify-between gap-3">
                                   <div>
                                     <p className="font-bold text-white">{variant.label}</p>
-                                    <p className="mt-1 text-sm text-white/60">{variant.description}</p>
+                                    <p className="mt-1 text-sm text-white/60">
+                                      {variant.description}
+                                    </p>
                                   </div>
 
                                   {!isAvailable && (
@@ -1006,45 +1034,55 @@ useEffect(() => {
                           })}
                         </div>
                       </div>
-                    </div>
 
-                    <div className="mt-4">
-                      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/55">
-                        Tipo de sala
-                      </p>
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/55">
+                          Tipo de sala
+                        </p>
 
-                      <div className="grid gap-2">
-                        {[
-                          {
-                            key: "private",
-                            label: "Privada 🔒",
-                            description: "Solo entra quien tenga el código.",
-                          },
-                          {
-                            key: "public",
-                            label: "Pública 🌍",
-                            description: "Aparece en salas abiertas para que otros jugadores se unan.",
-                          },
-                          {
-                            key: "friends",
-                            label: "Solo amigos 👥",
-                            description: "Aparece solamente para tus amigos agregados.",
-                          },
-                        ].map((option) => (
-                          <button
-                            key={option.key}
-                            type="button"
-                            onClick={() => setRoomVisibility(option.key as RoomVisibility)}
-                            className={`rounded-2xl border px-4 py-3 text-left transition ${
-                              roomVisibility === option.key
-                                ? "border-orange-500/40 bg-orange-500/10"
-                                : "border-white/10 bg-white/5 hover:bg-white/10"
-                            }`}
-                          >
-                            <p className="font-bold text-white">{option.label}</p>
-                            <p className="mt-1 text-sm text-white/60">{option.description}</p>
-                          </button>
-                        ))}
+                        <div className="grid gap-2">
+                          {[
+                            {
+                              key: "private",
+                              label: "Privada 🔒",
+                              description: "Solo entra quien tenga el código.",
+                              disabled: false,
+                            },
+                            {
+                              key: "public",
+                              label: "Pública 🌍",
+                              description:
+                                "Aparece en salas abiertas para que otros jugadores se unan.",
+                              disabled: false,
+                            },
+                            {
+                              key: "friends",
+                              label: "Solo amigos 👥",
+                              description: "Aparece solamente para tus amigos agregados.",
+                              disabled: !playerIdentity || playerIdentity.is_guest,
+                            },
+                          ].map((option) => (
+                            <button
+                              key={option.key}
+                              type="button"
+                              onClick={() => {
+                                if (option.disabled) return;
+                                setRoomVisibility(option.key as RoomVisibility);
+                              }}
+                              disabled={option.disabled}
+                              className={`rounded-2xl border px-4 py-3 text-left transition ${
+                                option.disabled
+                                  ? "cursor-not-allowed border-white/10 bg-white/[0.03] opacity-50"
+                                  : roomVisibility === option.key
+                                    ? "border-orange-500/40 bg-orange-500/10"
+                                    : "border-white/10 bg-white/5 hover:bg-white/10"
+                              }`}
+                            >
+                              <p className="font-bold text-white">{option.label}</p>
+                              <p className="mt-1 text-sm text-white/60">{option.description}</p>
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
 
@@ -1057,7 +1095,9 @@ useEffect(() => {
                         {" · "}
                         <span>{selectedVariant?.label ?? "Variante por defecto"}</span>
                         {" · "}
-                        <span>{maxPlayers} jugador{maxPlayers !== 1 ? "es" : ""}</span>
+                        <span>
+                          {maxPlayers} jugador{maxPlayers !== 1 ? "es" : ""}
+                        </span>
                         {" · "}
                         <span>
                           {roomVisibility === "private"
@@ -1074,14 +1114,17 @@ useEffect(() => {
 
               <button
                 onClick={handleCreateRoom}
-                disabled={creating || !selectedGame || selectedGame.status !== "available" || !playerIdentity}
+                disabled={
+                  creating ||
+                  !selectedGame ||
+                  selectedGame.status !== "available" ||
+                  !playerIdentity
+                }
                 className="mt-6 w-full rounded-2xl bg-orange-500 px-5 py-3.5 text-lg font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {creating ? "Creando sala..." : "Crear sala →"}
               </button>
             </div>
-
-            <div className="rounded-[30px] border border-orange-500/15 bg-zinc-950/90 p-7 shadow-[0_0_40px_rgba(249,115,22,0.05)] transition hover:border-orange-500/25 hover:shadow-[0_0_60px_rgba(249,115,22,0.08)]">
 
             <div className="rounded-[30px] border border-orange-500/15 bg-zinc-950/90 p-7 shadow-[0_0_40px_rgba(249,115,22,0.05)] transition hover:border-orange-500/25 hover:shadow-[0_0_60px_rgba(249,115,22,0.08)]">
               <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-orange-500/10 text-4xl text-orange-500">
@@ -1090,7 +1133,7 @@ useEffect(() => {
 
               <h2 className="text-3xl font-bold">Unirse a sala</h2>
               <p className="mt-3 text-base leading-relaxed text-white/65">
-                Ingresa un código de sala o encuentra partidas abiertas debajo.
+                Ingresa un código de sala para unirte a una sesión existente.
               </p>
 
               {!playerIdentity && (
@@ -1127,15 +1170,14 @@ useEffect(() => {
               </div>
 
               <div className="mt-6 space-y-5">
-                <div className="rounded-[26px] border border-cyan-500/15 bg-white/[0.03] p-5 shadow-[0_0_25px_rgba(34,211,238,0.03)]">
-                  <div className="mb-4 flex items-start justify-between gap-4">
+                <div className="rounded-[26px] border border-cyan-500/15 bg-white/[0.03] p-5">
+                  <div className="mb-4 flex items-center justify-between gap-4">
                     <div>
-                      <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-500/10 text-xl text-cyan-300">
+                      <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-500/10 text-xl text-cyan-300">
                         👥
                       </div>
-
-                      <h3 className="text-xl font-bold">Salas de amigos</h3>
-                      <p className="mt-1 text-sm leading-relaxed text-white/60">
+                      <h3 className="text-lg font-bold">Salas de amigos</h3>
+                      <p className="text-sm text-white/60">
                         Partidas creadas por tus amigos.
                       </p>
                     </div>
@@ -1143,36 +1185,37 @@ useEffect(() => {
                     <button
                       type="button"
                       onClick={() => void loadFriendRooms()}
-                      className="shrink-0 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/10"
+                      className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold transition hover:bg-white/10"
                     >
                       Actualizar
                     </button>
                   </div>
 
-                  {loadingFriendRooms ? (
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-                      Buscando salas de amigos...
-                    </div>
-                  ) : friendRooms.length === 0 ? (
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-                      No hay salas de amigos activas por ahora.
-                    </div>
-                  ) : (
-                    <div className="max-h-[320px] space-y-3 overflow-y-auto pr-1">
-                      {friendRooms.map((openRoom) => renderOpenRoomCard(openRoom, "Amigos"))}
-                    </div>
-                  )}
+                  <div className="max-h-[280px] overflow-y-auto pr-1">
+                    {loadingFriendRooms ? (
+                      <p className="rounded-2xl bg-black/25 p-4 text-sm text-white/60">
+                        Buscando salas de amigos...
+                      </p>
+                    ) : friendRooms.length === 0 ? (
+                      <p className="rounded-2xl bg-black/25 p-4 text-sm text-white/60">
+                        No hay salas de amigos activas.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {friendRooms.map((room) => renderOpenRoomCard(room, "Amigos"))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="rounded-[26px] border border-emerald-500/15 bg-white/[0.03] p-5 shadow-[0_0_25px_rgba(16,185,129,0.03)]">
-                  <div className="mb-4 flex items-start justify-between gap-4">
+                <div className="rounded-[26px] border border-emerald-500/15 bg-white/[0.03] p-5">
+                  <div className="mb-4 flex items-center justify-between gap-4">
                     <div>
-                      <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500/10 text-xl text-emerald-300">
+                      <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500/10 text-xl text-emerald-300">
                         🌍
                       </div>
-
-                      <h3 className="text-xl font-bold">Salas públicas</h3>
-                      <p className="mt-1 text-sm leading-relaxed text-white/60">
+                      <h3 className="text-lg font-bold">Salas públicas</h3>
+                      <p className="text-sm text-white/60">
                         Partidas abiertas esperando jugadores.
                       </p>
                     </div>
@@ -1180,29 +1223,32 @@ useEffect(() => {
                     <button
                       type="button"
                       onClick={() => void loadPublicRooms()}
-                      className="shrink-0 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/10"
+                      className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold transition hover:bg-white/10"
                     >
                       Actualizar
                     </button>
                   </div>
 
-                  {loadingPublicRooms ? (
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-                      Buscando salas públicas...
-                    </div>
-                  ) : publicRooms.length === 0 ? (
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
-                      No hay salas públicas disponibles por ahora.
-                    </div>
-                  ) : (
-                    <div className="max-h-[320px] space-y-3 overflow-y-auto pr-1">
-                      {publicRooms.map((openRoom) => renderOpenRoomCard(openRoom, "Pública"))}
-                    </div>
-                  )}
+                  <div className="max-h-[320px] overflow-y-auto pr-1">
+                    {loadingPublicRooms ? (
+                      <p className="rounded-2xl bg-black/25 p-4 text-sm text-white/60">
+                        Buscando salas públicas...
+                      </p>
+                    ) : publicRooms.length === 0 ? (
+                      <p className="rounded-2xl bg-black/25 p-4 text-sm text-white/60">
+                        No hay salas públicas disponibles.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {publicRooms.map((room) => renderOpenRoomCard(room, "Pública"))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+
           {errorMessage && (
             <div className="mx-auto mt-6 max-w-4xl rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-center text-red-300">
               {errorMessage}
@@ -1278,6 +1324,7 @@ useEffect(() => {
                           setSelectedGameSlug(game.slug);
                           setSelectedVariantKey(getDefaultVariantForGame(game.slug));
                           setMaxPlayers(getDefaultMaxPlayersForGame(game.slug));
+                          setRoomVisibility("private");
                           window.scrollTo({ top: 0, behavior: "smooth" });
                         }}
                         className="rounded-2xl bg-orange-500 px-4 py-2.5 font-bold text-black transition hover:bg-orange-400"
@@ -1316,12 +1363,12 @@ useEffect(() => {
               {
                 step: "02",
                 title: "Crea tu sala",
-                text: "Genera una sala privada con un código único para reunir a tus invitados.",
+                text: "Genera una sala privada, pública o para amigos con un código único.",
               },
               {
                 step: "03",
-                title: "Invita a tu familia y amigos",
-                text: "Comparte el código de la sala por mensaje, WhatsApp o donde prefieras.",
+                title: "Invita o únete",
+                text: "Comparte el código o entra a salas públicas disponibles.",
               },
               {
                 step: "04",
@@ -1342,10 +1389,10 @@ useEffect(() => {
                     {item.step === "01"
                       ? "🎮"
                       : item.step === "02"
-                      ? "➕"
-                      : item.step === "03"
-                      ? "📩"
-                      : "🔥"}
+                        ? "➕"
+                        : item.step === "03"
+                          ? "🌍"
+                          : "🔥"}
                   </div>
                 </div>
 
@@ -1369,8 +1416,8 @@ useEffect(() => {
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             {[
               {
-                title: "Salas privadas",
-                text: "Genera códigos únicos para jugar solo con tus invitados.",
+                title: "Salas privadas y públicas",
+                text: "Crea partidas solo por código o permite que otros jugadores se unan.",
               },
               {
                 title: "Tiempo real",
