@@ -7,9 +7,12 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { MemoramaGameState } from "./types";
 import {
+  MEMORAMA_RESOLVE_MS,
+  MEMORAMA_TURN_SECONDS,
   areAllPairsMatched,
   createInitialMemoramaState,
   getCardById,
+  getTurnTimes,
   getWinnerFromScores,
   isCardVisible,
 } from "./utils";
@@ -45,6 +48,7 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
   const router = useRouter();
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
+  const resolveTimerRef = useRef<number | null>(null);
 
   const [room, setRoom] = useState<RoomRow | null>(null);
   const [players, setPlayers] = useState<RoomPlayerRow[]>([]);
@@ -53,6 +57,7 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
   );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [nowMs, setNowMs] = useState(Date.now());
 
   const currentPlayerName = useMemo(() => {
     if (typeof window === "undefined") return "";
@@ -88,6 +93,13 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
   const isMyTurn =
     !!currentPlayerKey && gameState.currentTurnKey === currentPlayerKey;
 
+  const turnSecondsLeft = useMemo(() => {
+    if (gameState.phase !== "playing" || !gameState.turnEndsAt) return 0;
+
+    const diff = new Date(gameState.turnEndsAt).getTime() - nowMs;
+    return Math.max(0, Math.ceil(diff / 1000));
+  }, [gameState.phase, gameState.turnEndsAt, nowMs]);
+
   const extractMemoramaState = (
     settings: Record<string, any> | null | undefined,
   ): MemoramaGameState => {
@@ -101,10 +113,14 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
       ...createInitialMemoramaState(),
       ...saved,
       cards: saved.cards ?? [],
-      flippedCardIds: saved.flippedCardIds ?? [],
+      selectedCardIds: saved.selectedCardIds ?? saved.flippedCardIds ?? [],
       matchedCardIds: saved.matchedCardIds ?? [],
       matchedPairOwners: saved.matchedPairOwners ?? {},
       scores: saved.scores ?? {},
+      isResolving: saved.isResolving ?? false,
+      lastResult: saved.lastResult ?? null,
+      turnStartedAt: saved.turnStartedAt ?? null,
+      turnEndsAt: saved.turnEndsAt ?? null,
     };
   };
 
@@ -189,6 +205,16 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
     setPlayers((data ?? []) as RoomPlayerRow[]);
   }, [roomCode, supabase]);
 
+  const getNextPlayer = (currentTurnKey: string | null) => {
+    if (sortedPlayers.length === 0) return null;
+
+    const currentIndex = sortedPlayers.findIndex(
+      (player) => getPlayerKey(player) === currentTurnKey,
+    );
+
+    return sortedPlayers[(currentIndex + 1) % sortedPlayers.length] ?? sortedPlayers[0];
+  };
+
   const startGame = async () => {
     if (sortedPlayers.length < 2) {
       alert("Memorama necesita 2 jugadores.");
@@ -197,8 +223,9 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
 
     const firstPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
     const firstKey = getPlayerKey(firstPlayer);
+    const turnTimes = getTurnTimes();
 
-    await updateMemoramaState((current) => {
+    await updateMemoramaState(() => {
       const scores = sortedPlayers.reduce<MemoramaGameState["scores"]>(
         (acc, player) => {
           const key = getPlayerKey(player);
@@ -206,7 +233,7 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
           acc[key] = {
             playerKey: key,
             playerName: player.player_name,
-            pairs: current.scores[key]?.pairs ?? 0,
+            pairs: 0,
           };
 
           return acc;
@@ -220,123 +247,147 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
         currentTurnKey: firstKey,
         currentTurnName: firstPlayer.player_name,
         scores,
+        ...turnTimes,
       };
     });
   };
 
-const handleCardClick = async (cardId: string) => {
-  if (!currentPlayer || !currentPlayerKey) return;
-  if (gameState.phase !== "playing") return;
-
-  if (!isMyTurn) {
-    alert("Todavía no es tu turno.");
-    return;
-  }
-
-  if (saving) return;
-
-  await updateMemoramaState((current) => {
-    if (current.phase !== "playing") return current;
-    if (current.currentTurnKey !== currentPlayerKey) return current;
-
-    const selectedCard = getCardById(current.cards, cardId);
-
-    if (!selectedCard) return current;
-    if (current.matchedCardIds.includes(selectedCard.id)) return current;
-    if (current.flippedCardIds.includes(selectedCard.id)) return current;
-    if (current.flippedCardIds.length >= 2) return current;
-
-    const nextFlipped = [...current.flippedCardIds, selectedCard.id];
-
-    if (nextFlipped.length < 2) {
-      return {
-        ...current,
-        flippedCardIds: nextFlipped,
-        lastMatch: null,
-      };
-    }
-
-    const firstCard = getCardById(current.cards, nextFlipped[0]);
-    const secondCard = getCardById(current.cards, nextFlipped[1]);
-
-    if (!firstCard || !secondCard) return current;
-
-    const isMatch = firstCard.pairId === secondCard.pairId;
-
-    if (isMatch) {
-      const nextMatchedCardIds = [
-        ...current.matchedCardIds,
-        firstCard.id,
-        secondCard.id,
-      ];
-
-      const currentScore = current.scores[currentPlayerKey] ?? {
-        playerKey: currentPlayerKey,
-        playerName: currentPlayer.player_name,
-        pairs: 0,
-      };
-
-      const nextScores = {
-        ...current.scores,
-        [currentPlayerKey]: {
-          ...currentScore,
-          pairs: currentScore.pairs + 1,
-        },
-      };
-
-      const finished = areAllPairsMatched(current.cards, nextMatchedCardIds);
-      const winner = finished
-        ? getWinnerFromScores(nextScores)
-        : { winnerKey: null, winnerName: null };
-
-      return {
-        ...current,
-        phase: finished ? "finished" : current.phase,
-        flippedCardIds: [],
-        matchedCardIds: nextMatchedCardIds,
-        matchedPairOwners: {
-          ...current.matchedPairOwners,
-          [firstCard.pairId]: currentPlayerKey,
-        },
-        scores: nextScores,
-        lastMatch: true,
-        winnerKey: winner.winnerKey,
-        winnerName: winner.winnerName,
-      };
-    }
-
-    return {
-      ...current,
-      flippedCardIds: nextFlipped,
-      lastMatch: false,
-    };
-  });
-
-  window.setTimeout(() => {
-    void updateMemoramaState((current) => {
+  const resolveSelectedCards = useCallback(async () => {
+    await updateMemoramaState((current) => {
       if (current.phase !== "playing") return current;
-      if (current.lastMatch !== false) return current;
-      if (current.flippedCardIds.length !== 2) return current;
+      if (!current.isResolving) return current;
+      if (current.selectedCardIds.length !== 2) return current;
 
-      const currentIndex = sortedPlayers.findIndex(
-        (player) => getPlayerKey(player) === current.currentTurnKey,
-      );
+      const firstCard = getCardById(current.cards, current.selectedCardIds[0]);
+      const secondCard = getCardById(current.cards, current.selectedCardIds[1]);
 
-      const nextPlayer =
-        sortedPlayers[(currentIndex + 1) % sortedPlayers.length] ?? sortedPlayers[0];
+      if (!firstCard || !secondCard || !current.currentTurnKey) {
+        return {
+          ...current,
+          selectedCardIds: [],
+          isResolving: false,
+          lastResult: null,
+        };
+      }
 
+      const isMatch = firstCard.pairId === secondCard.pairId;
+
+      if (isMatch) {
+        const nextMatchedCardIds = [
+          ...current.matchedCardIds,
+          firstCard.id,
+          secondCard.id,
+        ];
+
+        const currentScore = current.scores[current.currentTurnKey] ?? {
+          playerKey: current.currentTurnKey,
+          playerName: current.currentTurnName ?? "Jugador",
+          pairs: 0,
+        };
+
+        const nextScores = {
+          ...current.scores,
+          [current.currentTurnKey]: {
+            ...currentScore,
+            pairs: currentScore.pairs + 1,
+          },
+        };
+
+        const finished = areAllPairsMatched(current.cards, nextMatchedCardIds);
+        const winner = finished
+          ? getWinnerFromScores(nextScores)
+          : { winnerKey: null, winnerName: null };
+
+        return {
+          ...current,
+          phase: finished ? "finished" : current.phase,
+          selectedCardIds: [],
+          matchedCardIds: nextMatchedCardIds,
+          matchedPairOwners: {
+            ...current.matchedPairOwners,
+            [firstCard.pairId]: current.currentTurnKey,
+          },
+          scores: nextScores,
+          isResolving: false,
+          lastResult: "match",
+          winnerKey: winner.winnerKey,
+          winnerName: winner.winnerName,
+          ...(finished ? {} : getTurnTimes()),
+        };
+      }
+
+      const nextPlayer = getNextPlayer(current.currentTurnKey);
       const nextPlayerKey = nextPlayer ? getPlayerKey(nextPlayer) : current.currentTurnKey;
 
       return {
         ...current,
-        flippedCardIds: [],
-        lastMatch: null,
+        selectedCardIds: [],
+        isResolving: false,
+        lastResult: "miss",
         currentTurnKey: nextPlayerKey,
         currentTurnName: nextPlayer?.player_name ?? current.currentTurnName,
+        ...getTurnTimes(),
       };
     });
-  }, 1000);
-};
+  }, [getNextPlayer, updateMemoramaState]);
+
+  const handleTimeoutTurn = useCallback(async () => {
+    await updateMemoramaState((current) => {
+      if (current.phase !== "playing") return current;
+      if (current.isResolving) return current;
+      if (!current.turnEndsAt) return current;
+
+      const hasExpired = Date.now() >= new Date(current.turnEndsAt).getTime();
+      if (!hasExpired) return current;
+
+      const nextPlayer = getNextPlayer(current.currentTurnKey);
+      const nextPlayerKey = nextPlayer ? getPlayerKey(nextPlayer) : current.currentTurnKey;
+
+      return {
+        ...current,
+        selectedCardIds: [],
+        isResolving: false,
+        lastResult: "timeout",
+        currentTurnKey: nextPlayerKey,
+        currentTurnName: nextPlayer?.player_name ?? current.currentTurnName,
+        ...getTurnTimes(),
+      };
+    });
+  }, [getNextPlayer, updateMemoramaState]);
+
+  const handleCardClick = async (cardId: string) => {
+    if (!currentPlayer || !currentPlayerKey) return;
+    if (gameState.phase !== "playing") return;
+
+    if (!isMyTurn) {
+      alert("Todavía no es tu turno.");
+      return;
+    }
+
+    if (saving || gameState.isResolving) return;
+
+    await updateMemoramaState((current) => {
+      if (current.phase !== "playing") return current;
+      if (current.currentTurnKey !== currentPlayerKey) return current;
+      if (current.isResolving) return current;
+      if (current.selectedCardIds.length >= 2) return current;
+
+      const selectedCard = getCardById(current.cards, cardId);
+
+      if (!selectedCard) return current;
+      if (current.matchedCardIds.includes(selectedCard.id)) return current;
+      if (current.selectedCardIds.includes(selectedCard.id)) return current;
+
+      const nextSelectedCardIds = [...current.selectedCardIds, selectedCard.id];
+
+      return {
+        ...current,
+        selectedCardIds: nextSelectedCardIds,
+        isResolving: nextSelectedCardIds.length === 2,
+        lastResult: null,
+      };
+    });
+  };
 
   const handleRematch = async () => {
     await startGame();
@@ -424,6 +475,55 @@ const handleCardClick = async (cardId: string) => {
       supabase.removeChannel(channel);
     };
   }, [supabase, roomCode, loadRoom, loadPlayers]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 250);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (gameState.phase !== "playing") return;
+    if (!gameState.isResolving) return;
+    if (gameState.selectedCardIds.length !== 2) return;
+
+    if (resolveTimerRef.current) {
+      window.clearTimeout(resolveTimerRef.current);
+    }
+
+    resolveTimerRef.current = window.setTimeout(() => {
+      void resolveSelectedCards();
+    }, MEMORAMA_RESOLVE_MS);
+
+    return () => {
+      if (resolveTimerRef.current) {
+        window.clearTimeout(resolveTimerRef.current);
+        resolveTimerRef.current = null;
+      }
+    };
+  }, [
+    gameState.phase,
+    gameState.isResolving,
+    gameState.selectedCardIds,
+    resolveSelectedCards,
+  ]);
+
+  useEffect(() => {
+    if (gameState.phase !== "playing") return;
+    if (gameState.isResolving) return;
+    if (!gameState.turnEndsAt) return;
+    if (turnSecondsLeft > 0) return;
+
+    void handleTimeoutTurn();
+  }, [
+    gameState.phase,
+    gameState.isResolving,
+    gameState.turnEndsAt,
+    turnSecondsLeft,
+    handleTimeoutTurn,
+  ]);
 
   if (loading) {
     return (
@@ -548,11 +648,40 @@ const handleCardClick = async (cardId: string) => {
                     {gameState.currentTurnName ?? "Jugador"}
                   </p>
 
+                  <div className="mt-3 rounded-2xl border border-white/10 bg-black/30 p-3">
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/45">
+                      Tiempo
+                    </p>
+                    <p className="mt-1 text-4xl font-black text-orange-300">
+                      {turnSecondsLeft}s
+                    </p>
+                  </div>
+
                   <p className="mt-2 text-sm text-white/60">
-                    {isMyTurn
-                      ? "Voltea 2 cartas. Si aciertas, sigues jugando."
-                      : "Espera tu turno."}
+                    {gameState.isResolving
+                      ? "Resolviendo selección..."
+                      : isMyTurn
+                        ? `Elige 2 cartas antes de ${MEMORAMA_TURN_SECONDS} segundos.`
+                        : "Espera tu turno."}
                   </p>
+
+                  {gameState.lastResult === "match" && (
+                    <p className="mt-2 text-sm font-bold text-emerald-300">
+                      ✅ Pareja encontrada.
+                    </p>
+                  )}
+
+                  {gameState.lastResult === "miss" && (
+                    <p className="mt-2 text-sm font-bold text-red-300">
+                      ❌ No era pareja.
+                    </p>
+                  )}
+
+                  {gameState.lastResult === "timeout" && (
+                    <p className="mt-2 text-sm font-bold text-yellow-300">
+                      ⏳ Tiempo agotado.
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -583,46 +712,45 @@ const handleCardClick = async (cardId: string) => {
           </aside>
 
           <section className="rounded-[32px] border border-white/10 bg-zinc-950/90 p-4 md:p-6">
-            <div className="grid grid-cols-4 gap-3 sm:grid-cols-4 md:grid-cols-4">
+            <div className="grid grid-cols-4 gap-3">
               {gameState.cards.map((card) => {
                 const visible = isCardVisible(
                   card,
-                  gameState.flippedCardIds,
+                  gameState.selectedCardIds,
                   gameState.matchedCardIds,
                 );
 
                 const matched = gameState.matchedCardIds.includes(card.id);
-
-                const isWrongPreview =
-                visible &&
-                !matched &&
-                gameState.lastMatch === false &&
-                gameState.flippedCardIds.includes(card.id);
-      
+                const selected = gameState.selectedCardIds.includes(card.id);
                 const ownerKey = gameState.matchedPairOwners?.[card.pairId] ?? null;
                 const isMineMatchedPair = ownerKey === currentPlayerKey;
+
+                const isMissPreview =
+                  selected && gameState.isResolving && gameState.lastResult === null;
+
+                const disabled =
+                  saving ||
+                  gameState.phase !== "playing" ||
+                  !isMyTurn ||
+                  gameState.isResolving ||
+                  visible;
 
                 return (
                   <button
                     key={card.id}
                     type="button"
-                    disabled={
-                      saving ||
-                      gameState.phase !== "playing" ||
-                      !isMyTurn ||
-                      visible
-                    }
+                    disabled={disabled}
                     onClick={() => void handleCardClick(card.id)}
                     className={
                       matched
-                          ? isMineMatchedPair
+                        ? isMineMatchedPair
                           ? "aspect-square rounded-3xl border border-emerald-400/50 bg-emerald-500/20 text-5xl shadow-[0_0_28px_rgba(16,185,129,0.18)]"
-                        : "aspect-square rounded-3xl border border-cyan-400/50 bg-cyan-500/20 text-5xl shadow-[0_0_28px_rgba(34,211,238,0.18)]"
-                        : isWrongPreview
-                          ? "aspect-square rounded-3xl border border-red-400/60 bg-red-500/20 text-5xl shadow-[0_0_28px_rgba(239,68,68,0.22)]"
+                          : "aspect-square rounded-3xl border border-cyan-400/50 bg-cyan-500/20 text-5xl shadow-[0_0_28px_rgba(34,211,238,0.18)]"
+                        : isMissPreview
+                          ? "aspect-square rounded-3xl border border-orange-400/60 bg-orange-500/20 text-5xl shadow-[0_0_28px_rgba(249,115,22,0.18)]"
                           : visible
-                          ? "aspect-square rounded-3xl border border-orange-400/50 bg-orange-500/20 text-5xl shadow-[0_0_28px_rgba(249,115,22,0.18)]"
-                          : "aspect-square rounded-3xl border border-white/10 bg-white/[0.04] text-4xl hover:scale-[1.03] hover:border-orange-400/50 hover:bg-orange-500/10 disabled:hover:scale-100"
+                            ? "aspect-square rounded-3xl border border-orange-400/50 bg-orange-500/20 text-5xl shadow-[0_0_28px_rgba(249,115,22,0.18)]"
+                            : "aspect-square rounded-3xl border border-white/10 bg-white/[0.04] text-4xl transition hover:scale-[1.03] hover:border-orange-400/50 hover:bg-orange-500/10 disabled:hover:scale-100"
                     }
                   >
                     <span className="flex h-full w-full items-center justify-center">
