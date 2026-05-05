@@ -1,3 +1,5 @@
+// 📍 Ruta del archivo: app/acceso/page.tsx
+
 "use client";
 
 import { FormEvent, Suspense, useMemo, useState } from "react";
