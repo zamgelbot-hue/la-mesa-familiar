@@ -375,99 +375,94 @@ export default function HomePage() {
   }, [supabase]);
 
   const loadFriendRooms = useCallback(async () => {
-    try {
-      setLoadingFriendRooms(true);
+  try {
+    setLoadingFriendRooms(true);
 
-      if (!playerIdentity?.user_id || playerIdentity.is_guest) {
-        setFriendRooms([]);
-        return;
-      }
+    if (!playerIdentity?.user_id || playerIdentity.is_guest) {
+      setFriendRooms([]);
+      return;
+    }
 
-      const oneHourAgo = new Date(Date.now() - 1000 * 60 * 60).toISOString();
+    const oneHourAgo = new Date(Date.now() - 1000 * 60 * 60).toISOString();
 
-      const { data: friendships, error: friendshipsError } = await supabase
-        .from("friendships")
-        .select("requester_id, addressee_id, status")
-        .eq("status", "accepted")
-        .or(
-          `requester_id.eq.${playerIdentity.user_id},addressee_id.eq.${playerIdentity.user_id}`,
-        );
-
-      if (friendshipsError) {
-        console.error("Error cargando amistades para salas:", friendshipsError);
-        setFriendRooms([]);
-        return;
-      }
-
-      const friendIds = Array.from(
-        new Set(
-          (friendships ?? []).map((friendship) =>
-            friendship.requester_id === playerIdentity.user_id
-              ? friendship.addressee_id
-              : friendship.requester_id,
-          ),
-        ),
+    const { data: friendships, error: friendshipsError } = await supabase
+      .from("friendships")
+      .select("requester_id, addressee_id, status")
+      .eq("status", "accepted")
+      .or(
+        `requester_id.eq.${playerIdentity.user_id},addressee_id.eq.${playerIdentity.user_id}`,
       );
 
-      if (friendIds.length === 0) {
-        setFriendRooms([]);
-        return;
-      }
-
-      const { data: rooms, error: roomsError } = await supabase
-        .from("rooms")
-        .select(
-          "code, status, game_slug, game_variant, max_players, visibility, created_by, created_at, last_activity_at",
-        )
-        .eq("visibility", "friends")
-        .in("status", ["waiting"])
-        .in("created_by", friendIds)
-        .gte("last_activity_at", oneHourAgo)
-        .order("last_activity_at", { ascending: false })
-        .limit(12);
-
-      if (roomsError) {
-        console.error("Error cargando salas de amigos:", roomsError);
-        setFriendRooms([]);
-        return;
-      }
-
-      setFriendRooms((rooms ?? []) as OpenRoom[]);
-    } finally {
-      setLoadingFriendRooms(false);
+    if (friendshipsError) {
+      console.error("Error cargando amistades para salas:", friendshipsError);
+      setFriendRooms([]);
+      return;
     }
-  }, [supabase, playerIdentity]);
+
+    const friendIds = Array.from(
+      new Set(
+        (friendships ?? []).map((friendship) =>
+          friendship.requester_id === playerIdentity.user_id
+            ? friendship.addressee_id
+            : friendship.requester_id,
+        ),
+      ),
+    );
+
+    if (friendIds.length === 0) {
+      setFriendRooms([]);
+      return;
+    }
+
+    const { data: rooms, error: roomsError } = await supabase
+      .from("rooms")
+      .select(
+        "code, status, game_slug, game_variant, max_players, visibility, created_by, created_at, last_activity_at",
+      )
+      .eq("visibility", "friends")
+      .in("status", ["waiting"])
+      .in("created_by", friendIds)
+      .gte("last_activity_at", oneHourAgo)
+      .order("last_activity_at", { ascending: false })
+      .limit(12);
+
+    if (roomsError) {
+      console.error("Error cargando salas de amigos:", roomsError);
+      setFriendRooms([]);
+      return;
+    }
+
+    setFriendRooms((rooms ?? []) as OpenRoom[]);
+  } finally {
+    setLoadingFriendRooms(false);
+  }
+}, [supabase, playerIdentity?.user_id, playerIdentity?.is_guest]);
 
   useEffect(() => {
-    loadGames();
-    loadStats();
-    loadPlayerIdentity();
-    loadTopPlayers();
-    loadPublicRooms();
-    loadFriendRooms();
-  }, [
-    loadGames,
-    loadStats,
-    loadPlayerIdentity,
-    loadTopPlayers,
-    loadPublicRooms,
-    loadFriendRooms,
-  ]);
+  loadGames();
+  loadStats();
+  loadPlayerIdentity();
+  loadTopPlayers();
+  loadPublicRooms();
+}, [loadGames, loadStats, loadPlayerIdentity, loadTopPlayers, loadPublicRooms]);
+
+useEffect(() => {
+  loadFriendRooms();
+}, [loadFriendRooms]);
 
   useEffect(() => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(() => {
-      loadPlayerIdentity();
-      loadTopPlayers();
-      loadPublicRooms();
-      loadFriendRooms();
-    });
+  loadPlayerIdentity();
+  loadTopPlayers();
+  loadPublicRooms();
+});
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [supabase, loadPlayerIdentity, loadTopPlayers, loadPublicRooms, loadFriendRooms]);
+  }, [supabase, loadPlayerIdentity, loadTopPlayers, loadPublicRooms]);
 
   const handleCreateRoom = async () => {
     if (!selectedGame) {
