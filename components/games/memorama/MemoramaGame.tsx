@@ -224,10 +224,6 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
     });
   };
 
-  // 📍 Ruta del archivo: components/games/memorama/MemoramaGame.tsx
-
-// 📍 Ruta del archivo: components/games/memorama/MemoramaGame.tsx
-
 const handleCardClick = async (cardId: string) => {
   if (!currentPlayer || !currentPlayerKey) return;
   if (gameState.phase !== "playing") return;
@@ -340,25 +336,6 @@ const handleCardClick = async (cardId: string) => {
       };
     });
   }, 1000);
-};
-
-    const currentIndex = sortedPlayers.findIndex(
-      (player) => getPlayerKey(player) === currentPlayerKey,
-    );
-
-    const nextPlayer =
-      sortedPlayers[(currentIndex + 1) % sortedPlayers.length] ?? sortedPlayers[0];
-
-    const nextPlayerKey = nextPlayer ? getPlayerKey(nextPlayer) : currentPlayerKey;
-
-    return {
-      ...current,
-      flippedCardIds: [],
-      lastMatch: false,
-      currentTurnKey: nextPlayerKey,
-      currentTurnName: nextPlayer?.player_name ?? current.currentTurnName,
-    };
-  });
 };
 
   const handleRematch = async () => {
