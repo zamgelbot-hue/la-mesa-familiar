@@ -1,3 +1,5 @@
+// 📍 Ruta del archivo: app/amigos/page.tsx
+
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
