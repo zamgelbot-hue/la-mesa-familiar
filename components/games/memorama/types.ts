@@ -16,9 +16,23 @@ export type MemoramaPlayerScore = {
   pairs: number;
 };
 
+export type MemoramaSet =
+  | "default"
+  | "comida"
+  | "animales"
+  | "deportes"
+  | "gaming";
+
+export type MemoramaVariant = {
+  set: MemoramaSet;
+  pairs: number;
+};
+
 export type MemoramaGameState = {
   phase: MemoramaPhase;
+  variant: MemoramaVariant;
   cards: MemoramaCard[];
+  
 
   selectedCardIds: string[];
   matchedCardIds: string[];
