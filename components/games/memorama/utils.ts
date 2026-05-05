@@ -1,23 +1,38 @@
 // 📍 Ruta del archivo: components/games/memorama/utils.ts
 
-import type { MemoramaCard, MemoramaGameState } from "./types";
+import type { MemoramaCard, MemoramaGameState, MemoramaSet, MemoramaVariant } from "./types";
 
 export const MEMORAMA_TURN_SECONDS = 5;
 export const MEMORAMA_RESOLVE_MS = 1200;
 
-export const MEMORAMA_EMOJIS = [
-  "🎲",
-  "🃏",
-  "🎯",
-  "🏆",
-  "⭐",
-  "🔥",
-  "🍕",
-  "🌮",
-  "🍔",
-  "🎮",
-  "🐱",
-  "🐶",
+export const DEFAULT_MEMORAMA_VARIANT: MemoramaVariant = {
+  set: "default",
+  pairs: 8,
+};
+
+export const MEMORAMA_SET_LABELS: Record<MemoramaSet, string> = {
+  default: "Clásico",
+  comida: "Comida",
+  animales: "Animales",
+  deportes: "Deportes",
+  gaming: "Gaming",
+  fantasia: "Fantasía",
+  espacio: "Espacio",
+};
+
+export const MEMORAMA_SETS: Record<MemoramaSet, string[]> = {
+  default: ["🎲", "🃏", "🎯", "🏆", "⭐", "🔥", "🍕", "🌮", "🍔", "🎮", "🐱", "🐶"],
+  comida: ["🍕", "🌮", "🍔", "🍟", "🍩", "🍎", "🍓", "🍉", "🍗", "🍪", "🥑", "🍇"],
+  animales: ["🐶", "🐱", "🐼", "🐵", "🐸", "🐯", "🦁", "🐷", "🐨", "🐰", "🦊", "🐮"],
+  deportes: ["⚽", "🏀", "🏈", "⚾", "🎾", "🏐", "🥊", "🏓", "⛳", "🏹", "🥏", "🏉"],
+  gaming: ["🎮", "🕹️", "🎲", "🃏", "🏆", "🎯", "💻", "🧠", "🎧", "🧩", "👾", "🚀"],
+  fantasia: ["🐉", "🧙", "🦄", "🗡️", "🛡️", "👑", "💎", "🔥", "🌙", "⭐", "🧚", "🧛"],
+  espacio: ["🚀", "🪐", "🌎", "🌙", "⭐", "☄️", "👽", "🛰️", "🌌", "🔭", "🛸", "🌞"],
+};
+
+export const MEMORAMA_STORE_LOCKED_SETS: MemoramaSet[] = [
+  "fantasia",
+  "espacio",
 ];
 
 export const shuffleCards = <T,>(items: T[]): T[] => {
@@ -31,8 +46,12 @@ export const shuffleCards = <T,>(items: T[]): T[] => {
   return copy;
 };
 
-export const createMemoramaDeck = (pairs = 8): MemoramaCard[] => {
-  const selected = MEMORAMA_EMOJIS.slice(0, pairs);
+export const createMemoramaDeck = (
+  pairs = 8,
+  set: MemoramaSet = "default",
+): MemoramaCard[] => {
+  const source = MEMORAMA_SETS[set] ?? MEMORAMA_SETS.default;
+  const selected = source.slice(0, pairs);
 
   return shuffleCards(
     selected.flatMap((emoji, index) => {
@@ -56,12 +75,15 @@ export const getTurnTimes = () => {
   };
 };
 
-export const createInitialMemoramaState = (): MemoramaGameState => {
+export const createInitialMemoramaState = (
+  variant: MemoramaVariant = DEFAULT_MEMORAMA_VARIANT,
+): MemoramaGameState => {
   const now = new Date().toISOString();
 
   return {
     phase: "waiting",
-    cards: createMemoramaDeck(8),
+    variant,
+    cards: createMemoramaDeck(variant.pairs, variant.set),
 
     selectedCardIds: [],
     matchedCardIds: [],
@@ -83,6 +105,18 @@ export const createInitialMemoramaState = (): MemoramaGameState => {
 
     createdAt: now,
     updatedAt: now,
+  };
+};
+
+export const normalizeMemoramaVariant = (
+  value: Partial<MemoramaVariant> | null | undefined,
+): MemoramaVariant => {
+  const set = value?.set && MEMORAMA_SETS[value.set] ? value.set : DEFAULT_MEMORAMA_VARIANT.set;
+  const pairs = typeof value?.pairs === "number" ? value.pairs : DEFAULT_MEMORAMA_VARIANT.pairs;
+
+  return {
+    set,
+    pairs: Math.min(Math.max(pairs, 6), 12),
   };
 };
 
