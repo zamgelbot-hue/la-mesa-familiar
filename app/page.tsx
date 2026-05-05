@@ -1,3 +1,5 @@
+// 📍 Ruta del archivo: app/page.tsx
+
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -43,6 +45,19 @@ type TopPlayer = {
   best_win_streak: number | null;
   avatar_key: string | null;
   frame_key: string | null;
+};
+
+type RoomVisibility = "private" | "public" | "friends";
+
+type OpenRoom = {
+  code: string;
+  status: string;
+  game_slug: string | null;
+  game_variant: string | null;
+  max_players: number | null;
+  visibility: RoomVisibility | null;
+  created_at: string;
+  last_activity_at: string | null;
 };
 
 const DEFAULT_STATS: HomeStats = {
@@ -115,6 +130,10 @@ export default function HomePage() {
   const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(null);
   const [topPlayers, setTopPlayers] = useState<TopPlayer[]>([]);
   const [loadingTopPlayers, setLoadingTopPlayers] = useState(true);
+
+  const [roomVisibility, setRoomVisibility] = useState<RoomVisibility>("private");
+  const [publicRooms, setPublicRooms] = useState<OpenRoom[]>([]);
+  const [loadingPublicRooms, setLoadingPublicRooms] = useState(true);
 
   const selectedGame = useMemo(
     () => games.find((game) => game.slug === selectedGameSlug) ?? null,
@@ -323,12 +342,40 @@ export default function HomePage() {
     }
   }, [supabase]);
 
+  const loadPublicRooms = useCallback(async () => {
+    try {
+      setLoadingPublicRooms(true);
+
+      const oneHourAgo = new Date(Date.now() - 1000 * 60 * 60).toISOString();
+
+      const { data, error } = await supabase
+        .from("rooms")
+        .select("code, status, game_slug, game_variant, max_players, visibility, created_at, last_activity_at")
+        .eq("visibility", "public")
+        .in("status", ["waiting"])
+        .gte("last_activity_at", oneHourAgo)
+        .order("last_activity_at", { ascending: false })
+        .limit(12);
+
+      if (error) {
+        console.error("Error cargando salas públicas:", error);
+        setPublicRooms([]);
+        return;
+      }
+
+      setPublicRooms((data ?? []) as OpenRoom[]);
+    } finally {
+      setLoadingPublicRooms(false);
+    }
+  }, [supabase]);
+
   useEffect(() => {
     loadGames();
     loadStats();
     loadPlayerIdentity();
     loadTopPlayers();
-  }, [loadGames, loadStats, loadPlayerIdentity, loadTopPlayers]);
+    loadPublicRooms();
+  }, [loadGames, loadStats, loadPlayerIdentity, loadTopPlayers, loadPublicRooms]);
 
   useEffect(() => {
     const {
@@ -336,12 +383,13 @@ export default function HomePage() {
     } = supabase.auth.onAuthStateChange(() => {
       loadPlayerIdentity();
       loadTopPlayers();
+      loadPublicRooms();
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [supabase, loadPlayerIdentity, loadTopPlayers]);
+  }, [supabase, loadPlayerIdentity, loadTopPlayers, loadPublicRooms]);
 
   const handleCreateRoom = async () => {
     if (!selectedGame) {
@@ -390,6 +438,9 @@ export default function HomePage() {
           game_variant: finalVariantKey,
           max_players: finalMaxPlayers,
           room_settings: roomSettings,
+          visibility: roomVisibility,
+          created_by: playerIdentity.user_id,
+          last_activity_at: new Date().toISOString(),
         });
 
         if (roomError) {
@@ -421,6 +472,7 @@ export default function HomePage() {
         return;
       }
 
+      await loadPublicRooms();
       router.push(`/sala/${roomCode}`);
     } finally {
       setCreating(false);
@@ -510,6 +562,11 @@ export default function HomePage() {
         setErrorMessage("No fue posible unirse a la sala.");
         return;
       }
+
+      await supabase
+        .from("rooms")
+        .update({ last_activity_at: new Date().toISOString() })
+        .eq("code", normalizedCode);
 
       savePlayerIdentity(normalizedCode, finalName, false);
       router.push(`/sala/${normalizedCode}`);
@@ -685,8 +742,8 @@ export default function HomePage() {
               </div>
             )}
           </div>
-        
-                   <div className="mx-auto mt-14 grid max-w-4xl gap-6 md:grid-cols-2">
+
+          <div className="mx-auto mt-14 grid max-w-4xl gap-6 md:grid-cols-2">
             <div className="rounded-[30px] border border-orange-500/15 bg-zinc-950/90 p-7 shadow-[0_0_40px_rgba(249,115,22,0.05)] transition hover:border-orange-500/25 hover:shadow-[0_0_60px_rgba(249,115,22,0.08)]">
               <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-orange-500/10 text-4xl text-orange-500">
                 +
@@ -820,6 +877,46 @@ export default function HomePage() {
                           })}
                         </div>
                       </div>
+
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/55">
+                          Tipo de sala
+                        </p>
+
+                        <div className="grid gap-2">
+                          {[
+                            {
+                              key: "private",
+                              label: "Privada 🔒",
+                              description: "Solo entra quien tenga el código.",
+                            },
+                            {
+                              key: "public",
+                              label: "Pública 🌍",
+                              description: "Aparece en salas abiertas para que otros jugadores se unan.",
+                            },
+                            {
+                              key: "friends",
+                              label: "Solo amigos 👥",
+                              description: "Preparado para mostrarla solo a tus amigos.",
+                            },
+                          ].map((option) => (
+                            <button
+                              key={option.key}
+                              type="button"
+                              onClick={() => setRoomVisibility(option.key as RoomVisibility)}
+                              className={`rounded-2xl border px-4 py-3 text-left transition ${
+                                roomVisibility === option.key
+                                  ? "border-orange-500/40 bg-orange-500/10"
+                                  : "border-white/10 bg-white/5 hover:bg-white/10"
+                              }`}
+                            >
+                              <p className="font-bold text-white">{option.label}</p>
+                              <p className="mt-1 text-sm text-white/60">{option.description}</p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
 
                     <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
@@ -832,6 +929,14 @@ export default function HomePage() {
                         <span>{selectedVariant?.label ?? "Variante por defecto"}</span>
                         {" · "}
                         <span>{maxPlayers} jugador{maxPlayers !== 1 ? "es" : ""}</span>
+                        {" · "}
+                        <span>
+                          {roomVisibility === "private"
+                            ? "Privada"
+                            : roomVisibility === "public"
+                              ? "Pública"
+                              : "Solo amigos"}
+                        </span>
                       </p>
                     </div>
                   </div>
@@ -889,6 +994,95 @@ export default function HomePage() {
                   podrán marcarse como listos y comenzar la partida.
                 </p>
               </div>
+            </div>
+
+            <div className="rounded-[30px] border border-emerald-500/15 bg-zinc-950/90 p-7 shadow-[0_0_40px_rgba(16,185,129,0.04)] md:col-span-2">
+              <div className="mb-5 flex items-center justify-between gap-4">
+                <div>
+                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-3xl bg-emerald-500/10 text-3xl text-emerald-300">
+                    🌍
+                  </div>
+
+                  <h2 className="text-3xl font-bold">Salas públicas</h2>
+                  <p className="mt-3 text-base leading-relaxed text-white/65">
+                    Únete a partidas abiertas que están esperando jugadores.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void loadPublicRooms()}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/10"
+                >
+                  Actualizar
+                </button>
+              </div>
+
+              {loadingPublicRooms ? (
+                <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 text-white/60">
+                  Buscando salas públicas...
+                </div>
+              ) : publicRooms.length === 0 ? (
+                <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 text-white/60">
+                  No hay salas públicas disponibles por ahora.
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {publicRooms.map((openRoom) => {
+                    const gameName =
+                      games.find((game) => game.slug === openRoom.game_slug)?.name ??
+                      openRoom.game_slug ??
+                      "Juego";
+
+                    const variantLabel =
+                      GAME_CONFIGS[openRoom.game_slug ?? ""]?.variants.find(
+                        (variant) => variant.key === openRoom.game_variant,
+                      )?.label ?? openRoom.game_variant ?? "Sin variante";
+
+                    return (
+                      <div
+                        key={openRoom.code}
+                        className="rounded-3xl border border-white/10 bg-white/[0.03] p-5"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xl font-extrabold">
+                              {getGameIcon(openRoom.game_slug ?? "")} {gameName}
+                            </p>
+
+                            <p className="mt-1 text-sm text-white/60">
+                              {variantLabel}
+                            </p>
+
+                            <p className="mt-2 text-sm font-bold text-emerald-300">
+                              Sala esperando jugadores
+                            </p>
+                          </div>
+
+                          <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-emerald-300">
+                            Pública
+                          </span>
+                        </div>
+
+                        <div className="mt-4 flex items-center justify-between gap-3">
+                          <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-2 text-sm font-black tracking-[0.25em] text-orange-300">
+                            {openRoom.code}
+                          </div>
+
+                          <button
+                            type="button"
+                            disabled={!playerIdentity}
+                            onClick={() => router.push(`/sala/${openRoom.code}`)}
+                            className="rounded-2xl bg-orange-500 px-4 py-2.5 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Unirse
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1005,12 +1199,12 @@ export default function HomePage() {
               {
                 step: "02",
                 title: "Crea tu sala",
-                text: "Genera una sala privada con un código único para reunir a tus invitados.",
+                text: "Genera una sala privada, pública o para amigos con un código único.",
               },
               {
                 step: "03",
-                title: "Invita a tu familia y amigos",
-                text: "Comparte el código de la sala por mensaje, WhatsApp o donde prefieras.",
+                title: "Invita o únete",
+                text: "Comparte el código o entra a salas públicas disponibles.",
               },
               {
                 step: "04",
@@ -1033,7 +1227,7 @@ export default function HomePage() {
                       : item.step === "02"
                       ? "➕"
                       : item.step === "03"
-                      ? "📩"
+                      ? "🌍"
                       : "🔥"}
                   </div>
                 </div>
@@ -1058,8 +1252,8 @@ export default function HomePage() {
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             {[
               {
-                title: "Salas privadas",
-                text: "Genera códigos únicos para jugar solo con tus invitados.",
+                title: "Salas privadas y públicas",
+                text: "Crea partidas solo por código o permite que otros jugadores se unan.",
               },
               {
                 title: "Tiempo real",
