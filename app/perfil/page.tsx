@@ -1,3 +1,5 @@
+// 📍 Ruta del archivo: app/perfil/page.tsx
+
 "use client";
 
 import Link from "next/link";
