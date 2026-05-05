@@ -5,9 +5,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { MemoramaGameState } from "./types";
+import type { MemoramaGameState, MemoramaVariant } from "./types";
 import {
+  DEFAULT_MEMORAMA_VARIANT,
   MEMORAMA_RESOLVE_MS,
+  MEMORAMA_SET_LABELS,
+  MEMORAMA_SETS,
+  MEMORAMA_STORE_LOCKED_SETS,
   MEMORAMA_TURN_SECONDS,
   areAllPairsMatched,
   createInitialMemoramaState,
@@ -15,6 +19,7 @@ import {
   getTurnTimes,
   getWinnerFromScores,
   isCardVisible,
+  normalizeMemoramaVariant,
 } from "./utils";
 
 type MemoramaGameProps = {
@@ -49,6 +54,7 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
   const supabaseRef = useRef(createClient());
   const supabase = supabaseRef.current;
   const resolveTimerRef = useRef<number | null>(null);
+  const lastSoundKeyRef = useRef("");
 
   const [room, setRoom] = useState<RoomRow | null>(null);
   const [players, setPlayers] = useState<RoomPlayerRow[]>([]);
@@ -104,14 +110,18 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
     settings: Record<string, any> | null | undefined,
   ): MemoramaGameState => {
     const saved = settings?.memorama;
+    const configuredVariant = normalizeMemoramaVariant(
+      settings?.memorama_variant ?? saved?.variant ?? DEFAULT_MEMORAMA_VARIANT,
+    );
 
-    if (!saved) {
-      return createInitialMemoramaState();
+    if (!saved || saved.phase === undefined) {
+      return createInitialMemoramaState(configuredVariant);
     }
 
     return {
-      ...createInitialMemoramaState(),
+      ...createInitialMemoramaState(configuredVariant),
       ...saved,
+      variant: normalizeMemoramaVariant(saved.variant ?? configuredVariant),
       cards: saved.cards ?? [],
       selectedCardIds: saved.selectedCardIds ?? saved.flippedCardIds ?? [],
       matchedCardIds: saved.matchedCardIds ?? [],
@@ -136,6 +146,7 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
 
       const nextSettings = {
         ...currentSettings,
+        memorama_variant: nextState.variant,
         memorama: {
           ...nextState,
           updatedAt: new Date().toISOString(),
@@ -206,25 +217,69 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
   }, [roomCode, supabase]);
 
   const getNextPlayer = useCallback(
-  (currentTurnKey: string | null) => {
-    if (sortedPlayers.length === 0) return null;
+    (currentTurnKey: string | null) => {
+      if (sortedPlayers.length === 0) return null;
 
-    const currentIndex = sortedPlayers.findIndex(
-      (player) => getPlayerKey(player) === currentTurnKey,
-    );
+      const currentIndex = sortedPlayers.findIndex(
+        (player) => getPlayerKey(player) === currentTurnKey,
+      );
 
-    if (currentIndex < 0) return sortedPlayers[0];
+      if (currentIndex < 0) return sortedPlayers[0];
 
-    return sortedPlayers[(currentIndex + 1) % sortedPlayers.length] ?? sortedPlayers[0];
-  },
-  [sortedPlayers],
-);
+      return sortedPlayers[(currentIndex + 1) % sortedPlayers.length] ?? sortedPlayers[0];
+    },
+    [sortedPlayers],
+  );
+
+  const playToneSequence = (
+    notes: number[],
+    type: OscillatorType = "triangle",
+    volume = 0.12,
+    duration = 0.12,
+  ) => {
+    try {
+      const AudioContextClass =
+        window.AudioContext || (window as any).webkitAudioContext;
+      const audioContext = new AudioContextClass();
+
+      notes.forEach((frequency, index) => {
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        const startAt = audioContext.currentTime + index * 0.09;
+
+        oscillator.type = type;
+        oscillator.frequency.value = frequency;
+
+        gain.gain.setValueAtTime(0.0001, startAt);
+        gain.gain.exponentialRampToValueAtTime(volume, startAt + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startAt + duration);
+
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+
+        oscillator.start(startAt);
+        oscillator.stop(startAt + duration + 0.04);
+      });
+    } catch (error) {
+      console.error("No se pudo reproducir sonido de Memorama:", error);
+    }
+  };
+
+  const playFlipSound = () => playToneSequence([392, 523.25], "sine", 0.08, 0.1);
+  const playMatchSound = () => playToneSequence([523.25, 659.25, 783.99], "triangle", 0.14, 0.16);
+  const playMissSound = () => playToneSequence([220, 164.81], "sawtooth", 0.08, 0.12);
+  const playTimeoutSound = () => playToneSequence([196, 146.83], "square", 0.06, 0.1);
+  const playWinSound = () => playToneSequence([523.25, 659.25, 783.99, 1046.5], "triangle", 0.18, 0.22);
 
   const startGame = async () => {
     if (sortedPlayers.length < 2) {
       alert("Memorama necesita 2 jugadores.");
       return;
     }
+
+    const configuredVariant = normalizeMemoramaVariant(
+      room?.room_settings?.memorama_variant ?? DEFAULT_MEMORAMA_VARIANT,
+    );
 
     const firstPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
     const firstKey = getPlayerKey(firstPlayer);
@@ -247,7 +302,7 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
       );
 
       return {
-        ...createInitialMemoramaState(),
+        ...createInitialMemoramaState(configuredVariant),
         phase: "playing",
         currentTurnKey: firstKey,
         currentTurnName: firstPlayer.player_name,
@@ -272,6 +327,7 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
           selectedCardIds: [],
           isResolving: false,
           lastResult: null,
+          ...getTurnTimes(),
         };
       }
 
@@ -317,7 +373,8 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
           lastResult: "match",
           winnerKey: winner.winnerKey,
           winnerName: winner.winnerName,
-          ...(finished ? {} : getTurnTimes()),
+          turnStartedAt: finished ? null : getTurnTimes().turnStartedAt,
+          turnEndsAt: finished ? null : getTurnTimes().turnEndsAt,
         };
       }
 
@@ -371,6 +428,8 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
 
     if (saving || gameState.isResolving) return;
 
+    playFlipSound();
+
     await updateMemoramaState((current) => {
       if (current.phase !== "playing") return current;
       if (current.currentTurnKey !== currentPlayerKey) return current;
@@ -386,11 +445,11 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
       const nextSelectedCardIds = [...current.selectedCardIds, selectedCard.id];
 
       return {
-  ...current,
-  selectedCardIds: nextSelectedCardIds,
-  isResolving: nextSelectedCardIds.length === 2,
-  lastResult: null,
-  turnEndsAt: nextSelectedCardIds.length === 2 ? null : current.turnEndsAt,
+        ...current,
+        selectedCardIds: nextSelectedCardIds,
+        isResolving: nextSelectedCardIds.length === 2,
+        lastResult: null,
+        turnEndsAt: nextSelectedCardIds.length === 2 ? null : current.turnEndsAt,
       };
     });
   };
@@ -531,6 +590,23 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
     handleTimeoutTurn,
   ]);
 
+  useEffect(() => {
+    const soundKey = `${gameState.updatedAt}-${gameState.lastResult}-${gameState.phase}`;
+
+    if (soundKey === lastSoundKeyRef.current) return;
+
+    lastSoundKeyRef.current = soundKey;
+
+    if (gameState.phase === "finished") {
+      playWinSound();
+      return;
+    }
+
+    if (gameState.lastResult === "match") playMatchSound();
+    if (gameState.lastResult === "miss") playMissSound();
+    if (gameState.lastResult === "timeout") playTimeoutSound();
+  }, [gameState.updatedAt, gameState.lastResult, gameState.phase]);
+
   if (loading) {
     return (
       <main className="min-h-screen bg-black px-6 py-10 text-white">
@@ -540,6 +616,10 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
       </main>
     );
   }
+
+  const variantLabel = MEMORAMA_SET_LABELS[gameState.variant.set] ?? "Clásico";
+  const variantPreview = MEMORAMA_SETS[gameState.variant.set]?.slice(0, 6) ?? [];
+  const isPremiumSet = MEMORAMA_STORE_LOCKED_SETS.includes(gameState.variant.set);
 
   return (
     <main className="min-h-screen bg-black px-4 py-6 text-white md:px-8">
@@ -556,7 +636,11 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
               </h1>
 
               <p className="mt-2 text-sm text-white/60">
-                Encuentra parejas, gana puntos y mantén el turno si aciertas.
+                Variante:{" "}
+                <span className="font-bold text-orange-300">{variantLabel}</span>
+                {" · "}
+                {gameState.variant.pairs} pares
+                {isPremiumSet ? " · Premium preparado para tienda" : ""}
               </p>
             </div>
 
@@ -579,6 +663,17 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
                 </button>
               )}
             </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+            {variantPreview.map((emoji, index) => (
+              <span
+                key={`${emoji}-${index}`}
+                className="flex h-10 w-10 items-center justify-center rounded-xl bg-black/30 text-xl"
+              >
+                {emoji}
+              </span>
+            ))}
           </div>
         </section>
 
@@ -718,7 +813,7 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
           </aside>
 
           <section className="rounded-[32px] border border-white/10 bg-zinc-950/90 p-4 md:p-6">
-            <div className="grid grid-cols-4 gap-3">
+            <div className={gameState.variant.pairs > 8 ? "grid grid-cols-4 gap-3 lg:grid-cols-6" : "grid grid-cols-4 gap-3"}>
               {gameState.cards.map((card) => {
                 const visible = isCardVisible(
                   card,
@@ -731,8 +826,8 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
                 const ownerKey = gameState.matchedPairOwners?.[card.pairId] ?? null;
                 const isMineMatchedPair = ownerKey === currentPlayerKey;
 
-                const isMissPreview =
-                  selected && gameState.isResolving && gameState.lastResult === null;
+                const resolvingSelected =
+                  selected && gameState.isResolving && !matched;
 
                 const disabled =
                   saving ||
@@ -752,7 +847,7 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
                         ? isMineMatchedPair
                           ? "aspect-square rounded-3xl border border-emerald-400/50 bg-emerald-500/20 text-5xl shadow-[0_0_28px_rgba(16,185,129,0.18)]"
                           : "aspect-square rounded-3xl border border-cyan-400/50 bg-cyan-500/20 text-5xl shadow-[0_0_28px_rgba(34,211,238,0.18)]"
-                        : isMissPreview
+                        : resolvingSelected
                           ? "aspect-square rounded-3xl border border-orange-400/60 bg-orange-500/20 text-5xl shadow-[0_0_28px_rgba(249,115,22,0.18)]"
                           : visible
                             ? "aspect-square rounded-3xl border border-orange-400/50 bg-orange-500/20 text-5xl shadow-[0_0_28px_rgba(249,115,22,0.18)]"
