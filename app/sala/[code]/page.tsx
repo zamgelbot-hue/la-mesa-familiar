@@ -1,3 +1,5 @@
+// 📍 Ruta del archivo: app/sala/[code]/page.tsx
+
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
