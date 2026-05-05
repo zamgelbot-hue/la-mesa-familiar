@@ -103,6 +103,7 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
       cards: saved.cards ?? [],
       flippedCardIds: saved.flippedCardIds ?? [],
       matchedCardIds: saved.matchedCardIds ?? [],
+      matchedPairOwners: saved.matchedPairOwners ?? {},
       scores: saved.scores ?? {},
     };
   };
@@ -223,117 +224,107 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
     });
   };
 
-  const handleCardClick = async (cardId: string) => {
-    if (!currentPlayer || !currentPlayerKey) return;
-    if (gameState.phase !== "playing") return;
+  // 📍 Ruta del archivo: components/games/memorama/MemoramaGame.tsx
 
-    if (!isMyTurn) {
-      alert("Todavía no es tu turno.");
-      return;
-    }
+const handleCardClick = async (cardId: string) => {
+  if (!currentPlayer || !currentPlayerKey) return;
+  if (gameState.phase !== "playing") return;
 
-    if (saving) return;
+  if (!isMyTurn) {
+    alert("Todavía no es tu turno.");
+    return;
+  }
 
-    const card = getCardById(gameState.cards, cardId);
+  if (saving) return;
 
-    if (!card) return;
-    if (gameState.matchedCardIds.includes(card.id)) return;
-    if (gameState.flippedCardIds.includes(card.id)) return;
-    if (gameState.flippedCardIds.length >= 2) return;
+  await updateMemoramaState((current) => {
+    if (current.phase !== "playing") return current;
+    if (current.currentTurnKey !== currentPlayerKey) return current;
 
-    await updateMemoramaState((current) => {
-      const selectedCard = getCardById(current.cards, cardId);
-      if (!selectedCard) return current;
+    const selectedCard = getCardById(current.cards, cardId);
 
-      if (current.matchedCardIds.includes(selectedCard.id)) return current;
-      if (current.flippedCardIds.includes(selectedCard.id)) return current;
-      if (current.flippedCardIds.length >= 2) return current;
+    if (!selectedCard) return current;
+    if (current.matchedCardIds.includes(selectedCard.id)) return current;
+    if (current.flippedCardIds.includes(selectedCard.id)) return current;
+    if (current.flippedCardIds.length >= 2) return current;
 
-      const nextFlipped = [...current.flippedCardIds, selectedCard.id];
+    const nextFlipped = [...current.flippedCardIds, selectedCard.id];
 
-      if (nextFlipped.length < 2) {
-        return {
-          ...current,
-          flippedCardIds: nextFlipped,
-          lastMatch: null,
-        };
-      }
-
-      const firstCard = getCardById(current.cards, nextFlipped[0]);
-      const secondCard = getCardById(current.cards, nextFlipped[1]);
-
-      if (!firstCard || !secondCard) return current;
-
-      const isMatch = firstCard.pairId === secondCard.pairId;
-
-      if (isMatch) {
-        const nextMatchedCardIds = [
-          ...current.matchedCardIds,
-          firstCard.id,
-          secondCard.id,
-        ];
-
-        const currentScore = current.scores[currentPlayerKey] ?? {
-          playerKey: currentPlayerKey,
-          playerName: currentPlayer.player_name,
-          pairs: 0,
-        };
-
-        const nextScores = {
-          ...current.scores,
-          [currentPlayerKey]: {
-            ...currentScore,
-            pairs: currentScore.pairs + 1,
-          },
-        };
-
-        const finished = areAllPairsMatched(current.cards, nextMatchedCardIds);
-        const winner = finished
-          ? getWinnerFromScores(nextScores)
-          : { winnerKey: null, winnerName: null };
-
-        return {
-          ...current,
-          phase: finished ? "finished" : current.phase,
-          flippedCardIds: [],
-          matchedCardIds: nextMatchedCardIds,
-          scores: nextScores,
-          lastMatch: true,
-          winnerKey: winner.winnerKey,
-          winnerName: winner.winnerName,
-        };
-      }
-
-      const nextPlayer =
-        sortedPlayers.find((player) => getPlayerKey(player) !== currentPlayerKey) ??
-        sortedPlayers[0];
-
-      const nextPlayerKey = nextPlayer ? getPlayerKey(nextPlayer) : currentPlayerKey;
-
+    if (nextFlipped.length < 2) {
       return {
         ...current,
         flippedCardIds: nextFlipped,
-        lastMatch: false,
-        currentTurnKey: nextPlayerKey,
-        currentTurnName: nextPlayer?.player_name ?? current.currentTurnName,
+        lastMatch: null,
       };
-    });
+    }
 
-    const latestState = extractMemoramaState(room?.room_settings);
+    const firstCard = getCardById(current.cards, nextFlipped[0]);
+    const secondCard = getCardById(current.cards, nextFlipped[1]);
 
-    setTimeout(() => {
-      void updateMemoramaState((current) => {
-        if (current.phase !== "playing") return current;
-        if (current.flippedCardIds.length !== 2) return current;
-        if (current.lastMatch !== false) return current;
+    if (!firstCard || !secondCard) return current;
 
-        return {
-          ...current,
-          flippedCardIds: [],
-        };
-      });
-    }, 900);
-  };
+    const isMatch = firstCard.pairId === secondCard.pairId;
+
+    if (isMatch) {
+      const nextMatchedCardIds = [
+        ...current.matchedCardIds,
+        firstCard.id,
+        secondCard.id,
+      ];
+
+      const currentScore = current.scores[currentPlayerKey] ?? {
+        playerKey: currentPlayerKey,
+        playerName: currentPlayer.player_name,
+        pairs: 0,
+      };
+
+      const nextScores = {
+        ...current.scores,
+        [currentPlayerKey]: {
+          ...currentScore,
+          pairs: currentScore.pairs + 1,
+        },
+      };
+
+      const finished = areAllPairsMatched(current.cards, nextMatchedCardIds);
+      const winner = finished
+        ? getWinnerFromScores(nextScores)
+        : { winnerKey: null, winnerName: null };
+
+      return {
+        ...current,
+        phase: finished ? "finished" : current.phase,
+        flippedCardIds: [],
+        matchedCardIds: nextMatchedCardIds,
+        matchedPairOwners: {
+          ...current.matchedPairOwners,
+          [firstCard.pairId]: currentPlayerKey,
+        },
+        scores: nextScores,
+        lastMatch: true,
+        winnerKey: winner.winnerKey,
+        winnerName: winner.winnerName,
+      };
+    }
+
+    const currentIndex = sortedPlayers.findIndex(
+      (player) => getPlayerKey(player) === currentPlayerKey,
+    );
+
+    const nextPlayer =
+      sortedPlayers[(currentIndex + 1) % sortedPlayers.length] ?? sortedPlayers[0];
+
+    const nextPlayerKey = nextPlayer ? getPlayerKey(nextPlayer) : currentPlayerKey;
+
+    return {
+      ...current,
+      flippedCardIds: [],
+      lastMatch: false,
+      currentTurnKey: nextPlayerKey,
+      currentTurnName: nextPlayer?.player_name ?? current.currentTurnName,
+    };
+  });
+};
 
   const handleRematch = async () => {
     await startGame();
@@ -589,6 +580,8 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
                 );
 
                 const matched = gameState.matchedCardIds.includes(card.id);
+                const ownerKey = gameState.matchedPairOwners?.[card.pairId] ?? null;
+                const isMineMatchedPair = ownerKey === currentPlayerKey;
 
                 return (
                   <button
@@ -603,7 +596,9 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
                     onClick={() => void handleCardClick(card.id)}
                     className={
                       matched
-                        ? "aspect-square rounded-3xl border border-emerald-400/40 bg-emerald-500/20 text-5xl shadow-[0_0_28px_rgba(16,185,129,0.18)]"
+                          ? isMineMatchedPair
+                          ? "aspect-square rounded-3xl border border-emerald-400/50 bg-emerald-500/20 text-5xl shadow-[0_0_28px_rgba(16,185,129,0.18)]"
+                        : "aspect-square rounded-3xl border border-cyan-400/50 bg-cyan-500/20 text-5xl shadow-[0_0_28px_rgba(34,211,238,0.18)]"
                         : visible
                           ? "aspect-square rounded-3xl border border-orange-400/50 bg-orange-500/20 text-5xl shadow-[0_0_28px_rgba(249,115,22,0.18)]"
                           : "aspect-square rounded-3xl border border-white/10 bg-white/[0.04] text-4xl hover:scale-[1.03] hover:border-orange-400/50 hover:bg-orange-500/10 disabled:hover:scale-100"
