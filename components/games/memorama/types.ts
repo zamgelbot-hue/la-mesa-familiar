@@ -2,11 +2,12 @@
 
 export type MemoramaPhase = "waiting" | "playing" | "finished";
 
+export type MemoramaLastResult = "match" | "miss" | "timeout" | null;
+
 export type MemoramaCard = {
   id: string;
   pairId: string;
   emoji: string;
-  isMatched: boolean;
 };
 
 export type MemoramaPlayerScore = {
@@ -18,15 +19,25 @@ export type MemoramaPlayerScore = {
 export type MemoramaGameState = {
   phase: MemoramaPhase;
   cards: MemoramaCard[];
-  flippedCardIds: string[];
+
+  selectedCardIds: string[];
   matchedCardIds: string[];
   matchedPairOwners: Record<string, string>;
+
   currentTurnKey: string | null;
   currentTurnName: string | null;
+
   scores: Record<string, MemoramaPlayerScore>;
-  lastMatch: boolean | null;
+
+  isResolving: boolean;
+  lastResult: MemoramaLastResult;
+
+  turnStartedAt: string | null;
+  turnEndsAt: string | null;
+
   winnerKey: string | null;
   winnerName: string | null;
+
   createdAt: string;
   updatedAt: string;
 };
