@@ -273,70 +273,6 @@ export default function HomePage() {
     }
   }, [supabase]);
 
-  const loadFriendRooms = useCallback(async () => {
-  try {
-    setLoadingFriendRooms(true);
-
-    if (!playerIdentity?.user_id || playerIdentity.is_guest) {
-      setFriendRooms([]);
-      return;
-    }
-
-    const oneHourAgo = new Date(Date.now() - 1000 * 60 * 60).toISOString();
-
-    const { data: friendships, error: friendshipsError } = await supabase
-      .from("friendships")
-      .select("requester_id, addressee_id, status")
-      .eq("status", "accepted")
-      .or(
-        `requester_id.eq.${playerIdentity.user_id},addressee_id.eq.${playerIdentity.user_id}`,
-      );
-
-    if (friendshipsError) {
-      console.error("Error cargando amistades para salas:", friendshipsError);
-      setFriendRooms([]);
-      return;
-    }
-
-    const friendIds = Array.from(
-      new Set(
-        (friendships ?? []).map((friendship) =>
-          friendship.requester_id === playerIdentity.user_id
-            ? friendship.addressee_id
-            : friendship.requester_id,
-        ),
-      ),
-    );
-
-    if (friendIds.length === 0) {
-      setFriendRooms([]);
-      return;
-    }
-
-    const { data: rooms, error: roomsError } = await supabase
-      .from("rooms")
-      .select(
-        "code, status, game_slug, game_variant, max_players, visibility, created_by, created_at, last_activity_at",
-      )
-      .eq("visibility", "friends")
-      .in("status", ["waiting"])
-      .in("created_by", friendIds)
-      .gte("last_activity_at", oneHourAgo)
-      .order("last_activity_at", { ascending: false })
-      .limit(12);
-
-    if (roomsError) {
-      console.error("Error cargando salas de amigos:", roomsError);
-      setFriendRooms([]);
-      return;
-    }
-
-    setFriendRooms((rooms ?? []) as OpenRoom[]);
-  } finally {
-    setLoadingFriendRooms(false);
-  }
-}, [supabase, playerIdentity]);
-
   const loadStats = useCallback(async () => {
     const [activeRoomsRes, gamesCountRes, roomsCountRes] = await Promise.all([
       supabase
@@ -417,7 +353,9 @@ export default function HomePage() {
 
       const { data, error } = await supabase
         .from("rooms")
-        .select("code, status, game_slug, game_variant, max_players, visibility, created_by, created_at, last_activity_at")
+        .select(
+          "code, status, game_slug, game_variant, max_players, visibility, created_by, created_at, last_activity_at",
+        )
         .eq("visibility", "public")
         .in("status", ["waiting"])
         .gte("last_activity_at", oneHourAgo)
@@ -436,31 +374,95 @@ export default function HomePage() {
     }
   }, [supabase]);
 
+  const loadFriendRooms = useCallback(async () => {
+    try {
+      setLoadingFriendRooms(true);
+
+      if (!playerIdentity?.user_id || playerIdentity.is_guest) {
+        setFriendRooms([]);
+        return;
+      }
+
+      const oneHourAgo = new Date(Date.now() - 1000 * 60 * 60).toISOString();
+
+      const { data: friendships, error: friendshipsError } = await supabase
+        .from("friendships")
+        .select("requester_id, addressee_id, status")
+        .eq("status", "accepted")
+        .or(
+          `requester_id.eq.${playerIdentity.user_id},addressee_id.eq.${playerIdentity.user_id}`,
+        );
+
+      if (friendshipsError) {
+        console.error("Error cargando amistades para salas:", friendshipsError);
+        setFriendRooms([]);
+        return;
+      }
+
+      const friendIds = Array.from(
+        new Set(
+          (friendships ?? []).map((friendship) =>
+            friendship.requester_id === playerIdentity.user_id
+              ? friendship.addressee_id
+              : friendship.requester_id,
+          ),
+        ),
+      );
+
+      if (friendIds.length === 0) {
+        setFriendRooms([]);
+        return;
+      }
+
+      const { data: rooms, error: roomsError } = await supabase
+        .from("rooms")
+        .select(
+          "code, status, game_slug, game_variant, max_players, visibility, created_by, created_at, last_activity_at",
+        )
+        .eq("visibility", "friends")
+        .in("status", ["waiting"])
+        .in("created_by", friendIds)
+        .gte("last_activity_at", oneHourAgo)
+        .order("last_activity_at", { ascending: false })
+        .limit(12);
+
+      if (roomsError) {
+        console.error("Error cargando salas de amigos:", roomsError);
+        setFriendRooms([]);
+        return;
+      }
+
+      setFriendRooms((rooms ?? []) as OpenRoom[]);
+    } finally {
+      setLoadingFriendRooms(false);
+    }
+  }, [supabase, playerIdentity]);
+
   useEffect(() => {
-  loadGames();
-  loadStats();
-  loadPlayerIdentity();
-  loadTopPlayers();
-  loadPublicRooms();
-  loadFriendRooms();
-}, [
-  loadGames,
-  loadStats,
-  loadPlayerIdentity,
-  loadTopPlayers,
-  loadPublicRooms,
-  loadFriendRooms,
-]);
+    loadGames();
+    loadStats();
+    loadPlayerIdentity();
+    loadTopPlayers();
+    loadPublicRooms();
+    loadFriendRooms();
+  }, [
+    loadGames,
+    loadStats,
+    loadPlayerIdentity,
+    loadTopPlayers,
+    loadPublicRooms,
+    loadFriendRooms,
+  ]);
 
   useEffect(() => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(() => {
-  loadPlayerIdentity();
-  loadTopPlayers();
-  loadPublicRooms();
-  loadFriendRooms();
-});
+      loadPlayerIdentity();
+      loadTopPlayers();
+      loadPublicRooms();
+      loadFriendRooms();
+    });
 
     return () => {
       subscription.unsubscribe();
@@ -481,6 +483,11 @@ export default function HomePage() {
     if (!playerIdentity) {
       setErrorMessage("Primero inicia sesión o entra como invitado.");
       router.push("/acceso");
+      return;
+    }
+
+    if (roomVisibility === "friends" && playerIdentity.is_guest) {
+      setErrorMessage("Las salas de amigos solo están disponibles para cuentas registradas.");
       return;
     }
 
@@ -548,7 +555,6 @@ export default function HomePage() {
         return;
       }
 
-      await loadPublicRooms();
       router.push(`/sala/${roomCode}`);
     } finally {
       setCreating(false);
@@ -667,6 +673,58 @@ export default function HomePage() {
     } finally {
       setSigningOut(false);
     }
+  };
+
+  const renderOpenRoomCard = (openRoom: OpenRoom, label: "Pública" | "Amigos") => {
+    const gameName =
+      games.find((game) => game.slug === openRoom.game_slug)?.name ??
+      openRoom.game_slug ??
+      "Juego";
+
+    const variantLabel =
+      GAME_CONFIGS[openRoom.game_slug ?? ""]?.variants.find(
+        (variant) => variant.key === openRoom.game_variant,
+      )?.label ?? openRoom.game_variant ?? "Sin variante";
+
+    return (
+      <div
+        key={`${label}-${openRoom.code}`}
+        className="rounded-3xl border border-white/10 bg-white/[0.03] p-4"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-lg font-extrabold">
+              {getGameIcon(openRoom.game_slug ?? "")} {gameName}
+            </p>
+
+            <p className="mt-1 text-xs text-white/60">{variantLabel}</p>
+
+            <p className="mt-2 text-xs font-bold text-emerald-300">
+              Sala esperando jugadores
+            </p>
+          </div>
+
+          <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+            {label}
+          </span>
+        </div>
+
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <div className="rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-xs font-black tracking-[0.22em] text-orange-300">
+            {openRoom.code}
+          </div>
+
+          <button
+            type="button"
+            disabled={!playerIdentity}
+            onClick={() => router.push(`/sala/${openRoom.code}`)}
+            className="rounded-2xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Unirse
+          </button>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -818,8 +876,8 @@ export default function HomePage() {
               </div>
             )}
           </div>
-
-          <div className="mx-auto mt-14 grid max-w-4xl gap-6 md:grid-cols-2">
+        
+                   <div className="mx-auto mt-14 grid max-w-4xl gap-6 md:grid-cols-2">
             <div className="rounded-[30px] border border-orange-500/15 bg-zinc-950/90 p-7 shadow-[0_0_40px_rgba(249,115,22,0.05)] transition hover:border-orange-500/25 hover:shadow-[0_0_60px_rgba(249,115,22,0.08)]">
               <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-orange-500/10 text-4xl text-orange-500">
                 +
@@ -953,45 +1011,45 @@ export default function HomePage() {
                           })}
                         </div>
                       </div>
+                    </div>
 
-                      <div>
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/55">
-                          Tipo de sala
-                        </p>
+                    <div className="mt-4">
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/55">
+                        Tipo de sala
+                      </p>
 
-                        <div className="grid gap-2">
-                          {[
-                            {
-                              key: "private",
-                              label: "Privada 🔒",
-                              description: "Solo entra quien tenga el código.",
-                            },
-                            {
-                              key: "public",
-                              label: "Pública 🌍",
-                              description: "Aparece en salas abiertas para que otros jugadores se unan.",
-                            },
-                            {
-                              key: "friends",
-                              label: "Solo amigos 👥",
-                              description: "Preparado para mostrarla solo a tus amigos.",
-                            },
-                          ].map((option) => (
-                            <button
-                              key={option.key}
-                              type="button"
-                              onClick={() => setRoomVisibility(option.key as RoomVisibility)}
-                              className={`rounded-2xl border px-4 py-3 text-left transition ${
-                                roomVisibility === option.key
-                                  ? "border-orange-500/40 bg-orange-500/10"
-                                  : "border-white/10 bg-white/5 hover:bg-white/10"
-                              }`}
-                            >
-                              <p className="font-bold text-white">{option.label}</p>
-                              <p className="mt-1 text-sm text-white/60">{option.description}</p>
-                            </button>
-                          ))}
-                        </div>
+                      <div className="grid gap-2">
+                        {[
+                          {
+                            key: "private",
+                            label: "Privada 🔒",
+                            description: "Solo entra quien tenga el código.",
+                          },
+                          {
+                            key: "public",
+                            label: "Pública 🌍",
+                            description: "Aparece en salas abiertas para que otros jugadores se unan.",
+                          },
+                          {
+                            key: "friends",
+                            label: "Solo amigos 👥",
+                            description: "Aparece solamente para tus amigos agregados.",
+                          },
+                        ].map((option) => (
+                          <button
+                            key={option.key}
+                            type="button"
+                            onClick={() => setRoomVisibility(option.key as RoomVisibility)}
+                            className={`rounded-2xl border px-4 py-3 text-left transition ${
+                              roomVisibility === option.key
+                                ? "border-orange-500/40 bg-orange-500/10"
+                                : "border-white/10 bg-white/5 hover:bg-white/10"
+                            }`}
+                          >
+                            <p className="font-bold text-white">{option.label}</p>
+                            <p className="mt-1 text-sm text-white/60">{option.description}</p>
+                          </button>
+                        ))}
                       </div>
                     </div>
 
@@ -1072,93 +1130,80 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="rounded-[30px] border border-emerald-500/15 bg-zinc-950/90 p-7 shadow-[0_0_40px_rgba(16,185,129,0.04)] md:col-span-2">
-              <div className="mb-5 flex items-center justify-between gap-4">
-                <div>
-                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-3xl bg-emerald-500/10 text-3xl text-emerald-300">
-                    🌍
+            <div className="space-y-6">
+              <div className="rounded-[30px] border border-cyan-500/15 bg-zinc-950/90 p-6 shadow-[0_0_40px_rgba(34,211,238,0.04)]">
+                <div className="mb-4 flex items-center justify-between gap-4">
+                  <div>
+                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-3xl bg-cyan-500/10 text-2xl text-cyan-300">
+                      👥
+                    </div>
+
+                    <h2 className="text-2xl font-bold">Salas de amigos</h2>
+                    <p className="mt-2 text-sm leading-relaxed text-white/65">
+                      Partidas creadas por tus amigos.
+                    </p>
                   </div>
 
-                  <h2 className="text-3xl font-bold">Salas públicas</h2>
-                  <p className="mt-3 text-base leading-relaxed text-white/65">
-                    Únete a partidas abiertas que están esperando jugadores.
-                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void loadFriendRooms()}
+                    className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/10"
+                  >
+                    Actualizar
+                  </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => void loadPublicRooms()}
-                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/10"
-                >
-                  Actualizar
-                </button>
+                {loadingFriendRooms ? (
+                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/60">
+                    Buscando salas de amigos...
+                  </div>
+                ) : friendRooms.length === 0 ? (
+                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/60">
+                    No hay salas de amigos activas por ahora.
+                  </div>
+                ) : (
+                  <div className="grid gap-3">
+                    {friendRooms.map((openRoom) => renderOpenRoomCard(openRoom, "Amigos"))}
+                  </div>
+                )}
               </div>
 
-              {loadingPublicRooms ? (
-                <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 text-white/60">
-                  Buscando salas públicas...
+              <div className="rounded-[30px] border border-emerald-500/15 bg-zinc-950/90 p-6 shadow-[0_0_40px_rgba(16,185,129,0.04)]">
+                <div className="mb-4 flex items-center justify-between gap-4">
+                  <div>
+                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-3xl bg-emerald-500/10 text-2xl text-emerald-300">
+                      🌍
+                    </div>
+
+                    <h2 className="text-2xl font-bold">Salas públicas</h2>
+                    <p className="mt-2 text-sm leading-relaxed text-white/65">
+                      Partidas abiertas esperando jugadores.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void loadPublicRooms()}
+                    className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/10"
+                  >
+                    Actualizar
+                  </button>
                 </div>
-              ) : publicRooms.length === 0 ? (
-                <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 text-white/60">
-                  No hay salas públicas disponibles por ahora.
-                </div>
-              ) : (
-                <div className="grid gap-3 md:grid-cols-2">
-                  {publicRooms.map((openRoom) => {
-                    const gameName =
-                      games.find((game) => game.slug === openRoom.game_slug)?.name ??
-                      openRoom.game_slug ??
-                      "Juego";
 
-                    const variantLabel =
-                      GAME_CONFIGS[openRoom.game_slug ?? ""]?.variants.find(
-                        (variant) => variant.key === openRoom.game_variant,
-                      )?.label ?? openRoom.game_variant ?? "Sin variante";
-
-                    return (
-                      <div
-                        key={openRoom.code}
-                        className="rounded-3xl border border-white/10 bg-white/[0.03] p-5"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-xl font-extrabold">
-                              {getGameIcon(openRoom.game_slug ?? "")} {gameName}
-                            </p>
-
-                            <p className="mt-1 text-sm text-white/60">
-                              {variantLabel}
-                            </p>
-
-                            <p className="mt-2 text-sm font-bold text-emerald-300">
-                              Sala esperando jugadores
-                            </p>
-                          </div>
-
-                          <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-emerald-300">
-                            Pública
-                          </span>
-                        </div>
-
-                        <div className="mt-4 flex items-center justify-between gap-3">
-                          <div className="rounded-2xl border border-white/10 bg-black/30 px-4 py-2 text-sm font-black tracking-[0.25em] text-orange-300">
-                            {openRoom.code}
-                          </div>
-
-                          <button
-                            type="button"
-                            disabled={!playerIdentity}
-                            onClick={() => router.push(`/sala/${openRoom.code}`)}
-                            className="rounded-2xl bg-orange-500 px-4 py-2.5 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            Unirse
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                {loadingPublicRooms ? (
+                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/60">
+                    Buscando salas públicas...
+                  </div>
+                ) : publicRooms.length === 0 ? (
+                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/60">
+                    No hay salas públicas disponibles por ahora.
+                  </div>
+                ) : (
+                  <div className="grid gap-3">
+                    {publicRooms.map((openRoom) => renderOpenRoomCard(openRoom, "Pública"))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1275,12 +1320,12 @@ export default function HomePage() {
               {
                 step: "02",
                 title: "Crea tu sala",
-                text: "Genera una sala privada, pública o para amigos con un código único.",
+                text: "Genera una sala privada con un código único para reunir a tus invitados.",
               },
               {
                 step: "03",
-                title: "Invita o únete",
-                text: "Comparte el código o entra a salas públicas disponibles.",
+                title: "Invita a tu familia y amigos",
+                text: "Comparte el código de la sala por mensaje, WhatsApp o donde prefieras.",
               },
               {
                 step: "04",
@@ -1303,7 +1348,7 @@ export default function HomePage() {
                       : item.step === "02"
                       ? "➕"
                       : item.step === "03"
-                      ? "🌍"
+                      ? "📩"
                       : "🔥"}
                   </div>
                 </div>
@@ -1328,8 +1373,8 @@ export default function HomePage() {
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             {[
               {
-                title: "Salas privadas y públicas",
-                text: "Crea partidas solo por código o permite que otros jugadores se unan.",
+                title: "Salas privadas",
+                text: "Genera códigos únicos para jugar solo con tus invitados.",
               },
               {
                 title: "Tiempo real",
