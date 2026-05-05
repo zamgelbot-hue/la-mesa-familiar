@@ -27,6 +27,9 @@ type Room = {
   max_players: number | null;
   game_variant: string | null;
   room_settings: Record<string, unknown> | null;
+  visibility: "private" | "public" | "friends" | null;
+  created_by: string | null;
+  last_activity_at: string | null;
 };
 
 type RoomPlayer = {
@@ -210,6 +213,19 @@ export default function SalaPage() {
       sortedPlayers.every((p) => p.is_ready)
     );
   }, [sortedPlayers, minPlayersToStart]);
+
+  const touchRoomActivity = useCallback(async () => {
+    if (!code) return;
+
+    const { error } = await supabase
+      .from("rooms")
+      .update({ last_activity_at: new Date().toISOString() })
+      .eq("code", code);
+
+    if (error) {
+      console.error("Error actualizando actividad de sala:", error);
+    }
+  }, [supabase, code]);
 
   const loadPlayerIdentity = useCallback(async () => {
     try {
@@ -464,6 +480,8 @@ export default function SalaPage() {
           return false;
         }
 
+        await touchRoomActivity();
+
         savePlayerIdentity(currentRoom.code, finalName, false);
         setCurrentPlayerName(finalName);
         return true;
@@ -471,7 +489,7 @@ export default function SalaPage() {
         setJoiningInvite(false);
       }
     },
-    [supabase, resolveCurrentPlayerFromList],
+    [supabase, resolveCurrentPlayerFromList, touchRoomActivity],
   );
 
   useEffect(() => {
@@ -679,7 +697,10 @@ export default function SalaPage() {
       if (isHost) {
         const { error: closeError } = await supabase
           .from("rooms")
-          .update({ status: "closed" })
+          .update({
+            status: "closed",
+            last_activity_at: new Date().toISOString(),
+          })
           .eq("code", code);
 
         if (closeError) {
@@ -710,7 +731,20 @@ export default function SalaPage() {
         }
       }
 
-      await fetchPlayers(playerIdentityRef.current);
+      const remainingPlayers = await fetchPlayers(playerIdentityRef.current);
+
+      if (remainingPlayers.length === 0) {
+        await supabase
+          .from("rooms")
+          .update({
+            status: "closed",
+            last_activity_at: new Date().toISOString(),
+          })
+          .eq("code", code);
+      } else {
+        await touchRoomActivity();
+      }
+
       router.push("/");
     } catch (error) {
       console.error("Error saliendo de la sala:", error);
@@ -731,7 +765,10 @@ export default function SalaPage() {
 
     if (error) {
       console.error("Error actualizando ready:", error);
+      return;
     }
+
+    await touchRoomActivity();
   };
 
   const handleChangeVariant = async (variantKey: string) => {
@@ -756,6 +793,7 @@ export default function SalaPage() {
         game_variant: variantKey,
         room_settings: nextSettings,
         max_players: nextMaxPlayers,
+        last_activity_at: new Date().toISOString(),
       })
       .eq("code", code);
 
@@ -777,6 +815,7 @@ export default function SalaPage() {
         .update({
           status: "playing",
           started_at: new Date().toISOString(),
+          last_activity_at: new Date().toISOString(),
         })
         .eq("code", code);
 
@@ -877,6 +916,17 @@ export default function SalaPage() {
               <p className="mt-2 text-sm text-orange-200">
                 Variante activa:{" "}
                 <span className="font-bold text-white">{variantLabel}</span>
+              </p>
+
+              <p className="mt-2 text-sm text-white/55">
+                Tipo de sala:{" "}
+                <span className="font-bold text-white">
+                  {room.visibility === "public"
+                    ? "Pública 🌍"
+                    : room.visibility === "friends"
+                      ? "Solo amigos 👥"
+                      : "Privada 🔒"}
+                </span>
               </p>
 
               {isVsBot && (
@@ -1117,6 +1167,17 @@ export default function SalaPage() {
                   <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
                     <span className="text-sm text-white/60">Variante</span>
                     <span className="font-bold">{variantLabel}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
+                    <span className="text-sm text-white/60">Tipo de sala</span>
+                    <span className="font-bold">
+                      {room.visibility === "public"
+                        ? "Pública"
+                        : room.visibility === "friends"
+                          ? "Solo amigos"
+                          : "Privada"}
+                    </span>
                   </div>
 
                   <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
