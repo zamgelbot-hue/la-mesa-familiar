@@ -226,6 +226,8 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
 
   // 📍 Ruta del archivo: components/games/memorama/MemoramaGame.tsx
 
+// 📍 Ruta del archivo: components/games/memorama/MemoramaGame.tsx
+
 const handleCardClick = async (cardId: string) => {
   if (!currentPlayer || !currentPlayerKey) return;
   if (gameState.phase !== "playing") return;
@@ -306,6 +308,39 @@ const handleCardClick = async (cardId: string) => {
         winnerName: winner.winnerName,
       };
     }
+
+    return {
+      ...current,
+      flippedCardIds: nextFlipped,
+      lastMatch: false,
+    };
+  });
+
+  window.setTimeout(() => {
+    void updateMemoramaState((current) => {
+      if (current.phase !== "playing") return current;
+      if (current.lastMatch !== false) return current;
+      if (current.flippedCardIds.length !== 2) return current;
+
+      const currentIndex = sortedPlayers.findIndex(
+        (player) => getPlayerKey(player) === current.currentTurnKey,
+      );
+
+      const nextPlayer =
+        sortedPlayers[(currentIndex + 1) % sortedPlayers.length] ?? sortedPlayers[0];
+
+      const nextPlayerKey = nextPlayer ? getPlayerKey(nextPlayer) : current.currentTurnKey;
+
+      return {
+        ...current,
+        flippedCardIds: [],
+        lastMatch: null,
+        currentTurnKey: nextPlayerKey,
+        currentTurnName: nextPlayer?.player_name ?? current.currentTurnName,
+      };
+    });
+  }, 1000);
+};
 
     const currentIndex = sortedPlayers.findIndex(
       (player) => getPlayerKey(player) === currentPlayerKey,
@@ -580,6 +615,13 @@ const handleCardClick = async (cardId: string) => {
                 );
 
                 const matched = gameState.matchedCardIds.includes(card.id);
+
+                const isWrongPreview =
+                visible &&
+                !matched &&
+                gameState.lastMatch === false &&
+                gameState.flippedCardIds.includes(card.id);
+      
                 const ownerKey = gameState.matchedPairOwners?.[card.pairId] ?? null;
                 const isMineMatchedPair = ownerKey === currentPlayerKey;
 
@@ -599,7 +641,9 @@ const handleCardClick = async (cardId: string) => {
                           ? isMineMatchedPair
                           ? "aspect-square rounded-3xl border border-emerald-400/50 bg-emerald-500/20 text-5xl shadow-[0_0_28px_rgba(16,185,129,0.18)]"
                         : "aspect-square rounded-3xl border border-cyan-400/50 bg-cyan-500/20 text-5xl shadow-[0_0_28px_rgba(34,211,238,0.18)]"
-                        : visible
+                        : isWrongPreview
+                          ? "aspect-square rounded-3xl border border-red-400/60 bg-red-500/20 text-5xl shadow-[0_0_28px_rgba(239,68,68,0.22)]"
+                          : visible
                           ? "aspect-square rounded-3xl border border-orange-400/50 bg-orange-500/20 text-5xl shadow-[0_0_28px_rgba(249,115,22,0.18)]"
                           : "aspect-square rounded-3xl border border-white/10 bg-white/[0.04] text-4xl hover:scale-[1.03] hover:border-orange-400/50 hover:bg-orange-500/10 disabled:hover:scale-100"
                     }
