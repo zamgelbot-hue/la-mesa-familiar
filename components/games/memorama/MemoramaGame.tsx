@@ -205,15 +205,20 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
     setPlayers((data ?? []) as RoomPlayerRow[]);
   }, [roomCode, supabase]);
 
-  const getNextPlayer = (currentTurnKey: string | null) => {
+  const getNextPlayer = useCallback(
+  (currentTurnKey: string | null) => {
     if (sortedPlayers.length === 0) return null;
 
     const currentIndex = sortedPlayers.findIndex(
       (player) => getPlayerKey(player) === currentTurnKey,
     );
 
+    if (currentIndex < 0) return sortedPlayers[0];
+
     return sortedPlayers[(currentIndex + 1) % sortedPlayers.length] ?? sortedPlayers[0];
-  };
+  },
+  [sortedPlayers],
+);
 
   const startGame = async () => {
     if (sortedPlayers.length < 2) {
@@ -381,10 +386,11 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
       const nextSelectedCardIds = [...current.selectedCardIds, selectedCard.id];
 
       return {
-        ...current,
-        selectedCardIds: nextSelectedCardIds,
-        isResolving: nextSelectedCardIds.length === 2,
-        lastResult: null,
+  ...current,
+  selectedCardIds: nextSelectedCardIds,
+  isResolving: nextSelectedCardIds.length === 2,
+  lastResult: null,
+  turnEndsAt: nextSelectedCardIds.length === 2 ? null : current.turnEndsAt,
       };
     });
   };
