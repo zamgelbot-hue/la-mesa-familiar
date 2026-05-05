@@ -61,6 +61,7 @@ export const createInitialMemoramaState = (): MemoramaGameState => {
     cards: createMemoramaDeck(8),
     flippedCardIds: [],
     matchedCardIds: [],
+    matchedPairOwners: {},
     currentTurnKey: null,
     currentTurnName: null,
     scores: {},
