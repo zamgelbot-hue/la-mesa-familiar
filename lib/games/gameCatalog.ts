@@ -1,4 +1,4 @@
-// 📍 lib/games/gameCatalog.ts
+// 📍 Ruta del archivo: lib/games/gameCatalog.ts
 
 export type VariantOption = {
   key: string;
@@ -13,28 +13,18 @@ export type GameConfig = {
   tutorial: string[];
 };
 
+type MemoramaVariantSettings = {
+  set: "default" | "comida" | "animales" | "deportes" | "gaming" | "fantasia" | "espacio";
+  pairs: number;
+};
+
 export const GAME_CONFIGS: Record<string, GameConfig> = {
   "loteria-mexicana": {
     maxPlayersOptions: [2, 4, 6],
     variants: [
-      {
-        key: "clasica",
-        label: "Clásica",
-        description: "La versión tradicional de siempre.",
-        available: true,
-      },
-      {
-        key: "familia-palomares",
-        label: "Familia Palomares",
-        description: "Edición especial próximamente.",
-        available: false,
-      },
-      {
-        key: "comidas-mexicanas",
-        label: "Comidas Mexicanas",
-        description: "Nueva variante próximamente.",
-        available: false,
-      },
+      { key: "clasica", label: "Clásica", description: "La versión tradicional de siempre.", available: true },
+      { key: "familia-palomares", label: "Familia Palomares", description: "Edición especial próximamente.", available: false },
+      { key: "comidas-mexicanas", label: "Comidas Mexicanas", description: "Nueva variante próximamente.", available: false },
     ],
     tutorial: [
       "Escucha las cartas que se van cantando",
@@ -47,30 +37,10 @@ export const GAME_CONFIGS: Record<string, GameConfig> = {
   "piedra-papel-o-tijera": {
     maxPlayersOptions: [2],
     variants: [
-      {
-        key: "bo3",
-        label: "Mejor 2 de 3",
-        description: "Gana quien consiga 2 rondas primero.",
-        available: true,
-      },
-      {
-        key: "bo5",
-        label: "Mejor 3 de 5",
-        description: "Gana quien consiga 3 rondas primero.",
-        available: true,
-      },
-      {
-        key: "bo7",
-        label: "Mejor 4 de 7",
-        description: "Gana quien consiga 4 rondas primero.",
-        available: true,
-      },
-      {
-        key: "bot_bo3",
-        label: "Vs Bot",
-        description: "Juega contra la computadora. Recompensa mínima: 1 punto.",
-        available: true,
-      },
+      { key: "bo3", label: "Mejor 2 de 3", description: "Gana quien consiga 2 rondas primero.", available: true },
+      { key: "bo5", label: "Mejor 3 de 5", description: "Gana quien consiga 3 rondas primero.", available: true },
+      { key: "bo7", label: "Mejor 4 de 7", description: "Gana quien consiga 4 rondas primero.", available: true },
+      { key: "bot_bo3", label: "Vs Bot", description: "Juega contra la computadora. Recompensa mínima: 1 punto.", available: true },
     ],
     tutorial: [
       "Piedra vence a Tijera",
@@ -81,33 +51,81 @@ export const GAME_CONFIGS: Record<string, GameConfig> = {
     ],
   },
 
-  gato: {
+  memorama: {
     maxPlayersOptions: [2],
     variants: [
       {
-        key: "clasico",
-        label: "Clásico 3x3",
-        description: "Gana conectando 3 en línea.",
+        key: "clasico_8",
+        label: "Clásico · 8 pares",
+        description: "Memorama balanceado con emojis variados.",
         available: true,
       },
       {
-        key: "grande",
-        label: "Grande 5x5",
-        description: "Gana conectando 5 en línea.",
+        key: "comida_8",
+        label: "Comida · 8 pares",
+        description: "Encuentra pares de comida como tacos, pizza, fruta y más.",
         available: true,
       },
       {
-        key: "epico",
-        label: "Épico 7x7",
-        description: "Gana conectando 5. Bonus si conectas 7.",
+        key: "animales_8",
+        label: "Animales · 8 pares",
+        description: "Pares de mascotas y animales divertidos.",
         available: true,
       },
       {
-        key: "bot_clasico",
-        label: "Vs Bot 3x3",
-        description: "Juega El Gato clásico contra la computadora. Recompensa mínima: 1 punto.",
+        key: "deportes_8",
+        label: "Deportes · 8 pares",
+        description: "Ideal para familias competitivas y fans del deporte.",
         available: true,
       },
+      {
+        key: "gaming_8",
+        label: "Gaming · 8 pares",
+        description: "Emojis gamer, controles, trofeos y retos.",
+        available: true,
+      },
+      {
+        key: "facil_6",
+        label: "Fácil · 6 pares",
+        description: "Partida rápida con menos cartas.",
+        available: true,
+      },
+      {
+        key: "dificil_12",
+        label: "Difícil · 12 pares",
+        description: "Más cartas, más memoria y más reto.",
+        available: true,
+      },
+      {
+        key: "fantasia_8",
+        label: "Fantasía · 8 pares 🔒",
+        description: "Tema premium preparado para desbloquear en tienda.",
+        available: false,
+      },
+      {
+        key: "espacio_8",
+        label: "Espacio · 8 pares 🔒",
+        description: "Tema premium preparado para desbloquear en tienda.",
+        available: false,
+      },
+    ],
+    tutorial: [
+      "Cada jugador juega por turnos",
+      "En tu turno debes elegir 2 cartas",
+      "Si encuentras una pareja, ganas punto y mantienes el turno",
+      "Si fallas, las cartas se ocultan y pasa el turno",
+      "Si se acaba el tiempo, pierdes el turno",
+      "Gana quien encuentre más parejas",
+    ],
+  },
+
+  gato: {
+    maxPlayersOptions: [2],
+    variants: [
+      { key: "clasico", label: "Clásico 3x3", description: "Gana conectando 3 en línea.", available: true },
+      { key: "grande", label: "Grande 5x5", description: "Gana conectando 5 en línea.", available: true },
+      { key: "epico", label: "Épico 7x7", description: "Gana conectando 5. Bonus si conectas 7.", available: true },
+      { key: "bot_clasico", label: "Vs Bot 3x3", description: "Juega El Gato clásico contra la computadora. Recompensa mínima: 1 punto.", available: true },
     ],
     tutorial: [
       "El host juega con X",
@@ -119,27 +137,12 @@ export const GAME_CONFIGS: Record<string, GameConfig> = {
     ],
   },
 
-    "guerra-total": {
+  "guerra-total": {
     maxPlayersOptions: [2],
     variants: [
-      {
-        key: "mar",
-        label: "Mar",
-        description: "Batalla clásica con flotas sobre el océano.",
-        available: true,
-      },
-      {
-        key: "aire",
-        label: "Aire",
-        description: "Combate estratégico con escuadrones y radar.",
-        available: true,
-      },
-      {
-        key: "tierra",
-        label: "Tierra",
-        description: "Combate terrestre con unidades y campo de batalla.",
-        available: true,
-      },
+      { key: "mar", label: "Mar", description: "Batalla clásica con flotas sobre el océano.", available: true },
+      { key: "aire", label: "Aire", description: "Combate estratégico con escuadrones y radar.", available: true },
+      { key: "tierra", label: "Tierra", description: "Combate terrestre con unidades y campo de batalla.", available: true },
     ],
     tutorial: [
       "Coloca todas tus unidades en tu tablero",
@@ -152,45 +155,15 @@ export const GAME_CONFIGS: Record<string, GameConfig> = {
     ],
   },
 
-    "personaje-secreto": {
+  "personaje-secreto": {
     maxPlayersOptions: [2],
     variants: [
-      {
-        key: "videojuegos",
-        label: "Videojuegos",
-        description: "Adivina personajes de videojuegos usando preguntas y pistas.",
-        available: true,
-      },
-      {
-        key: "peliculas",
-        label: "Películas",
-        description: "Personajes de películas, sagas y cine familiar.",
-        available: true,
-      },
-      {
-        key: "deportes",
-        label: "Deportes",
-        description: "Atletas, leyendas deportivas y figuras famosas.",
-        available: true,
-      },
-      {
-        key: "anime",
-        label: "Anime",
-        description: "Personajes de anime y manga.",
-        available: true,
-      },
-      {
-        key: "musica",
-        label: "Música",
-        description: "Cantantes, bandas y artistas conocidos.",
-        available: true,
-      },
-      {
-        key: "libre",
-        label: "Libre",
-        description: "Cualquier personaje famoso, ficticio o real.",
-        available: true,
-      },
+      { key: "videojuegos", label: "Videojuegos", description: "Adivina personajes de videojuegos usando preguntas y pistas.", available: true },
+      { key: "peliculas", label: "Películas", description: "Personajes de películas, sagas y cine familiar.", available: true },
+      { key: "deportes", label: "Deportes", description: "Atletas, leyendas deportivas y figuras famosas.", available: true },
+      { key: "anime", label: "Anime", description: "Personajes de anime y manga.", available: true },
+      { key: "musica", label: "Música", description: "Cantantes, bandas y artistas conocidos.", available: true },
+      { key: "libre", label: "Libre", description: "Cualquier personaje famoso, ficticio o real.", available: true },
     ],
     tutorial: [
       "Cada jugador escribe un personaje secreto",
@@ -204,42 +177,12 @@ export const GAME_CONFIGS: Record<string, GameConfig> = {
   pregunta: {
     maxPlayersOptions: [2, 4, 6, 8],
     variants: [
-      {
-        key: "espanol",
-        label: "Español",
-        description: "Ortografía, gramática y comprensión.",
-        available: true,
-      },
-      {
-        key: "matematicas",
-        label: "Matemáticas",
-        description: "Operaciones, lógica y cálculo rápido.",
-        available: true,
-      },
-      {
-        key: "ingles",
-        label: "Inglés",
-        description: "Vocabulario y comprensión básica.",
-        available: true,
-      },
-      {
-        key: "geografia",
-        label: "Geografía",
-        description: "Países, capitales y lugares del mundo.",
-        available: true,
-      },
-      {
-        key: "ciencias",
-        label: "Ciencias",
-        description: "Preguntas básicas de ciencia y naturaleza.",
-        available: true,
-      },
-      {
-        key: "sabelotodo",
-        label: "Sabelotodo",
-        description: "Mezcla de todas las categorías.",
-        available: true,
-      },
+      { key: "espanol", label: "Español", description: "Ortografía, gramática y comprensión.", available: true },
+      { key: "matematicas", label: "Matemáticas", description: "Operaciones, lógica y cálculo rápido.", available: true },
+      { key: "ingles", label: "Inglés", description: "Vocabulario y comprensión básica.", available: true },
+      { key: "geografia", label: "Geografía", description: "Países, capitales y lugares del mundo.", available: true },
+      { key: "ciencias", label: "Ciencias", description: "Preguntas básicas de ciencia y naturaleza.", available: true },
+      { key: "sabelotodo", label: "Sabelotodo", description: "Mezcla de todas las categorías.", available: true },
     ],
     tutorial: [
       "Lee la pregunta cuidadosamente",
@@ -275,6 +218,22 @@ export function getVariantLabel(gameSlug?: string | null, variantKey?: string | 
   return variant?.label ?? variantKey;
 }
 
+function getMemoramaVariantSettings(variantKey: string): MemoramaVariantSettings {
+  const variantMap: Record<string, MemoramaVariantSettings> = {
+    clasico_8: { set: "default", pairs: 8 },
+    comida_8: { set: "comida", pairs: 8 },
+    animales_8: { set: "animales", pairs: 8 },
+    deportes_8: { set: "deportes", pairs: 8 },
+    gaming_8: { set: "gaming", pairs: 8 },
+    facil_6: { set: "default", pairs: 6 },
+    dificil_12: { set: "default", pairs: 12 },
+    fantasia_8: { set: "fantasia", pairs: 8 },
+    espacio_8: { set: "espacio", pairs: 8 },
+  };
+
+  return variantMap[variantKey] ?? variantMap.clasico_8;
+}
+
 export function buildRoomSettings(
   gameSlug: string,
   variantKey: string,
@@ -290,7 +249,19 @@ export function buildRoomSettings(
     };
   }
 
-    if (gameSlug === "guerra-total") {
+  if (gameSlug === "memorama") {
+    const memoramaVariant = getMemoramaVariantSettings(variantKey);
+
+    return {
+      mode: "memory_match",
+      memorama_variant: memoramaVariant,
+      max_players: 2,
+      min_players: 2,
+      store_ready: ["fantasia", "espacio"].includes(memoramaVariant.set),
+    };
+  }
+
+  if (gameSlug === "guerra-total") {
     return {
       mode: "strategic_battle",
       battle_variant: variantKey,
@@ -310,42 +281,12 @@ export function buildRoomSettings(
         max_players: number;
       }
     > = {
-      espanol: {
-        categoryMode: "espanol",
-        totalRounds: 10,
-        answerTimeMs: 8000,
-        max_players: maxPlayers,
-      },
-      matematicas: {
-        categoryMode: "matematicas",
-        totalRounds: 10,
-        answerTimeMs: 10000,
-        max_players: maxPlayers,
-      },
-      ingles: {
-        categoryMode: "ingles",
-        totalRounds: 10,
-        answerTimeMs: 8000,
-        max_players: maxPlayers,
-      },
-      geografia: {
-        categoryMode: "geografia",
-        totalRounds: 10,
-        answerTimeMs: 8000,
-        max_players: maxPlayers,
-      },
-      ciencias: {
-        categoryMode: "ciencias",
-        totalRounds: 10,
-        answerTimeMs: 8000,
-        max_players: maxPlayers,
-      },
-      sabelotodo: {
-        categoryMode: "sabelotodo",
-        totalRounds: 15,
-        answerTimeMs: 6000,
-        max_players: maxPlayers,
-      },
+      espanol: { categoryMode: "espanol", totalRounds: 10, answerTimeMs: 8000, max_players: maxPlayers },
+      matematicas: { categoryMode: "matematicas", totalRounds: 10, answerTimeMs: 10000, max_players: maxPlayers },
+      ingles: { categoryMode: "ingles", totalRounds: 10, answerTimeMs: 8000, max_players: maxPlayers },
+      geografia: { categoryMode: "geografia", totalRounds: 10, answerTimeMs: 8000, max_players: maxPlayers },
+      ciencias: { categoryMode: "ciencias", totalRounds: 10, answerTimeMs: 8000, max_players: maxPlayers },
+      sabelotodo: { categoryMode: "sabelotodo", totalRounds: 15, answerTimeMs: 6000, max_players: maxPlayers },
     };
 
     const selected = variantMap[variantKey] ?? variantMap.sabelotodo;
@@ -359,7 +300,7 @@ export function buildRoomSettings(
     };
   }
 
-    if (gameSlug === "personaje-secreto") {
+  if (gameSlug === "personaje-secreto") {
     return {
       mode: "secret_character",
       category: variantKey,
@@ -382,12 +323,12 @@ export function buildRoomSettings(
     const selected = variantMap[variantKey] ?? variantMap.bo3;
 
     return {
-  mode: "match_series",
-  best_of: selected.best_of,
-  rounds_to_win: selected.rounds_to_win,
-  max_players: variantKey === "bot_bo3" ? 1 : 2,
-  vs_bot: variantKey === "bot_bo3",
-};
+      mode: "match_series",
+      best_of: selected.best_of,
+      rounds_to_win: selected.rounds_to_win,
+      max_players: variantKey === "bot_bo3" ? 1 : 2,
+      vs_bot: variantKey === "bot_bo3",
+    };
   }
 
   if (gameSlug === "gato") {
@@ -399,38 +340,22 @@ export function buildRoomSettings(
         bonus_win_length: number | null;
       }
     > = {
-      clasico: {
-        board_size: 3,
-        win_length: 3,
-        bonus_win_length: null,
-      },
-      grande: {
-        board_size: 5,
-        win_length: 5,
-        bonus_win_length: null,
-      },
-      epico: {
-        board_size: 7,
-        win_length: 5,
-        bonus_win_length: 7,
-      },
-      bot_clasico: {
-        board_size: 3,
-        win_length: 3,
-        bonus_win_length: null,
-      },
+      clasico: { board_size: 3, win_length: 3, bonus_win_length: null },
+      grande: { board_size: 5, win_length: 5, bonus_win_length: null },
+      epico: { board_size: 7, win_length: 5, bonus_win_length: 7 },
+      bot_clasico: { board_size: 3, win_length: 3, bonus_win_length: null },
     };
 
     const selected = variantMap[variantKey] ?? variantMap.clasico;
 
     return {
-  mode: "classic_tictactoe",
-  board_size: selected.board_size,
-  win_length: selected.win_length,
-  bonus_win_length: selected.bonus_win_length,
-  max_players: variantKey === "bot_clasico" ? 1 : 2,
-  vs_bot: variantKey === "bot_clasico",
-};
+      mode: "classic_tictactoe",
+      board_size: selected.board_size,
+      win_length: selected.win_length,
+      bonus_win_length: selected.bonus_win_length,
+      max_players: variantKey === "bot_clasico" ? 1 : 2,
+      vs_bot: variantKey === "bot_clasico",
+    };
   }
 
   return {
@@ -461,7 +386,7 @@ export function getGameIcon(slug: string) {
     case "bingo":
       return "🎱";
     case "memorama":
-      return "🃏";
+      return "🧠";
     default:
       return "🎮";
   }
