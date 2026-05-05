@@ -1082,13 +1082,15 @@ useEffect(() => {
             </div>
 
             <div className="rounded-[30px] border border-orange-500/15 bg-zinc-950/90 p-7 shadow-[0_0_40px_rgba(249,115,22,0.05)] transition hover:border-orange-500/25 hover:shadow-[0_0_60px_rgba(249,115,22,0.08)]">
+
+            <div className="rounded-[30px] border border-orange-500/15 bg-zinc-950/90 p-7 shadow-[0_0_40px_rgba(249,115,22,0.05)] transition hover:border-orange-500/25 hover:shadow-[0_0_60px_rgba(249,115,22,0.08)]">
               <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-orange-500/10 text-4xl text-orange-500">
                 →
               </div>
 
               <h2 className="text-3xl font-bold">Unirse a sala</h2>
               <p className="mt-3 text-base leading-relaxed text-white/65">
-                Ingresa un código de sala para unirte a una sesión existente.
+                Ingresa un código de sala o encuentra partidas abiertas debajo.
               </p>
 
               {!playerIdentity && (
@@ -1123,85 +1125,84 @@ useEffect(() => {
                   podrán marcarse como listos y comenzar la partida.
                 </p>
               </div>
-            </div>
 
-            <div className="space-y-6">
-              <div className="rounded-[30px] border border-cyan-500/15 bg-zinc-950/90 p-6 shadow-[0_0_40px_rgba(34,211,238,0.04)]">
-                <div className="mb-4 flex items-center justify-between gap-4">
-                  <div>
-                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-3xl bg-cyan-500/10 text-2xl text-cyan-300">
-                      👥
+              <div className="mt-6 space-y-5">
+                <div className="rounded-[26px] border border-cyan-500/15 bg-white/[0.03] p-5 shadow-[0_0_25px_rgba(34,211,238,0.03)]">
+                  <div className="mb-4 flex items-start justify-between gap-4">
+                    <div>
+                      <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-500/10 text-xl text-cyan-300">
+                        👥
+                      </div>
+
+                      <h3 className="text-xl font-bold">Salas de amigos</h3>
+                      <p className="mt-1 text-sm leading-relaxed text-white/60">
+                        Partidas creadas por tus amigos.
+                      </p>
                     </div>
 
-                    <h2 className="text-2xl font-bold">Salas de amigos</h2>
-                    <p className="mt-2 text-sm leading-relaxed text-white/65">
-                      Partidas creadas por tus amigos.
-                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void loadFriendRooms()}
+                      className="shrink-0 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/10"
+                    >
+                      Actualizar
+                    </button>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => void loadFriendRooms()}
-                    className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/10"
-                  >
-                    Actualizar
-                  </button>
+                  {loadingFriendRooms ? (
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+                      Buscando salas de amigos...
+                    </div>
+                  ) : friendRooms.length === 0 ? (
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+                      No hay salas de amigos activas por ahora.
+                    </div>
+                  ) : (
+                    <div className="max-h-[320px] space-y-3 overflow-y-auto pr-1">
+                      {friendRooms.map((openRoom) => renderOpenRoomCard(openRoom, "Amigos"))}
+                    </div>
+                  )}
                 </div>
 
-                {loadingFriendRooms ? (
-                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/60">
-                    Buscando salas de amigos...
-                  </div>
-                ) : friendRooms.length === 0 ? (
-                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/60">
-                    No hay salas de amigos activas por ahora.
-                  </div>
-                ) : (
-                  <div className="grid gap-3">
-                    {friendRooms.map((openRoom) => renderOpenRoomCard(openRoom, "Amigos"))}
-                  </div>
-                )}
-              </div>
+                <div className="rounded-[26px] border border-emerald-500/15 bg-white/[0.03] p-5 shadow-[0_0_25px_rgba(16,185,129,0.03)]">
+                  <div className="mb-4 flex items-start justify-between gap-4">
+                    <div>
+                      <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500/10 text-xl text-emerald-300">
+                        🌍
+                      </div>
 
-              <div className="rounded-[30px] border border-emerald-500/15 bg-zinc-950/90 p-6 shadow-[0_0_40px_rgba(16,185,129,0.04)]">
-                <div className="mb-4 flex items-center justify-between gap-4">
-                  <div>
-                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-3xl bg-emerald-500/10 text-2xl text-emerald-300">
-                      🌍
+                      <h3 className="text-xl font-bold">Salas públicas</h3>
+                      <p className="mt-1 text-sm leading-relaxed text-white/60">
+                        Partidas abiertas esperando jugadores.
+                      </p>
                     </div>
 
-                    <h2 className="text-2xl font-bold">Salas públicas</h2>
-                    <p className="mt-2 text-sm leading-relaxed text-white/65">
-                      Partidas abiertas esperando jugadores.
-                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void loadPublicRooms()}
+                      className="shrink-0 rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/10"
+                    >
+                      Actualizar
+                    </button>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => void loadPublicRooms()}
-                    className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/10"
-                  >
-                    Actualizar
-                  </button>
+                  {loadingPublicRooms ? (
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+                      Buscando salas públicas...
+                    </div>
+                  ) : publicRooms.length === 0 ? (
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/60">
+                      No hay salas públicas disponibles por ahora.
+                    </div>
+                  ) : (
+                    <div className="max-h-[320px] space-y-3 overflow-y-auto pr-1">
+                      {publicRooms.map((openRoom) => renderOpenRoomCard(openRoom, "Pública"))}
+                    </div>
+                  )}
                 </div>
-
-                {loadingPublicRooms ? (
-                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/60">
-                    Buscando salas públicas...
-                  </div>
-                ) : publicRooms.length === 0 ? (
-                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 text-sm text-white/60">
-                    No hay salas públicas disponibles por ahora.
-                  </div>
-                ) : (
-                  <div className="grid gap-3">
-                    {publicRooms.map((openRoom) => renderOpenRoomCard(openRoom, "Pública"))}
-                  </div>
-                )}
               </div>
             </div>
           </div>
-
           {errorMessage && (
             <div className="mx-auto mt-6 max-w-4xl rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-center text-red-300">
               {errorMessage}
