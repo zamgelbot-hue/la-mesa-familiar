@@ -2,7 +2,7 @@
 
 import type { MemoramaCard, MemoramaGameState, MemoramaSet, MemoramaVariant } from "./types";
 
-export const MEMORAMA_TURN_SECONDS = 5;
+export const MEMORAMA_TURN_SECONDS = 10;
 export const MEMORAMA_RESOLVE_MS = 1200;
 
 export const DEFAULT_MEMORAMA_VARIANT: MemoramaVariant = {

@@ -4,8 +4,18 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+
+import { GamePageLayout } from "@/components/games/core";
 import { createClient } from "@/lib/supabase/client";
-import type { MemoramaGameState, MemoramaVariant } from "./types";
+
+import MemoramaBoard from "./MemoramaBoard";
+import MemoramaHeader from "./MemoramaHeader";
+import MemoramaScorePanel from "./MemoramaScorePanel";
+import MemoramaStatusPanel from "./MemoramaStatusPanel";
+import MemoramaResultSummary from "./MemoramaResultSummary";
+
+import type { MemoramaGameState } from "./types";
+
 import {
   DEFAULT_MEMORAMA_VARIANT,
   MEMORAMA_RESOLVE_MS,
@@ -18,7 +28,6 @@ import {
   getCardById,
   getTurnTimes,
   getWinnerFromScores,
-  isCardVisible,
   normalizeMemoramaVariant,
 } from "./utils";
 
@@ -86,11 +95,15 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
   }, [roomCode]);
 
   const sortedPlayers = useMemo(() => {
-    return [...players].sort((a, b) => a.created_at.localeCompare(b.created_at));
+    return [...players].sort((a, b) =>
+      a.created_at.localeCompare(b.created_at),
+    );
   }, [players]);
 
   const currentPlayer = useMemo(() => {
-    return sortedPlayers.find((p) => p.player_name === currentPlayerName) ?? null;
+    return (
+      sortedPlayers.find((p) => p.player_name === currentPlayerName) ?? null
+    );
   }, [sortedPlayers, currentPlayerName]);
 
   const currentPlayerKey = currentPlayer ? getPlayerKey(currentPlayer) : null;
@@ -110,6 +123,7 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
     settings: Record<string, any> | null | undefined,
   ): MemoramaGameState => {
     const saved = settings?.memorama;
+
     const configuredVariant = normalizeMemoramaVariant(
       settings?.memorama_variant ?? saved?.variant ?? DEFAULT_MEMORAMA_VARIANT,
     );
@@ -204,7 +218,9 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
   const loadPlayers = useCallback(async () => {
     const { data, error } = await supabase
       .from("room_players")
-      .select("id, room_code, user_id, player_name, is_host, is_guest, is_ready, created_at")
+      .select(
+        "id, room_code, user_id, player_name, is_host, is_guest, is_ready, created_at",
+      )
       .eq("room_code", roomCode)
       .order("created_at", { ascending: true });
 
@@ -226,7 +242,10 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
 
       if (currentIndex < 0) return sortedPlayers[0];
 
-      return sortedPlayers[(currentIndex + 1) % sortedPlayers.length] ?? sortedPlayers[0];
+      return (
+        sortedPlayers[(currentIndex + 1) % sortedPlayers.length] ??
+        sortedPlayers[0]
+      );
     },
     [sortedPlayers],
   );
@@ -240,6 +259,7 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
     try {
       const AudioContextClass =
         window.AudioContext || (window as any).webkitAudioContext;
+
       const audioContext = new AudioContextClass();
 
       notes.forEach((frequency, index) => {
@@ -266,10 +286,23 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
   };
 
   const playFlipSound = () => playToneSequence([392, 523.25], "sine", 0.08, 0.1);
-  const playMatchSound = () => playToneSequence([523.25, 659.25, 783.99], "triangle", 0.14, 0.16);
-  const playMissSound = () => playToneSequence([220, 164.81], "sawtooth", 0.08, 0.12);
-  const playTimeoutSound = () => playToneSequence([196, 146.83], "square", 0.06, 0.1);
-  const playWinSound = () => playToneSequence([523.25, 659.25, 783.99, 1046.5], "triangle", 0.18, 0.22);
+
+  const playMatchSound = () =>
+    playToneSequence([523.25, 659.25, 783.99], "triangle", 0.14, 0.16);
+
+  const playMissSound = () =>
+    playToneSequence([220, 164.81], "sawtooth", 0.08, 0.12);
+
+  const playTimeoutSound = () =>
+    playToneSequence([196, 146.83], "square", 0.06, 0.1);
+
+  const playWinSound = () =>
+    playToneSequence(
+      [523.25, 659.25, 783.99, 1046.5],
+      "triangle",
+      0.18,
+      0.22,
+    );
 
   const startGame = async () => {
     if (sortedPlayers.length < 2) {
@@ -281,7 +314,9 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
       room?.room_settings?.memorama_variant ?? DEFAULT_MEMORAMA_VARIANT,
     );
 
-    const firstPlayer = sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
+    const firstPlayer =
+      sortedPlayers[Math.floor(Math.random() * sortedPlayers.length)];
+
     const firstKey = getPlayerKey(firstPlayer);
     const turnTimes = getTurnTimes();
 
@@ -355,6 +390,7 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
         };
 
         const finished = areAllPairsMatched(current.cards, nextMatchedCardIds);
+
         const winner = finished
           ? getWinnerFromScores(nextScores)
           : { winnerKey: null, winnerName: null };
@@ -379,7 +415,9 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
       }
 
       const nextPlayer = getNextPlayer(current.currentTurnKey);
-      const nextPlayerKey = nextPlayer ? getPlayerKey(nextPlayer) : current.currentTurnKey;
+      const nextPlayerKey = nextPlayer
+        ? getPlayerKey(nextPlayer)
+        : current.currentTurnKey;
 
       return {
         ...current,
@@ -400,10 +438,13 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
       if (!current.turnEndsAt) return current;
 
       const hasExpired = Date.now() >= new Date(current.turnEndsAt).getTime();
+
       if (!hasExpired) return current;
 
       const nextPlayer = getNextPlayer(current.currentTurnKey);
-      const nextPlayerKey = nextPlayer ? getPlayerKey(nextPlayer) : current.currentTurnKey;
+      const nextPlayerKey = nextPlayer
+        ? getPlayerKey(nextPlayer)
+        : current.currentTurnKey;
 
       return {
         ...current,
@@ -449,7 +490,8 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
         selectedCardIds: nextSelectedCardIds,
         isResolving: nextSelectedCardIds.length === 2,
         lastResult: null,
-        turnEndsAt: nextSelectedCardIds.length === 2 ? null : current.turnEndsAt,
+        turnEndsAt:
+          nextSelectedCardIds.length === 2 ? null : current.turnEndsAt,
       };
     });
   };
@@ -460,6 +502,7 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
 
   const handleBackToSala = async () => {
     const ok = window.confirm("¿Quieres volver a sala? Todos regresarán a la sala.");
+
     if (!ok) return;
 
     const { error } = await supabase
@@ -480,6 +523,7 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
     if (!isHost) return;
 
     const ok = window.confirm("¿Seguro que quieres terminar la sala?");
+
     if (!ok) return;
 
     const { error } = await supabase
@@ -609,261 +653,71 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-black px-6 py-10 text-white">
-        <div className="mx-auto max-w-5xl rounded-[32px] border border-white/10 bg-zinc-950 p-8 text-center">
+      <GamePageLayout className="bg-black">
+        <div className="rounded-[32px] border border-white/10 bg-zinc-950 p-8 text-center">
           <p className="text-2xl font-black">Cargando Memorama...</p>
         </div>
-      </main>
+      </GamePageLayout>
     );
   }
 
   const variantLabel = MEMORAMA_SET_LABELS[gameState.variant.set] ?? "Clásico";
   const variantPreview = MEMORAMA_SETS[gameState.variant.set]?.slice(0, 6) ?? [];
-  const isPremiumSet = MEMORAMA_STORE_LOCKED_SETS.includes(gameState.variant.set);
+  const isPremiumSet = MEMORAMA_STORE_LOCKED_SETS.includes(
+    gameState.variant.set,
+  );
 
   return (
-    <main className="min-h-screen bg-black px-4 py-6 text-white md:px-8">
-      <div className="mx-auto max-w-7xl space-y-5">
-        <section className="rounded-[32px] border border-orange-500/20 bg-zinc-950/95 p-6 shadow-[0_0_40px_rgba(249,115,22,0.06)]">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-orange-300/80">
-                La Mesa Familiar
-              </p>
+    <GamePageLayout className="bg-black">
+      <MemoramaHeader
+        variantLabel={variantLabel}
+        pairs={gameState.variant.pairs}
+        isPremiumSet={isPremiumSet}
+        variantPreview={variantPreview}
+        isHost={isHost}
+        onBackToSala={handleBackToSala}
+        onCloseRoom={handleCloseRoom}
+      />
 
-              <h1 className="mt-2 text-3xl font-black md:text-4xl">
-                🧠 Memorama
-              </h1>
+      <section className="grid gap-5 xl:grid-cols-[340px_1fr]">
+        <aside className="space-y-5">
+          <MemoramaScorePanel
+            players={sortedPlayers}
+            scores={gameState.scores}
+            currentTurnKey={gameState.currentTurnKey}
+            currentPlayerKey={currentPlayerKey}
+            getPlayerKey={getPlayerKey}
+          />
 
-              <p className="mt-2 text-sm text-white/60">
-                Variante:{" "}
-                <span className="font-bold text-orange-300">{variantLabel}</span>
-                {" · "}
-                {gameState.variant.pairs} pares
-                {isPremiumSet ? " · Premium preparado para tienda" : ""}
-              </p>
-            </div>
+          <MemoramaStatusPanel
+            gameState={gameState}
+            isHost={isHost}
+            isMyTurn={isMyTurn}
+            saving={saving}
+            playersCount={sortedPlayers.length}
+            turnSecondsLeft={turnSecondsLeft}
+            turnSecondsLimit={MEMORAMA_TURN_SECONDS}
+            onStartGame={startGame}
+            onRematch={handleRematch}
+          />
+        </aside>
 
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleBackToSala}
-                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white hover:bg-white/10"
-              >
-                Volver a sala
-              </button>
+                <MemoramaBoard
+          gameState={gameState}
+          saving={saving}
+          isMyTurn={isMyTurn}
+          currentPlayerKey={currentPlayerKey}
+          onCardClick={(cardId) => void handleCardClick(cardId)}
+        />
+      </section>
 
-              {isHost && (
-                <button
-                  type="button"
-                  onClick={handleCloseRoom}
-                  className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200 hover:bg-red-500/20"
-                >
-                  Terminar sala
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-            {variantPreview.map((emoji, index) => (
-              <span
-                key={`${emoji}-${index}`}
-                className="flex h-10 w-10 items-center justify-center rounded-xl bg-black/30 text-xl"
-              >
-                {emoji}
-              </span>
-            ))}
-          </div>
-        </section>
-
-        <section className="grid gap-5 xl:grid-cols-[340px_1fr]">
-          <aside className="space-y-5">
-            <div className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5">
-              <h2 className="text-xl font-black">🏆 Marcador</h2>
-
-              <div className="mt-4 space-y-3">
-                {sortedPlayers.map((player) => {
-                  const key = getPlayerKey(player);
-                  const score = gameState.scores[key]?.pairs ?? 0;
-
-                  return (
-                    <div
-                      key={player.id}
-                      className={
-                        gameState.currentTurnKey === key
-                          ? "rounded-2xl border border-orange-400 bg-orange-500/15 p-4 shadow-[0_0_22px_rgba(249,115,22,0.14)]"
-                          : "rounded-2xl border border-white/10 bg-white/[0.03] p-4"
-                      }
-                    >
-                      <p className="font-black">
-                        {player.player_name} {key === currentPlayerKey ? "(Tú)" : ""}
-                      </p>
-
-                      <p className="mt-1 text-sm font-bold text-white/60">
-                        Parejas:{" "}
-                        <span className="text-orange-300">{score}</span>
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5">
-              <h2 className="text-xl font-black">🎮 Estado</h2>
-
-              {gameState.phase === "waiting" && (
-                <div className="mt-4 space-y-3">
-                  <p className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm text-yellow-100">
-                    Listo para iniciar Memorama.
-                  </p>
-
-                  {isHost ? (
-                    <button
-                      type="button"
-                      onClick={startGame}
-                      disabled={saving || sortedPlayers.length < 2}
-                      className="w-full rounded-2xl bg-orange-500 px-4 py-3 font-black text-black hover:bg-orange-400 disabled:opacity-50"
-                    >
-                      Iniciar partida
-                    </button>
-                  ) : (
-                    <p className="text-sm text-white/50">
-                      Esperando que el host inicie la partida.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {gameState.phase === "playing" && (
-                <div
-                  className={
-                    isMyTurn
-                      ? "mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4"
-                      : "mt-4 rounded-2xl border border-purple-500/20 bg-purple-500/10 p-4"
-                  }
-                >
-                  <p className="text-sm font-bold text-white/60">Turno actual</p>
-                  <p className="mt-1 text-2xl font-black">
-                    {gameState.currentTurnName ?? "Jugador"}
-                  </p>
-
-                  <div className="mt-3 rounded-2xl border border-white/10 bg-black/30 p-3">
-                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/45">
-                      Tiempo
-                    </p>
-                    <p className="mt-1 text-4xl font-black text-orange-300">
-                      {turnSecondsLeft}s
-                    </p>
-                  </div>
-
-                  <p className="mt-2 text-sm text-white/60">
-                    {gameState.isResolving
-                      ? "Resolviendo selección..."
-                      : isMyTurn
-                        ? `Elige 2 cartas antes de ${MEMORAMA_TURN_SECONDS} segundos.`
-                        : "Espera tu turno."}
-                  </p>
-
-                  {gameState.lastResult === "match" && (
-                    <p className="mt-2 text-sm font-bold text-emerald-300">
-                      ✅ Pareja encontrada.
-                    </p>
-                  )}
-
-                  {gameState.lastResult === "miss" && (
-                    <p className="mt-2 text-sm font-bold text-red-300">
-                      ❌ No era pareja.
-                    </p>
-                  )}
-
-                  {gameState.lastResult === "timeout" && (
-                    <p className="mt-2 text-sm font-bold text-yellow-300">
-                      ⏳ Tiempo agotado.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {gameState.phase === "finished" && (
-                <div className="mt-4 rounded-2xl border border-orange-500/30 bg-orange-500/10 p-4">
-                  <p className="text-sm font-bold uppercase tracking-[0.2em] text-orange-300">
-                    Partida terminada
-                  </p>
-
-                  <p className="mt-2 text-3xl font-black">
-                    {gameState.winnerName === "Empate"
-                      ? "🤝 Empate"
-                      : `🏆 ${gameState.winnerName}`}
-                  </p>
-
-                  {isHost && (
-                    <button
-                      type="button"
-                      onClick={handleRematch}
-                      className="mt-4 w-full rounded-2xl bg-orange-500 px-4 py-3 font-black text-black hover:bg-orange-400"
-                    >
-                      Revancha
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </aside>
-
-          <section className="rounded-[32px] border border-white/10 bg-zinc-950/90 p-4 md:p-6">
-            <div className={gameState.variant.pairs > 8 ? "grid grid-cols-4 gap-3 lg:grid-cols-6" : "grid grid-cols-4 gap-3"}>
-              {gameState.cards.map((card) => {
-                const visible = isCardVisible(
-                  card,
-                  gameState.selectedCardIds,
-                  gameState.matchedCardIds,
-                );
-
-                const matched = gameState.matchedCardIds.includes(card.id);
-                const selected = gameState.selectedCardIds.includes(card.id);
-                const ownerKey = gameState.matchedPairOwners?.[card.pairId] ?? null;
-                const isMineMatchedPair = ownerKey === currentPlayerKey;
-
-                const resolvingSelected =
-                  selected && gameState.isResolving && !matched;
-
-                const disabled =
-                  saving ||
-                  gameState.phase !== "playing" ||
-                  !isMyTurn ||
-                  gameState.isResolving ||
-                  visible;
-
-                return (
-                  <button
-                    key={card.id}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => void handleCardClick(card.id)}
-                    className={
-                      matched
-                        ? isMineMatchedPair
-                          ? "aspect-square rounded-3xl border border-emerald-400/50 bg-emerald-500/20 text-5xl shadow-[0_0_28px_rgba(16,185,129,0.18)]"
-                          : "aspect-square rounded-3xl border border-cyan-400/50 bg-cyan-500/20 text-5xl shadow-[0_0_28px_rgba(34,211,238,0.18)]"
-                        : resolvingSelected
-                          ? "aspect-square rounded-3xl border border-orange-400/60 bg-orange-500/20 text-5xl shadow-[0_0_28px_rgba(249,115,22,0.18)]"
-                          : visible
-                            ? "aspect-square rounded-3xl border border-orange-400/50 bg-orange-500/20 text-5xl shadow-[0_0_28px_rgba(249,115,22,0.18)]"
-                            : "aspect-square rounded-3xl border border-white/10 bg-white/[0.04] text-4xl transition hover:scale-[1.03] hover:border-orange-400/50 hover:bg-orange-500/10 disabled:hover:scale-100"
-                    }
-                  >
-                    <span className="flex h-full w-full items-center justify-center">
-                      {visible ? card.emoji : "❔"}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        </section>
-      </div>
-    </main>
+      <MemoramaResultSummary
+        gameState={gameState}
+        currentPlayerKey={currentPlayerKey}
+        isHost={isHost}
+        onBackToSala={handleBackToSala}
+        onRematch={handleRematch}
+      />
+    </GamePageLayout>
   );
 }
