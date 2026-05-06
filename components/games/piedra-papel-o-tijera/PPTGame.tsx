@@ -1,3 +1,5 @@
+// 📍 Ruta del archivo: components/games/piedra-papel-o-tijera/PPTGame.tsx
+
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -7,6 +9,8 @@ import { createClient } from "@/lib/supabase/client";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profile/profileCosmetics";
 import { applyHeadToHeadMatchRewards } from "@/lib/gameRewards";
 import RoomChat from "@/components/RoomChat";
+import GameResultOverlay from "@/components/games/core/GameResultOverlay";
+import { returnToRoom } from "@/lib/games/gameNavigation";
 import type { Choice, GameState, PPTGameProps, ProfileMap, RoomPlayer } from "./pptTypes";
 import {
   DEFAULT_STATE,
@@ -805,7 +809,7 @@ return;
 
     await clearGameChat();
     await writeGameState(fresh);
-    router.push(`/sala/${code}`);
+    returnToRoom({ router, roomCode: code });
   }, [sortedPlayers, supabase, code, clearGameChat, writeGameState, router]);
 
   const handleRematch = async () => {
@@ -832,10 +836,6 @@ return;
         rematchVotes: votes,
       };
     });
-  };
-
-  const handleTerminateMatch = async () => {
-    await goBackToRoom();
   };
 
   const handleSelectIdentity = (playerName: string) => {
@@ -922,7 +922,7 @@ return;
           table: "rooms",
           filter: `code=eq.${code}`,
         },
-        async (payload) => {
+        async (payload: any) => {
           const nextStatus = (payload.new as { status?: string } | null)?.status;
 
           if (nextStatus) {
@@ -1225,24 +1225,15 @@ return;
             </motion.div>
 
             <div className="flex flex-col gap-2 sm:flex-row">
-              <motion.button
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.96 }}
-                onClick={goBackToRoom}
-                className="rounded-2xl border border-white/15 bg-white/10 px-4 py-2 font-semibold transition hover:bg-white/15"
-              >
-                Volver a sala
-              </motion.button>
-
-              <motion.button
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.96 }}
-                onClick={handleTerminateMatch}
-                className="rounded-2xl bg-red-500/90 px-4 py-2 font-semibold text-white transition hover:bg-red-500"
-              >
-                Terminar partida
-              </motion.button>
-            </div>
+  <motion.button
+    whileHover={{ scale: 1.03 }}
+    whileTap={{ scale: 0.96 }}
+    onClick={goBackToRoom}
+    className="rounded-2xl bg-orange-500 px-4 py-2 font-bold text-black transition hover:bg-orange-400"
+  >
+    Volver a sala
+  </motion.button>
+</div>
           </div>
         </motion.div>
 
@@ -1505,83 +1496,46 @@ return;
         )}
 
         <AnimatePresence>
-          {gameState.matchOver && (
-            <motion.div
-              initial={{ opacity: 0, y: 22, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12 }}
-              transition={{ duration: 0.28 }}
-              className="mb-6 overflow-hidden rounded-3xl border border-yellow-400/30 bg-yellow-500/10 p-6 shadow-[0_0_40px_rgba(250,204,21,0.12)]"
-            >
-              <div className="text-center">
-                <p className="mb-2 text-sm uppercase tracking-[0.3em] text-yellow-300">Campeón</p>
-                <motion.h2
-                  initial={{ scale: 0.92, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: 0.08 }}
-                  className="text-4xl font-extrabold text-yellow-400 md:text-5xl"
-                >
-                  👑 {gameState.champion}
-                </motion.h2>
-                <p className="mt-3 text-lg text-white/80">
-                  {isVsBot
-                    ? gameState.champion === BOT_PLAYER_NAME
-                      ? "El bot ganó esta vez. Intenta la revancha."
-                      : "Ganaste contra el bot y recibiste 1 punto."
-                    : `La partida terminó. Ya tenemos campeón del ${modeLabel.toLowerCase()}.`}
-                </p>
-              </div>
-
-              <div className="mt-6 grid gap-4 md:grid-cols-2">
-                {sortedPlayers.map((player) => (
-                  <motion.div
-                    key={player.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`rounded-2xl border p-4 ${
-                      player.player_name === gameState.champion
-                        ? "border-yellow-400/40 bg-yellow-500/10"
-                        : "border-white/10 bg-white/5"
-                    }`}
-                  >
-                    <p className="text-lg font-bold">{player.player_name}</p>
-                    <p className="text-white/70">
-                      Rondas ganadas:{" "}
-                      <span className="font-bold text-white">
-                        {gameState.scores?.[player.player_name] ?? 0}
-                      </span>
-                    </p>
-                  </motion.div>
-                ))}
-              </div>
-
-              <div className="mt-6 flex flex-col gap-3 md:flex-row md:justify-center">
-                <motion.button
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.96 }}
-                  onClick={handleRematch}
-                  className="rounded-2xl bg-emerald-500 px-6 py-3 font-bold text-black transition hover:bg-emerald-400"
-                >
-                  Revancha
-                </motion.button>
-
-                <motion.button
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.96 }}
-                  onClick={goBackToRoom}
-                  className="rounded-2xl border border-white/15 bg-white/10 px-6 py-3 font-bold transition hover:bg-white/15"
-                >
-                  Volver a sala
-                </motion.button>
-              </div>
-
-              {!isVsBot && (
-                <p className="mt-4 text-center text-sm text-white/60">
-                  Votos de revancha: {gameState.rematchVotes?.length ?? 0}/{Math.max(sortedPlayers.length, 2)}
-                </p>
-              )}
-            </motion.div>
-          )}
+         <GameResultOverlay
+  show={gameState.matchOver}
+  tone={
+    gameState.champion === currentPlayerName
+      ? "win"
+      : gameState.champion === BOT_PLAYER_NAME
+        ? "lose"
+        : "neutral"
+  }
+  title={
+    gameState.champion === currentPlayerName
+      ? "¡Ganaste!"
+      : gameState.champion === BOT_PLAYER_NAME
+        ? "Ganó el bot"
+        : "Partida terminada"
+  }
+  subtitle={
+    isVsBot
+      ? gameState.champion === BOT_PLAYER_NAME
+        ? "El Bot Familiar ganó esta vez. Intenta la revancha."
+        : "Ganaste contra el bot."
+      : `La partida terminó. Ya tenemos campeón del ${modeLabel.toLowerCase()}.`
+  }
+  winnerName={gameState.champion}
+  resultText={`Marcador final: ${sortedPlayers
+    .map(
+      (player) =>
+        `${player.player_name}: ${gameState.scores?.[player.player_name] ?? 0}`,
+    )
+    .join(" · ")}`}
+  pointsText={
+    isVsBot && gameState.champion === currentPlayerName
+      ? "Recibiste 1 punto por vencer al bot."
+      : undefined
+  }
+  primaryActionLabel="Volver a sala"
+  secondaryActionLabel="Revancha"
+  onPrimaryAction={goBackToRoom}
+  onSecondaryAction={handleRematch}
+/> 
         </AnimatePresence>
 
         <motion.div
@@ -1621,7 +1575,6 @@ return;
       <RoomChat
         roomCode={code}
         context="game"
-        title="Chat de partida"
         currentPlayerName={currentPlayerName}
         currentUserId={currentPlayer?.user_id ?? null}
         isGuest={currentPlayer?.is_guest ?? true}
