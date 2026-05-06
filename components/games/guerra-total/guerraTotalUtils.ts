@@ -1,13 +1,17 @@
-// 📍 components/games/guerra-total/gtUtils.ts
+// 📍 Ruta del archivo: components/games/guerra-total/guerraTotalUtils.ts
 
 import type {
   GtCell,
+  GtCellStatus,
   GtGameState,
+  GtOrientation,
   GtPlayerBoard,
+  GtRoomPlayer,
   GtShip,
   GtShot,
   GtVariant,
-} from "./gtTypes";
+  GtVariantTheme,
+} from "./guerraTotalTypes";
 
 export const GT_DEFAULT_BOARD_SIZE = 8;
 
@@ -60,7 +64,7 @@ export function isCellInList(cell: GtCell, list: GtCell[]) {
 export function buildShipCells(
   start: GtCell,
   size: number,
-  orientation: "horizontal" | "vertical",
+  orientation: GtOrientation,
 ): GtCell[] {
   return Array.from({ length: size }, (_, index) => ({
     row: orientation === "vertical" ? start.row + index : start.row,
@@ -129,112 +133,85 @@ export function getRandomFirstTurn<T>(players: T[]) {
   return players[Math.floor(Math.random() * players.length)];
 }
 
-export function getGtVariantTheme(variant?: string | null) {
-  if (variant === "aire") {
-    return {
-      label: "Aire",
-      icon: "✈️",
-      unitIcons: {
-        carrier: "🛩️",
-        "destroyer-a": "🚁",
-        "destroyer-b": "🚁",
-        "submarine-a": "🛰️",
-        "submarine-b": "🛰️",
-        "scout-a": "🛸",
-        "scout-b": "🛸",
-      } as Record<string, string>,
-      emptyIcon: "",
-      missIcon: "☁️",
-      hitIcon: "💥",
-      sunkIcon: "🔥",
-      unitLabel: "Escuadrón",
-      boardLabel: "Radar",
-      enemyLabel: "Zona aérea enemiga",
-      waterLabel: "Cielo limpio",
-      hitLabel: "Impacto aéreo",
-      sunkLabel: "Derribado",
-      mineBoardClass:
-        "rounded-[28px] border border-sky-500/20 bg-sky-950/30 p-5",
-      enemyBoardClass:
-        "rounded-[28px] border border-slate-400/20 bg-slate-950/40 p-5",
-      shipCellClass: "border-slate-200/40 bg-slate-400/25 text-slate-50",
-      emptyCellClass:
-        "border-white/10 bg-white/[0.03] text-white/30 hover:border-sky-300/50",
-      missCellClass: "border-sky-200/30 bg-sky-500/15 text-sky-100",
-      hitCellClass: "border-red-400/50 bg-red-500/40 text-red-100",
-      sunkCellClass: "border-orange-400/70 bg-orange-500/60 text-orange-50",
-    };
-  }
+export function getNextUnplacedShipId(
+  currentShipId: string,
+  placedShipIds: Set<string>,
+) {
+  return (
+    GT_SHIP_TEMPLATES.find(
+      (ship) => ship.id !== currentShipId && !placedShipIds.has(ship.id),
+    )?.id ?? null
+  );
+}
 
-  if (variant === "tierra") {
-    return {
-      label: "Tierra",
-      icon: "🪖",
-      unitIcons: {
-        carrier: "🛡️",
-        "destroyer-a": "🚜",
-        "destroyer-b": "🚜",
-        "submarine-a": "💣",
-        "submarine-b": "💣",
-        "scout-a": "🪖",
-        "scout-b": "🪖",
-      } as Record<string, string>,
-      emptyIcon: "",
-      missIcon: "🟫",
-      hitIcon: "💥",
-      sunkIcon: "🔥",
-      unitLabel: "Unidad",
-      boardLabel: "Campo",
-      enemyLabel: "Territorio enemigo",
-      waterLabel: "Terreno vacío",
-      hitLabel: "Impacto terrestre",
-      sunkLabel: "Destruido",
-      mineBoardClass:
-        "rounded-[28px] border border-emerald-500/20 bg-emerald-950/25 p-5",
-      enemyBoardClass:
-        "rounded-[28px] border border-amber-500/20 bg-amber-950/20 p-5",
-      shipCellClass: "border-lime-300/40 bg-lime-600/25 text-lime-50",
-      emptyCellClass:
-        "border-white/10 bg-white/[0.03] text-white/30 hover:border-emerald-400/50",
-      missCellClass: "border-amber-400/30 bg-amber-700/20 text-amber-100",
-      hitCellClass: "border-red-400/50 bg-red-500/40 text-red-100",
-      sunkCellClass: "border-orange-400/70 bg-orange-500/60 text-orange-50",
-    };
-  }
+export function getMyCellStatus(
+  cell: GtCell,
+  myBoard?: GtPlayerBoard | null,
+): GtCellStatus {
+  const ship = myBoard?.ships.find((item) => isCellInList(cell, item.cells));
+  const wasShot = myBoard?.shotsReceived.find((item) => sameCell(item.cell, cell));
 
-  return {
-    label: "Mar",
-    icon: "🌊",
-    unitIcons: {
-      carrier: "🚢",
-      "destroyer-a": "⛴️",
-      "destroyer-b": "⛴️",
-      "submarine-a": "⚓",
-      "submarine-b": "⚓",
-      "scout-a": "🛟",
-      "scout-b": "🛟",
-    } as Record<string, string>,
-    emptyIcon: "",
-    missIcon: "🌊",
-    hitIcon: "💥",
-    sunkIcon: "🔥",
-    unitLabel: "Flota",
-    boardLabel: "Océano",
-    enemyLabel: "Océano enemigo",
-    waterLabel: "Agua",
-    hitLabel: "Impacto",
-    sunkLabel: "Hundido",
-    mineBoardClass:
-      "rounded-[28px] border border-cyan-500/20 bg-cyan-950/25 p-5",
-    enemyBoardClass:
-      "rounded-[28px] border border-orange-500/20 bg-zinc-950/90 p-5",
-    shipCellClass: "border-slate-200/40 bg-slate-500/25 text-slate-50",
-    emptyCellClass:
-      "border-white/10 bg-white/[0.03] text-white/30 hover:border-orange-400/50",
-    missCellClass: "border-sky-400/30 bg-sky-500/20 text-sky-100",
-    hitCellClass: "border-red-400/50 bg-red-500/40 text-red-100",
-    sunkCellClass: "border-orange-400/70 bg-orange-500/60 text-orange-50",
-  };
+  if (ship?.sunk && wasShot) return "sunk";
+  if (ship && wasShot) return "hit-received";
+  if (wasShot?.result === "water") return "miss-received";
+  if (ship) return "ship";
+
+  return "empty";
+}
+
+export function getEnemyCellStatus(params: {
+  cell: GtCell;
+  shots: GtShot[];
+  currentPlayerKey: string | null;
+  opponentKey: string | null;
+  opponentBoard?: GtPlayerBoard | null;
+}): GtCellStatus {
+  const { cell, shots, currentPlayerKey, opponentKey, opponentBoard } = params;
+
+  const shot = shots.find(
+    (item) =>
+      item.attackerKey === currentPlayerKey &&
+      item.targetKey === opponentKey &&
+      sameCell(item.cell, cell),
+  );
+
+  if (!shot) return "unknown";
+
+  const sunkShip = opponentBoard?.ships.find(
+    (ship) => ship.sunk && isCellInList(cell, ship.cells),
+  );
+
+  if (sunkShip) return "sunk";
+  if (shot.result === "water") return "water";
+  if (shot.result === "hit") return "hit";
+
+  return "sunk";
+}
+
+export function getShipIconForCell(params: {
+  cell: GtCell;
+  board?: GtPlayerBoard | null;
+  theme: GtVariantTheme;
+}) {
+  const { cell, board, theme } = params;
+
+  const ship = board?.ships.find((item) => isCellInList(cell, item.cells));
+
+  if (!ship) return theme.icon;
+
+  return theme.unitIcons[ship.id] ?? theme.icon;
+}
+
+export function getShotResultLabel(shot: GtShot, theme: GtVariantTheme) {
+  if (shot.result === "water") return theme.waterLabel;
+  if (shot.result === "hit") return theme.hitLabel;
+  return `${theme.sunkLabel}: ${shot.sunkShipName}`;
+}
+
+export function getShotResultClass(result: GtShot["result"]) {
+  if (result === "water") return "text-sm font-bold text-sky-300";
+  if (result === "hit") return "text-sm font-bold text-red-300";
+  return "text-sm font-bold text-orange-300";
 }
 
 export function resolveShot(
@@ -299,4 +276,112 @@ export function hasAlreadyShot(
       shot.targetKey === targetKey &&
       sameCell(shot.cell, cell),
   );
+}
+
+export function getGtVariantTheme(variant?: string | null): GtVariantTheme {
+  if (variant === "aire") {
+    return {
+      label: "Aire",
+      icon: "✈️",
+      unitIcons: {
+        carrier: "🛩️",
+        "destroyer-a": "🚁",
+        "destroyer-b": "🚁",
+        "submarine-a": "🛰️",
+        "submarine-b": "🛰️",
+        "scout-a": "🛸",
+        "scout-b": "🛸",
+      },
+      emptyIcon: "",
+      missIcon: "☁️",
+      hitIcon: "💥",
+      sunkIcon: "🔥",
+      unitLabel: "Escuadrón",
+      boardLabel: "Radar",
+      enemyLabel: "Zona aérea enemiga",
+      waterLabel: "Cielo limpio",
+      hitLabel: "Impacto aéreo",
+      sunkLabel: "Derribado",
+      mineBoardClass:
+        "rounded-[28px] border border-sky-500/20 bg-sky-950/30 p-5",
+      enemyBoardClass:
+        "rounded-[28px] border border-slate-400/20 bg-slate-950/40 p-5",
+      shipCellClass: "border-slate-200/40 bg-slate-400/25 text-slate-50",
+      emptyCellClass:
+        "border-white/10 bg-white/[0.03] text-white/30 hover:border-sky-300/50",
+      missCellClass: "border-sky-200/30 bg-sky-500/15 text-sky-100",
+      hitCellClass: "border-red-400/50 bg-red-500/40 text-red-100",
+      sunkCellClass: "border-orange-400/70 bg-orange-500/60 text-orange-50",
+    };
+  }
+
+  if (variant === "tierra") {
+    return {
+      label: "Tierra",
+      icon: "🪖",
+      unitIcons: {
+        carrier: "🛡️",
+        "destroyer-a": "🚜",
+        "destroyer-b": "🚜",
+        "submarine-a": "💣",
+        "submarine-b": "💣",
+        "scout-a": "🪖",
+        "scout-b": "🪖",
+      },
+      emptyIcon: "",
+      missIcon: "🟫",
+      hitIcon: "💥",
+      sunkIcon: "🔥",
+      unitLabel: "Unidad",
+      boardLabel: "Campo",
+      enemyLabel: "Territorio enemigo",
+      waterLabel: "Terreno vacío",
+      hitLabel: "Impacto terrestre",
+      sunkLabel: "Destruido",
+      mineBoardClass:
+        "rounded-[28px] border border-emerald-500/20 bg-emerald-950/25 p-5",
+      enemyBoardClass:
+        "rounded-[28px] border border-amber-500/20 bg-amber-950/20 p-5",
+      shipCellClass: "border-lime-300/40 bg-lime-600/25 text-lime-50",
+      emptyCellClass:
+        "border-white/10 bg-white/[0.03] text-white/30 hover:border-emerald-400/50",
+      missCellClass: "border-amber-400/30 bg-amber-700/20 text-amber-100",
+      hitCellClass: "border-red-400/50 bg-red-500/40 text-red-100",
+      sunkCellClass: "border-orange-400/70 bg-orange-500/60 text-orange-50",
+    };
+  }
+
+  return {
+    label: "Mar",
+    icon: "🌊",
+    unitIcons: {
+      carrier: "🚢",
+      "destroyer-a": "⛴️",
+      "destroyer-b": "⛴️",
+      "submarine-a": "⚓",
+      "submarine-b": "⚓",
+      "scout-a": "🛟",
+      "scout-b": "🛟",
+    },
+    emptyIcon: "",
+    missIcon: "🌊",
+    hitIcon: "💥",
+    sunkIcon: "🔥",
+    unitLabel: "Flota",
+    boardLabel: "Océano",
+    enemyLabel: "Océano enemigo",
+    waterLabel: "Agua",
+    hitLabel: "Impacto",
+    sunkLabel: "Hundido",
+    mineBoardClass:
+      "rounded-[28px] border border-cyan-500/20 bg-cyan-950/25 p-5",
+    enemyBoardClass:
+      "rounded-[28px] border border-orange-500/20 bg-zinc-950/90 p-5",
+    shipCellClass: "border-slate-200/40 bg-slate-500/25 text-slate-50",
+    emptyCellClass:
+      "border-white/10 bg-white/[0.03] text-white/30 hover:border-orange-400/50",
+    missCellClass: "border-sky-400/30 bg-sky-500/20 text-sky-100",
+    hitCellClass: "border-red-400/50 bg-red-500/40 text-red-100",
+    sunkCellClass: "border-orange-400/70 bg-orange-500/60 text-orange-50",
+  };
 }

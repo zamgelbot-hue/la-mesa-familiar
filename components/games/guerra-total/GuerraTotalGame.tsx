@@ -1,28 +1,45 @@
-// 📍 components/games/guerra-total/GuerraTotalGame.tsx
+// 📍 Ruta del archivo: components/games/guerra-total/GuerraTotalGame.tsx
 
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { GtCell, GtGameState, GtShip, GtShot, GtVariant } from "./gtTypes";
+import { GameResultOverlay } from "@/components/games/core";
+
+import GuerraTotalBoard from "./GuerraTotalBoard";
+import GuerraTotalHeader from "./GuerraTotalHeader";
+import GuerraTotalPlayerPanel from "./GuerraTotalPlayerPanel";
+import GuerraTotalResultSummary from "./GuerraTotalResultSummary";
+import GuerraTotalShipsPanel from "./GuerraTotalShipsPanel";
+import GuerraTotalStatusPanel from "./GuerraTotalStatusPanel";
+
+import type {
+  GtCell,
+  GtGameState,
+  GtOrientation,
+  GtRoomPlayer,
+  GtShot,
+  GtVariant,
+} from "./guerraTotalTypes";
+
 import {
   allShipsPlaced,
   allShipsSunk,
   buildShipCells,
-  cellKey,
   createEmptyPlayerBoard,
   createInitialGtGameState,
   createShipFromTemplate,
   getGtPlayerKey,
   getGtVariantTheme,
+  getNextUnplacedShipId,
   getRandomFirstTurn,
+  GT_DEFAULT_BOARD_SIZE,
   GT_SHIP_TEMPLATES,
   hasAlreadyShot,
-  isCellInList,
   isPlacementValid,
   resolveShot,
-} from "./gtUtils";
+} from "./guerraTotalUtils";
 
 type GuerraTotalGameProps = {
   roomCode: string;
@@ -38,19 +55,6 @@ type RoomRow = {
   room_settings: Record<string, any> | null;
 };
 
-type RoomPlayerRow = {
-  id: string;
-  room_code: string;
-  user_id: string | null;
-  player_name: string;
-  is_host: boolean;
-  is_guest: boolean;
-  is_ready: boolean;
-  created_at: string;
-};
-
-type Orientation = "horizontal" | "vertical";
-
 export default function GuerraTotalGame({
   roomCode,
   roomVariant,
@@ -61,12 +65,19 @@ export default function GuerraTotalGame({
   const winSoundPlayedRef = useRef(false);
 
   const [room, setRoom] = useState<RoomRow | null>(null);
-  const [players, setPlayers] = useState<RoomPlayerRow[]>([]);
+  const [players, setPlayers] = useState<GtRoomPlayer[]>([]);
   const [gameState, setGameState] = useState<GtGameState>(
-    createInitialGtGameState((roomVariant as GtVariant) ?? "mar", 8),
+    createInitialGtGameState(
+      (roomVariant as GtVariant) ?? "mar",
+      GT_DEFAULT_BOARD_SIZE,
+    ),
   );
-  const [selectedShipId, setSelectedShipId] = useState(GT_SHIP_TEMPLATES[0].id);
-  const [orientation, setOrientation] = useState<Orientation>("horizontal");
+
+  const [selectedShipId, setSelectedShipId] = useState(
+    GT_SHIP_TEMPLATES[0].id,
+  );
+  const [orientation, setOrientation] =
+    useState<GtOrientation>("horizontal");
   const [hoveredCell, setHoveredCell] = useState<GtCell | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -75,6 +86,7 @@ export default function GuerraTotalGame({
     if (typeof window === "undefined") return "";
 
     const canonical = localStorage.getItem(`lmf:player:${roomCode}`);
+
     if (canonical) {
       try {
         const parsed = JSON.parse(canonical);
@@ -91,32 +103,54 @@ export default function GuerraTotalGame({
   }, [roomCode]);
 
   const sortedPlayers = useMemo(() => {
-    return [...players].sort((a, b) => a.created_at.localeCompare(b.created_at));
+    return [...players].sort((a, b) =>
+      a.created_at.localeCompare(b.created_at),
+    );
   }, [players]);
 
   const currentPlayer = useMemo(() => {
-    return sortedPlayers.find((p) => p.player_name === currentPlayerName) ?? null;
+    return (
+      sortedPlayers.find((player) => player.player_name === currentPlayerName) ??
+      null
+    );
   }, [sortedPlayers, currentPlayerName]);
 
-  const currentPlayerKey = currentPlayer ? getGtPlayerKey(currentPlayer) : null;
+  const currentPlayerKey = currentPlayer
+    ? getGtPlayerKey(currentPlayer)
+    : null;
+
   const isHost = !!currentPlayer?.is_host;
 
   const opponent = useMemo(() => {
     if (!currentPlayerKey) return null;
-    return sortedPlayers.find((p) => getGtPlayerKey(p) !== currentPlayerKey) ?? null;
+
+    return (
+      sortedPlayers.find(
+        (player) => getGtPlayerKey(player) !== currentPlayerKey,
+      ) ?? null
+    );
   }, [sortedPlayers, currentPlayerKey]);
 
   const opponentKey = opponent ? getGtPlayerKey(opponent) : null;
 
-  const myBoard = currentPlayerKey ? gameState.boards[currentPlayerKey] : null;
-  const opponentBoard = opponentKey ? gameState.boards[opponentKey] : null;
-  const theme = getGtVariantTheme(gameState.variant ?? roomVariant);
+  const myBoard = currentPlayerKey
+    ? gameState.boards[currentPlayerKey] ?? null
+    : null;
 
-  const isMyTurn = !!currentPlayerKey && gameState.currentTurnKey === currentPlayerKey;
-  const boardSize = gameState.boardSize ?? 8;
+  const opponentBoard = opponentKey
+    ? gameState.boards[opponentKey] ?? null
+    : null;
+
+  const theme = getGtVariantTheme(gameState.variant ?? roomVariant);
+  const boardSize = gameState.boardSize ?? GT_DEFAULT_BOARD_SIZE;
+  const isMyTurn =
+    !!currentPlayerKey && gameState.currentTurnKey === currentPlayerKey;
 
   const selectedTemplate = useMemo(() => {
-    return GT_SHIP_TEMPLATES.find((ship) => ship.id === selectedShipId) ?? GT_SHIP_TEMPLATES[0];
+    return (
+      GT_SHIP_TEMPLATES.find((ship) => ship.id === selectedShipId) ??
+      GT_SHIP_TEMPLATES[0]
+    );
   }, [selectedShipId]);
 
   const placedShipIds = useMemo(() => {
@@ -124,38 +158,48 @@ export default function GuerraTotalGame({
   }, [myBoard]);
 
   const previewCells = useMemo(() => {
-  if (!hoveredCell || gameState.phase !== "placing" || myBoard?.ready) return [];
-
-  return buildShipCells(hoveredCell, selectedTemplate.size, orientation);
-}, [hoveredCell, gameState.phase, myBoard?.ready, selectedTemplate.size, orientation]);
-
-const previewIsValid = useMemo(() => {
-  if (!hoveredCell || previewCells.length === 0) return false;
-
-  return isPlacementValid(previewCells, myBoard?.ships ?? [], boardSize);
-}, [hoveredCell, previewCells, myBoard?.ships, boardSize]);
-
-  const allPlayersReady =
-    sortedPlayers.length >= 2 &&
-    sortedPlayers.every((player) => {
-      const key = getGtPlayerKey(player);
-      return gameState.boards[key]?.ready;
-    });
-
-  const extractGtState = (settings: Record<string, any> | null | undefined): GtGameState => {
-    const saved = settings?.guerra_total;
-
-    if (!saved) {
-      return createInitialGtGameState((roomVariant as GtVariant) ?? "mar", 8);
+    if (!hoveredCell || gameState.phase !== "placing" || myBoard?.ready) {
+      return [];
     }
 
-    return {
-      ...createInitialGtGameState((roomVariant as GtVariant) ?? "mar", 8),
-      ...saved,
-      boards: saved.boards ?? {},
-      shots: saved.shots ?? [],
-    };
-  };
+    return buildShipCells(hoveredCell, selectedTemplate.size, orientation);
+  }, [
+    hoveredCell,
+    gameState.phase,
+    myBoard?.ready,
+    selectedTemplate.size,
+    orientation,
+  ]);
+
+  const previewIsValid = useMemo(() => {
+    if (!hoveredCell || previewCells.length === 0) return false;
+
+    return isPlacementValid(previewCells, myBoard?.ships ?? [], boardSize);
+  }, [hoveredCell, previewCells, myBoard?.ships, boardSize]);
+
+  const extractGtState = useCallback(
+    (settings: Record<string, any> | null | undefined): GtGameState => {
+      const saved = settings?.guerra_total;
+
+      if (!saved) {
+        return createInitialGtGameState(
+          (roomVariant as GtVariant) ?? "mar",
+          GT_DEFAULT_BOARD_SIZE,
+        );
+      }
+
+      return {
+        ...createInitialGtGameState(
+          (roomVariant as GtVariant) ?? "mar",
+          GT_DEFAULT_BOARD_SIZE,
+        ),
+        ...saved,
+        boards: saved.boards ?? {},
+        shots: saved.shots ?? [],
+      };
+    },
+    [roomVariant],
+  );
 
   const updateGtState = useCallback(
     async (updater: (current: GtGameState) => GtGameState) => {
@@ -182,12 +226,14 @@ const previewIsValid = useMemo(() => {
         alert("No se pudo actualizar la partida.");
       } else {
         setGameState(nextState);
-        setRoom((prev) => (prev ? { ...prev, room_settings: nextSettings } : prev));
+        setRoom((prev) =>
+          prev ? { ...prev, room_settings: nextSettings } : prev,
+        );
       }
 
       setSaving(false);
     },
-    [room, roomCode, supabase],
+    [room, roomCode, supabase, extractGtState],
   );
 
   const loadRoom = useCallback(async () => {
@@ -216,12 +262,14 @@ const previewIsValid = useMemo(() => {
 
     setRoom(data as RoomRow);
     setGameState(extractGtState(data.room_settings));
-  }, [roomCode, router, supabase]);
+  }, [roomCode, router, supabase, extractGtState]);
 
   const loadPlayers = useCallback(async () => {
     const { data, error } = await supabase
       .from("room_players")
-      .select("id, room_code, user_id, player_name, is_host, is_guest, is_ready, created_at")
+      .select(
+        "id, room_code, user_id, player_name, is_host, is_guest, is_ready, created_at",
+      )
       .eq("room_code", roomCode)
       .order("created_at", { ascending: true });
 
@@ -230,7 +278,7 @@ const previewIsValid = useMemo(() => {
       return;
     }
 
-    setPlayers((data ?? []) as RoomPlayerRow[]);
+    setPlayers((data ?? []) as GtRoomPlayer[]);
   }, [roomCode, supabase]);
 
   const playToneSequence = (
@@ -242,6 +290,7 @@ const previewIsValid = useMemo(() => {
     try {
       const AudioContextClass =
         window.AudioContext || (window as any).webkitAudioContext;
+
       const audioContext = new AudioContextClass();
 
       notes.forEach((frequency, index) => {
@@ -267,11 +316,20 @@ const previewIsValid = useMemo(() => {
     }
   };
 
-  const playPlaceSound = () => playToneSequence([392, 523.25], "sine", 0.1, 0.12);
-  const playWaterSound = () => playToneSequence([196, 164.81], "sine", 0.08, 0.14);
-  const playHitSound = () => playToneSequence([110, 220, 110], "sawtooth", 0.11, 0.12);
-  const playSunkSound = () => playToneSequence([220, 293.66, 392], "square", 0.1, 0.14);
-  const playWinSound = () => playToneSequence([523.25, 659.25, 783.99, 1046.5], "triangle", 0.22, 0.28);
+  const playPlaceSound = () =>
+    playToneSequence([392, 523.25], "sine", 0.1, 0.12);
+
+  const playWaterSound = () =>
+    playToneSequence([196, 164.81], "sine", 0.08, 0.14);
+
+  const playHitSound = () =>
+    playToneSequence([110, 220, 110], "sawtooth", 0.11, 0.12);
+
+  const playSunkSound = () =>
+    playToneSequence([220, 293.66, 392], "square", 0.1, 0.14);
+
+  const playWinSound = () =>
+    playToneSequence([523.25, 659.25, 783.99, 1046.5], "triangle", 0.22, 0.28);
 
   const ensureMyBoard = async () => {
     if (!currentPlayer || !currentPlayerKey) return;
@@ -281,8 +339,8 @@ const previewIsValid = useMemo(() => {
 
       return {
         ...current,
-        variant: ((roomVariant as GtVariant) ?? current.variant ?? "mar"),
-        boardSize: current.boardSize ?? 8,
+        variant: (roomVariant as GtVariant) ?? current.variant ?? "mar",
+        boardSize: current.boardSize ?? GT_DEFAULT_BOARD_SIZE,
         boards: {
           ...current.boards,
           [currentPlayerKey]: createEmptyPlayerBoard(
@@ -296,7 +354,6 @@ const previewIsValid = useMemo(() => {
 
   const handlePlaceShip = async (cell: GtCell) => {
     if (!currentPlayer || !currentPlayerKey) return;
-
     if (gameState.phase !== "placing") return;
 
     if (placedShipIds.has(selectedTemplate.id)) {
@@ -305,7 +362,8 @@ const previewIsValid = useMemo(() => {
     }
 
     const currentBoard =
-      myBoard ?? createEmptyPlayerBoard(currentPlayerKey, currentPlayer.player_name);
+      myBoard ??
+      createEmptyPlayerBoard(currentPlayerKey, currentPlayer.player_name);
 
     const cells = buildShipCells(cell, selectedTemplate.size, orientation);
 
@@ -335,17 +393,26 @@ const previewIsValid = useMemo(() => {
 
     playPlaceSound();
 
-    const nextUnplaced = GT_SHIP_TEMPLATES.find(
-      (ship) => ship.id !== selectedTemplate.id && !placedShipIds.has(ship.id),
+    const nextPlacedShipIds = new Set([...placedShipIds, selectedTemplate.id]);
+    const nextUnplacedShipId = getNextUnplacedShipId(
+      selectedTemplate.id,
+      nextPlacedShipIds,
     );
 
-    if (nextUnplaced) setSelectedShipId(nextUnplaced.id);
+    if (nextUnplacedShipId) {
+      setSelectedShipId(nextUnplacedShipId);
+    }
+
+    setHoveredCell(null);
   };
 
   const handleResetFleet = async () => {
     if (!currentPlayer || !currentPlayerKey) return;
 
-    const ok = window.confirm("¿Quieres borrar tu formación y volver a colocar unidades?");
+    const ok = window.confirm(
+      "¿Quieres borrar tu formación y volver a colocar unidades?",
+    );
+
     if (!ok) return;
 
     await updateGtState((current) => {
@@ -369,11 +436,16 @@ const previewIsValid = useMemo(() => {
             shotsReceived: [],
           },
         },
-        shots: current.shots.filter((shot) => shot.attackerKey !== currentPlayerKey && shot.targetKey !== currentPlayerKey),
+        shots: current.shots.filter(
+          (shot) =>
+            shot.attackerKey !== currentPlayerKey &&
+            shot.targetKey !== currentPlayerKey,
+        ),
       };
     });
 
     setSelectedShipId(GT_SHIP_TEMPLATES[0].id);
+    setHoveredCell(null);
   };
 
   const handleReadyFleet = async () => {
@@ -405,13 +477,15 @@ const previewIsValid = useMemo(() => {
 
       if (readyPlayers && sortedPlayers.length >= 2) {
         const first = getRandomFirstTurn(sortedPlayers);
-        const firstKey = first ? getGtPlayerKey(first) : getGtPlayerKey(sortedPlayers[0]);
+        const firstKey = first
+          ? getGtPlayerKey(first)
+          : getGtPlayerKey(sortedPlayers[0]);
 
         next.phase = "battle";
         next.currentTurnKey = firstKey;
         next.currentTurnName =
-          sortedPlayers.find((player) => getGtPlayerKey(player) === firstKey)?.player_name ??
-          null;
+          sortedPlayers.find((player) => getGtPlayerKey(player) === firstKey)
+            ?.player_name ?? null;
       }
 
       return next;
@@ -419,7 +493,9 @@ const previewIsValid = useMemo(() => {
   };
 
   const handleAttack = async (cell: GtCell) => {
-    if (!currentPlayer || !currentPlayerKey || !opponent || !opponentKey) return;
+    if (!currentPlayer || !currentPlayerKey || !opponent || !opponentKey) {
+      return;
+    }
 
     if (gameState.phase !== "battle") return;
 
@@ -445,6 +521,7 @@ const previewIsValid = useMemo(() => {
 
     await updateGtState((current) => {
       const targetBoard = current.boards[opponentKey];
+
       if (!targetBoard) return current;
 
       const baseShot: GtShot = {
@@ -490,10 +567,15 @@ const previewIsValid = useMemo(() => {
   const handleRematch = async () => {
     if (!room) return;
 
+    const nextGameState = createInitialGtGameState(
+      (roomVariant as GtVariant) ?? "mar",
+      GT_DEFAULT_BOARD_SIZE,
+    );
+
     const currentSettings = room.room_settings ?? {};
     const nextSettings = {
       ...currentSettings,
-      guerra_total: createInitialGtGameState((roomVariant as GtVariant) ?? "mar", 8),
+      guerra_total: nextGameState,
     };
 
     const { error } = await supabase
@@ -512,7 +594,8 @@ const previewIsValid = useMemo(() => {
 
     setSelectedShipId(GT_SHIP_TEMPLATES[0].id);
     setOrientation("horizontal");
-    setGameState(createInitialGtGameState((roomVariant as GtVariant) ?? "mar", 8));
+    setHoveredCell(null);
+    setGameState(nextGameState);
     setRoom((prev) =>
       prev ? { ...prev, status: "playing", room_settings: nextSettings } : prev,
     );
@@ -559,181 +642,6 @@ const previewIsValid = useMemo(() => {
     await supabase.from("room_players").delete().eq("room_code", roomCode);
     router.replace("/");
   };
-
-  const getMyCellStatus = (cell: GtCell) => {
-    const ship = myBoard?.ships.find((item) => isCellInList(cell, item.cells));
-    const wasShot = myBoard?.shotsReceived.find((item) =>
-      item.cell.row === cell.row && item.cell.col === cell.col
-    );
-
-    if (ship?.sunk && wasShot) return "sunk";
-    if (ship && wasShot) return "hit-received";
-    if (wasShot?.result === "water") return "miss-received";
-    if (ship) return "ship";
-
-    return "empty";
-  };
-
-    const getEnemyCellStatus = (cell: GtCell) => {
-    const shot = gameState.shots.find(
-      (item) =>
-        item.attackerKey === currentPlayerKey &&
-        item.targetKey === opponentKey &&
-        item.cell.row === cell.row &&
-        item.cell.col === cell.col,
-    );
-
-    if (!shot) return "unknown";
-
-    const sunkShip = opponentBoard?.ships.find(
-      (ship) => ship.sunk && isCellInList(cell, ship.cells),
-    );
-
-    if (sunkShip) return "sunk";
-    if (shot.result === "water") return "water";
-    if (shot.result === "hit") return "hit";
-
-    return "sunk";
-  };
-
-    const getShipIconForCell = (kind: "mine" | "enemy", cell: GtCell) => {
-    const board = kind === "mine" ? myBoard : opponentBoard;
-
-    const ship = board?.ships.find((item) => isCellInList(cell, item.cells));
-
-    if (!ship) return theme.icon;
-
-    return theme.unitIcons[ship.id] ?? theme.icon;
-  };
-
-  const getCellClass = (status: string, clickable = false) => {
-  const base =
-    "aspect-square rounded-lg border font-black transition flex items-center justify-center leading-none overflow-hidden";
-
-  const cursor = clickable ? " cursor-pointer hover:scale-[1.06]" : "";
-
-  let size = "text-[2.2rem] md:text-[2.5rem] lg:text-[2.8rem]";
-
-  if (status === "hit" || status === "hit-received") {
-    size = "text-[2.6rem] md:text-[3rem] lg:text-[3.3rem]";
-  }
-
-  if (status === "sunk") {
-    size = "text-[2.8rem] md:text-[3.3rem] lg:text-[3.6rem]";
-  }
-
-  if (status === "preview-valid") {
-    return `${base} ${size}${cursor} border-emerald-400/70 bg-emerald-500/20 text-emerald-200 shadow-[0_0_18px_rgba(16,185,129,0.25)]`;
-  }
-
-  if (status === "preview-invalid") {
-    return `${base} ${size}${cursor} border-red-400/70 bg-red-500/20 text-red-200 shadow-[0_0_18px_rgba(239,68,68,0.25)]`;
-  }
-
-  if (status === "ship") {
-    return `${base} ${size}${cursor} ${theme.shipCellClass}`;
-  }
-
-  if (status === "hit" || status === "hit-received") {
-    return `${base} ${size}${cursor} ${theme.hitCellClass}`;
-  }
-
-  if (status === "sunk") {
-    return `${base} ${size}${cursor} ${theme.sunkCellClass}`;
-  }
-
-  if (status === "water" || status === "miss-received") {
-    return `${base} ${size}${cursor} ${theme.missCellClass}`;
-  }
-
-  return `${base} ${size}${cursor} ${theme.emptyCellClass}`;
-};
-
-  const renderBoard = (kind: "mine" | "enemy") => {
-  return (
-    <div
-      className="grid gap-1"
-      style={{ gridTemplateColumns: `repeat(${boardSize}, minmax(0, 1fr))` }}
-      onMouseLeave={() => setHoveredCell(null)}
-    >
-      {Array.from({ length: boardSize * boardSize }, (_, index) => {
-        const cell = {
-          row: Math.floor(index / boardSize),
-          col: index % boardSize,
-        };
-
-        const realStatus =
-          kind === "mine" ? getMyCellStatus(cell) : getEnemyCellStatus(cell);
-
-        const isPreviewCell =
-          kind === "mine" &&
-          gameState.phase === "placing" &&
-          !myBoard?.ready &&
-          isCellInList(cell, previewCells);
-
-        const status = isPreviewCell
-          ? previewIsValid
-            ? "preview-valid"
-            : "preview-invalid"
-          : realStatus;
-
-        const clickable =
-          kind === "mine"
-            ? gameState.phase === "placing" && !myBoard?.ready
-            : gameState.phase === "battle" && isMyTurn && !!opponentKey;
-
-        const label =
-          status === "preview-valid" || status === "preview-invalid"
-            ? theme.unitIcons[selectedTemplate.id] ?? theme.icon
-            : status === "ship"
-              ? getShipIconForCell(kind, cell)
-              : status === "hit" || status === "hit-received"
-                ? theme.hitIcon
-                : status === "sunk"
-                  ? theme.sunkIcon
-                  : status === "water" || status === "miss-received"
-                    ? theme.missIcon
-                    : theme.emptyIcon;
-
-        return (
-          <button
-            key={cellKey(cell)}
-            type="button"
-            disabled={!clickable || saving}
-            onMouseEnter={() => {
-              if (kind === "mine" && gameState.phase === "placing" && !myBoard?.ready) {
-                setHoveredCell(cell);
-              }
-            }}
-            onClick={() => {
-              if (kind === "mine") {
-                void handlePlaceShip(cell);
-              } else {
-                void handleAttack(cell);
-              }
-            }}
-            className={getCellClass(status, clickable)}
-            title={`${cell.row + 1}-${cell.col + 1}`}
-          >
-            <span
-  className={
-    status === "hit" || status === "hit-received"
-      ? "animate-ping transform scale-[1.15]"
-      : status === "sunk"
-        ? "animate-pulse transform scale-[1.2]"
-        : status === "preview-valid" || status === "preview-invalid"
-          ? "transform scale-[1.05] opacity-80"
-          : "transform scale-[1.1]"
-  }
->
-  {label}
-</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-};
 
   useEffect(() => {
     const boot = async () => {
@@ -821,317 +729,106 @@ const previewIsValid = useMemo(() => {
   return (
     <main className="min-h-screen bg-black px-4 py-6 text-white md:px-8">
       <div className="mx-auto max-w-7xl space-y-5">
-        <section className="rounded-[32px] border border-orange-500/20 bg-zinc-950/95 p-6 shadow-[0_0_40px_rgba(249,115,22,0.06)]">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-orange-300/80">
-                La Mesa Familiar
-              </p>
-              <h1 className="mt-2 text-3xl font-black md:text-4xl">
-                {theme.icon} Guerra Total
-              </h1>
-              <p className="mt-2 text-sm text-white/60">
-                Campo:{" "}
-                <span className="font-bold text-orange-300">{theme.label}</span>{" "}
-                · Tablero {boardSize}x{boardSize}
-              </p>
-            </div>
+        <GuerraTotalHeader
+          theme={theme}
+          boardSize={boardSize}
+          isHost={isHost}
+          onBackToSala={handleBackToSala}
+          onCloseRoom={handleCloseRoom}
+        />
 
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleBackToSala}
-                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white hover:bg-white/10"
-              >
-                Volver a sala
-              </button>
-
-              {isHost && (
-                <button
-                  type="button"
-                  onClick={handleCloseRoom}
-                  className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200 hover:bg-red-500/20"
-                >
-                  Terminar sala
-                </button>
-              )}
-            </div>
-          </div>
-        </section>
+        <GameResultOverlay
+          show={gameState.phase === "finished"}
+          tone={gameState.winnerKey === currentPlayerKey ? "win" : "lose"}
+          title={
+            gameState.winnerKey === currentPlayerKey
+              ? "¡Ganaste la batalla!"
+              : "Batalla terminada"
+          }
+          subtitle={
+            gameState.winnerName
+              ? `${gameState.winnerName} destruyó todas las unidades enemigas.`
+              : "La batalla ha terminado."
+          }
+          winnerName={gameState.winnerName}
+          resultText="Guerra Total finalizada"
+          primaryActionLabel="Revancha"
+          secondaryActionLabel="Volver a sala"
+          onPrimaryAction={handleRematch}
+          onSecondaryAction={handleBackToSala}
+        />
 
         <section className="grid gap-5 xl:grid-cols-[360px_1fr]">
           <aside className="space-y-5">
-            <div className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5">
-              <h2 className="text-xl font-black">🧩 Estado</h2>
-
-              <div className="mt-4 space-y-3">
-                {sortedPlayers.map((player) => {
-                  const key = getGtPlayerKey(player);
-                  const board = gameState.boards[key];
-
-                  return (
-                    <div
-                      key={player.id}
-                      className="rounded-2xl border border-white/10 bg-white/[0.03] p-4"
-                    >
-                      <p className="font-black">
-                        {player.player_name} {key === currentPlayerKey ? "(Tú)" : ""}
-                      </p>
-                      <p className={board?.ready ? "text-emerald-300" : "text-yellow-300"}>
-                        {board?.ready ? "Formación lista" : "Colocando unidades..."}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {gameState.phase === "battle" && (
-                <div className="mt-4 rounded-2xl border border-purple-500/20 bg-purple-500/10 p-4">
-                  <p className="text-sm font-bold text-purple-200">🎲 Turno actual</p>
-                  <p className="mt-1 text-xl font-black">
-                    {gameState.currentTurnName ?? "Jugador"}
-                  </p>
-                </div>
-              )}
-            </div>
+            <GuerraTotalPlayerPanel
+              players={sortedPlayers}
+              gameState={gameState}
+              currentPlayerKey={currentPlayerKey}
+            />
 
             {gameState.phase === "placing" && (
-  <div className="rounded-[28px] border border-cyan-500/20 bg-zinc-950/90 p-5">
-    <h2 className="text-xl font-black text-cyan-200">
-      🛠️ Colocar {theme.unitLabel}
-    </h2>
-
-    <div className="mt-4 space-y-3">
-      <div className="space-y-3">
-        <p className="text-sm font-bold text-white/60">Selecciona unidad</p>
-
-        <div className="grid gap-2">
-          {GT_SHIP_TEMPLATES.map((ship) => {
-            const isSelected = selectedShipId === ship.id;
-            const isPlaced = placedShipIds.has(ship.id);
-
-      return (
-        <button
-          key={ship.id}
-          type="button"
-          disabled={myBoard?.ready || isPlaced}
-          onClick={() => setSelectedShipId(ship.id)}
-          className={
-            isSelected
-              ? "flex items-center justify-between rounded-2xl border border-orange-400 bg-orange-500/20 px-4 py-3 text-left shadow-[0_0_22px_rgba(249,115,22,0.18)]"
-              : isPlaced
-                ? "flex items-center justify-between rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-left opacity-60"
-                : "flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-left hover:bg-white/[0.08]"
-          }
-        >
-          <span>
-            <span className="block font-black text-white">
-              {theme.unitIcons[ship.id] ?? theme.icon} {ship.name}
-            </span>
-            <span className="text-xs font-bold text-white/50">
-              {ship.size} casillas
-            </span>
-          </span>
-
-          <span className="text-xs font-black">
-            {isPlaced ? "LISTA" : isSelected ? "ACTIVA" : "ELEGIR"}
-          </span>
-        </button>
-      );
-    })}
-  </div>
-</div>
-
-<div className="space-y-2">
-  <p className="text-sm font-bold text-white/60">Orientación</p>
-
-  <div className="grid grid-cols-2 gap-2">
-    <button
-      type="button"
-      disabled={myBoard?.ready}
-      onClick={() => setOrientation("horizontal")}
-      className={
-        orientation === "horizontal"
-          ? "rounded-2xl border border-orange-400 bg-orange-500 px-4 py-3 font-black text-black"
-          : "rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-black text-white hover:bg-white/10"
-      }
-    >
-      Horizontal
-    </button>
-
-    <button
-      type="button"
-      disabled={myBoard?.ready}
-      onClick={() => setOrientation("vertical")}
-      className={
-        orientation === "vertical"
-          ? "rounded-2xl border border-orange-400 bg-orange-500 px-4 py-3 font-black text-black"
-          : "rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-black text-white hover:bg-white/10"
-      }
-    >
-      Vertical
-    </button>
-  </div>
-</div>
-
-                  <button
-                    type="button"
-                    disabled={!myBoard || !allShipsPlaced(myBoard) || myBoard.ready}
-                    onClick={handleReadyFleet}
-                    className="w-full rounded-2xl bg-orange-500 px-4 py-3 font-black text-black hover:bg-orange-400 disabled:opacity-50"
-                  >
-                    Confirmar formación
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={myBoard?.ready}
-                    onClick={handleResetFleet}
-                    className="w-full rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 font-black text-red-200 hover:bg-red-500/20 disabled:opacity-50"
-                  >
-                    Reiniciar formación
-                  </button>
-                </div>
-              </div>
+              <GuerraTotalShipsPanel
+                theme={theme}
+                selectedShipId={selectedShipId}
+                placedShipIds={placedShipIds}
+                orientation={orientation}
+                myBoard={myBoard}
+                onSelectShip={setSelectedShipId}
+                onOrientationChange={setOrientation}
+                onReadyFleet={handleReadyFleet}
+                onResetFleet={handleResetFleet}
+              />
             )}
 
-            <div className="rounded-[28px] border border-white/10 bg-zinc-950/90 p-5">
-              <h2 className="text-xl font-black">📜 Últimos ataques</h2>
-
-              <div className="mt-4 max-h-[360px] space-y-2 overflow-y-auto pr-1">
-                {gameState.shots.length === 0 && (
-                  <p className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/50">
-                    Todavía no hay ataques.
-                  </p>
-                )}
-
-                {gameState.shots.slice(0, 20).map((shot) => (
-                  <div
-                    key={shot.id}
-                    className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3"
-                  >
-                    <p className="text-sm text-white/70">
-                      <span className="font-bold text-white">{shot.attackerName}</span>{" "}
-                      atacó {shot.cell.row + 1}-{shot.cell.col + 1}
-                    </p>
-                    <p
-                      className={
-                        shot.result === "water"
-                          ? "text-sm font-bold text-sky-300"
-                          : shot.result === "hit"
-                            ? "text-sm font-bold text-red-300"
-                            : "text-sm font-bold text-orange-300"
-                      }
-                    >
-                      {shot.result === "water"
-                        ? theme.waterLabel
-                        : shot.result === "hit"
-                          ? theme.hitLabel
-                          : `${theme.sunkLabel}: ${shot.sunkShipName}`}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <GuerraTotalResultSummary shots={gameState.shots} theme={theme} />
           </aside>
 
           <div className="space-y-5">
-            {gameState.phase === "finished" && (
-              <div className="relative overflow-hidden rounded-[32px] border border-orange-500/40 bg-gradient-to-br from-orange-500/20 via-zinc-950 to-yellow-500/10 p-8 text-center shadow-[0_0_60px_rgba(249,115,22,0.18)]">
-                <div className="pointer-events-none absolute inset-0 opacity-20">
-                  <div className="absolute left-8 top-6 text-5xl">🎉</div>
-                  <div className="absolute right-10 top-10 text-5xl">🏆</div>
-                  <div className="absolute bottom-8 left-12 text-5xl">💥</div>
-                  <div className="absolute bottom-6 right-14 text-5xl">{theme.icon}</div>
-                </div>
-
-                <div className="relative z-10">
-                  <p className="text-sm font-black uppercase tracking-[0.24em] text-orange-300">
-                    Ganador de la batalla
-                  </p>
-
-                  <h2 className="mt-3 text-5xl font-black text-white md:text-6xl">
-                    {gameState.winnerName ?? "Jugador"}
-                  </h2>
-
-                  <p className="mx-auto mt-3 max-w-xl text-sm text-white/60">
-                    Destruyó todas las unidades enemigas.
-                  </p>
-
-                  <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
-                    <button
-                      type="button"
-                      onClick={handleRematch}
-                      className="rounded-2xl bg-orange-500 px-6 py-3 font-black text-black hover:bg-orange-400"
-                    >
-                      Revancha
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleBackToSala}
-                      className="rounded-2xl border border-white/10 bg-white/5 px-6 py-3 font-black text-white hover:bg-white/10"
-                    >
-                      Volver a sala
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
             <section className="grid gap-5 lg:grid-cols-2">
-              <div className={theme.mineBoardClass}>
-                <h2 className="text-xl font-black text-cyan-200">
-                  🛡️ Mi {theme.boardLabel}
-                </h2>
-                <p className="mt-1 text-sm text-white/50">
-                  Coloca tus unidades y revisa impactos recibidos.
-                </p>
+              <GuerraTotalBoard
+                kind="mine"
+                title={`🛡️ Mi ${theme.boardLabel}`}
+                subtitle="Coloca tus unidades y revisa impactos recibidos."
+                boardSize={boardSize}
+                gameState={gameState}
+                theme={theme}
+                myBoard={myBoard}
+                opponentBoard={opponentBoard}
+                currentPlayerKey={currentPlayerKey}
+                opponentKey={opponentKey}
+                isMyTurn={isMyTurn}
+                saving={saving}
+                previewCells={previewCells}
+                previewIsValid={previewIsValid}
+                selectedShipId={selectedShipId}
+                onHoverCell={setHoveredCell}
+                onPlaceShip={handlePlaceShip}
+                onAttack={handleAttack}
+              />
 
-                <div className="mt-4">{renderBoard("mine")}</div>
-              </div>
-
-              <div className={theme.enemyBoardClass}>
-                <h2 className="text-xl font-black text-orange-300">
-                  🎯 Territorio enemigo
-                </h2>
-                <p className="mt-1 text-sm text-white/50">
-                  Ataca una casilla cuando sea tu turno.
-                </p>
-
-                <div className="mt-4">{renderBoard("enemy")}</div>
-              </div>
+              <GuerraTotalBoard
+                kind="enemy"
+                title="🎯 Territorio enemigo"
+                subtitle="Ataca una casilla cuando sea tu turno."
+                boardSize={boardSize}
+                gameState={gameState}
+                theme={theme}
+                myBoard={myBoard}
+                opponentBoard={opponentBoard}
+                currentPlayerKey={currentPlayerKey}
+                opponentKey={opponentKey}
+                isMyTurn={isMyTurn}
+                saving={saving}
+                previewCells={previewCells}
+                previewIsValid={previewIsValid}
+                selectedShipId={selectedShipId}
+                onHoverCell={setHoveredCell}
+                onPlaceShip={handlePlaceShip}
+                onAttack={handleAttack}
+              />
             </section>
 
-            {gameState.phase === "placing" && (
-              <div className="rounded-[28px] border border-yellow-500/20 bg-yellow-500/10 p-5">
-                <h2 className="text-xl font-black text-yellow-200">
-                  ⏳ Preparando batalla
-                </h2>
-                <p className="mt-2 text-sm text-white/70">
-                  Ambos jugadores deben colocar todas sus unidades y confirmar formación.
-                </p>
-              </div>
-            )}
-
-            {gameState.phase === "battle" && (
-              <div
-                className={
-                  isMyTurn
-                    ? "rounded-[28px] border border-emerald-500/20 bg-emerald-500/10 p-5"
-                    : "rounded-[28px] border border-purple-500/20 bg-purple-500/10 p-5"
-                }
-              >
-                <h2 className="text-xl font-black">
-                  {isMyTurn ? "🔥 Es tu turno de atacar" : "⏳ Esperando ataque rival"}
-                </h2>
-                <p className="mt-2 text-sm text-white/70">
-                  {isMyTurn
-                    ? "Elige una casilla en el territorio enemigo."
-                    : `Le toca a ${gameState.currentTurnName ?? "tu rival"}.`}
-                </p>
-              </div>
-            )}
+            <GuerraTotalStatusPanel gameState={gameState} isMyTurn={isMyTurn} />
           </div>
         </section>
       </div>
