@@ -5,14 +5,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { GamePageLayout } from "@/components/games/core";
+import {
+  GamePageLayout,
+  GameResultOverlay,
+} from "@/components/games/core";
 import { createClient } from "@/lib/supabase/client";
 
 import MemoramaBoard from "./MemoramaBoard";
-import MemoramaHeader from "./MemoramaHeader";
-import MemoramaScorePanel from "./MemoramaScorePanel";
-import MemoramaStatusPanel from "./MemoramaStatusPanel";
-import MemoramaResultSummary from "./MemoramaResultSummary";
+import MemoramaHeader from "./MemoramaHeader.tsx";
+import MemoramaScorePanel from "./MemoramaScorePanel.tsx";
+import MemoramaStatusPanel from "./MemoramaStatusPanel.tsx";
 
 import type { MemoramaGameState } from "./types";
 
@@ -667,6 +669,25 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
     gameState.variant.set,
   );
 
+    const isGameFinished = gameState.phase === "finished";
+  const isDraw = gameState.winnerName === "Empate";
+  const isWinner =
+    !!currentPlayerKey && gameState.winnerKey === currentPlayerKey;
+
+  const resultTone = isDraw ? "draw" : isWinner ? "win" : "lose";
+
+  const resultTitle = isDraw
+    ? "¡Empate!"
+    : isWinner
+      ? "¡Ganaste!"
+      : "Partida terminada";
+
+  const resultSubtitle = isDraw
+    ? "Memorama terminó sin ganador único."
+    : isWinner
+      ? "Encontraste más parejas y ganaste la partida."
+      : `${gameState.winnerName ?? "Otro jugador"} ganó esta partida.`;
+
   return (
     <GamePageLayout className="bg-black">
       <MemoramaHeader
@@ -711,12 +732,21 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
         />
       </section>
 
-      <MemoramaResultSummary
-        gameState={gameState}
-        currentPlayerKey={currentPlayerKey}
-        isHost={isHost}
-        onBackToSala={handleBackToSala}
-        onRematch={handleRematch}
+            <GameResultOverlay
+        show={isGameFinished}
+        tone={resultTone}
+        title={resultTitle}
+        subtitle={resultSubtitle}
+        winnerName={gameState.winnerName}
+        resultText={
+          isDraw
+            ? "Ambos jugadores terminaron con el mismo marcador."
+            : `${gameState.winnerName ?? "El ganador"} ganó Memorama.`
+        }
+        primaryActionLabel="Volver a sala"
+        secondaryActionLabel={isHost ? "Revancha" : undefined}
+        onPrimaryAction={handleBackToSala}
+        onSecondaryAction={isHost ? handleRematch : undefined}
       />
     </GamePageLayout>
   );
