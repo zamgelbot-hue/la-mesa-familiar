@@ -138,11 +138,15 @@ export const GAME_CONFIGS: Record<string, GameConfig> = {
   },
 
   "guerra-total": {
-    maxPlayersOptions: [2],
+    maxPlayersOptions: [1, 2],
     variants: [
       { key: "mar", label: "Mar", description: "Batalla clásica con flotas sobre el océano.", available: true },
       { key: "aire", label: "Aire", description: "Combate estratégico con escuadrones y radar.", available: true },
       { key: "tierra", label: "Tierra", description: "Combate terrestre con unidades y campo de batalla.", available: true },
+
+      { key: "mar_bot", label: "Mar vs Bot", description: "Batalla naval contra la computadora. Recompensa mínima.", available: true },
+      { key: "aire_bot", label: "Aire vs Bot", description: "Combate aéreo contra la computadora. Recompensa mínima.", available: true },
+      { key: "tierra_bot", label: "Tierra vs Bot", description: "Batalla terrestre contra la computadora. Recompensa mínima.", available: true },
     ],
     tutorial: [
       "Coloca todas tus unidades en tu tablero",
@@ -262,12 +266,16 @@ export function buildRoomSettings(
   }
 
   if (gameSlug === "guerra-total") {
+    const isBotVariant = variantKey.endsWith("_bot");
+    const cleanVariant = variantKey.replace("_bot", "");
+
     return {
       mode: "strategic_battle",
-      battle_variant: variantKey,
+      battle_variant: cleanVariant,
       board_size: 8,
-      max_players: 2,
-      min_players: 2,
+      max_players: isBotVariant ? 1 : 2,
+      min_players: 1,
+      vs_bot: isBotVariant,
     };
   }
 

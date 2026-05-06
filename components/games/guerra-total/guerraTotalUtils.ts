@@ -6,7 +6,6 @@ import type {
   GtGameState,
   GtOrientation,
   GtPlayerBoard,
-  GtRoomPlayer,
   GtShip,
   GtShot,
   GtVariant,
@@ -14,6 +13,8 @@ import type {
 } from "./guerraTotalTypes";
 
 export const GT_DEFAULT_BOARD_SIZE = 8;
+export const GT_BOT_KEY = "bot:guerra-total";
+export const GT_BOT_NAME = "Bot";
 
 export const GT_SHIP_TEMPLATES = [
   { id: "carrier", name: "Comandante", size: 4 },
@@ -24,6 +25,20 @@ export const GT_SHIP_TEMPLATES = [
   { id: "scout-a", name: "Explorador 1", size: 1 },
   { id: "scout-b", name: "Explorador 2", size: 1 },
 ];
+
+export function normalizeGtVariant(variant?: string | null): GtVariant {
+  const clean = String(variant ?? "mar").replace("_bot", "");
+
+  if (clean === "aire" || clean === "tierra" || clean === "mar") {
+    return clean;
+  }
+
+  return "mar";
+}
+
+export function isGtBotVariant(variant?: string | null) {
+  return String(variant ?? "").endsWith("_bot");
+}
 
 export function createInitialGtGameState(
   variant: GtVariant = "mar",
@@ -117,6 +132,71 @@ export function createEmptyPlayerBoard(
     ships: [],
     shotsReceived: [],
   };
+}
+
+export function createBotBoard(boardSize: number): GtPlayerBoard {
+  const ships: GtShip[] = [];
+
+  for (const template of GT_SHIP_TEMPLATES) {
+    let placed = false;
+    let attempts = 0;
+
+    while (!placed && attempts < 300) {
+      attempts += 1;
+
+      const orientation: GtOrientation =
+        Math.random() > 0.5 ? "horizontal" : "vertical";
+
+      const cell: GtCell = {
+        row: Math.floor(Math.random() * boardSize),
+        col: Math.floor(Math.random() * boardSize),
+      };
+
+      const cells = buildShipCells(cell, template.size, orientation);
+
+      if (isPlacementValid(cells, ships, boardSize)) {
+        ships.push(createShipFromTemplate(template, cells));
+        placed = true;
+      }
+    }
+  }
+
+  return {
+    playerKey: GT_BOT_KEY,
+    playerName: GT_BOT_NAME,
+    ready: true,
+    ships,
+    shotsReceived: [],
+  };
+}
+
+export function getBotShotTarget(params: {
+  boardSize: number;
+  shots: GtShot[];
+  humanKey: string;
+}): GtCell | null {
+  const { boardSize, shots, humanKey } = params;
+
+  const available: GtCell[] = [];
+
+  for (let row = 0; row < boardSize; row += 1) {
+    for (let col = 0; col < boardSize; col += 1) {
+      const cell = { row, col };
+
+      const alreadyShot = shots.some(
+        (shot) =>
+          shot.attackerKey === GT_BOT_KEY &&
+          shot.targetKey === humanKey &&
+          sameCell(shot.cell, cell),
+      );
+
+      if (!alreadyShot) available.push(cell);
+    }
+  }
+
+  if (available.length === 0) return null;
+
+  return available[Math.floor(Math.random() * available.length)];
 }
 
 export function allShipsPlaced(board?: GtPlayerBoard | null) {
@@ -279,7 +359,9 @@ export function hasAlreadyShot(
 }
 
 export function getGtVariantTheme(variant?: string | null): GtVariantTheme {
-  if (variant === "aire") {
+  const cleanVariant = normalizeGtVariant(variant);
+
+  if (cleanVariant === "aire") {
     return {
       label: "Aire",
       icon: "✈️",
@@ -315,7 +397,7 @@ export function getGtVariantTheme(variant?: string | null): GtVariantTheme {
     };
   }
 
-  if (variant === "tierra") {
+  if (cleanVariant === "tierra") {
     return {
       label: "Tierra",
       icon: "🪖",
