@@ -6,7 +6,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import RoomChat from "@/components/RoomChat";
-import GameResultOverlay from "@/components/games/core/GameResultOverlay";
+import {
+  GamePageLayout,
+  GameResultOverlay,
+} from "@/components/games/core";
 import { returnToRoom } from "@/lib/games/gameNavigation";
 import {
   fetchGatoGameState,
@@ -688,19 +691,19 @@ export default function GatoGame({
     };
   }, []);
 
-  if (loading) {
+    if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-black p-6 text-white">
+      <GamePageLayout className="flex items-center justify-center bg-black">
         <div className="rounded-[32px] border border-orange-500/15 bg-zinc-950/90 p-10 text-center">
           <p className="text-2xl font-bold">Cargando El Gato...</p>
           <p className="mt-2 text-white/60">Preparando tablero.</p>
         </div>
-      </main>
+      </GamePageLayout>
     );
   }
 
-  return (
-    <main className="min-h-screen bg-black p-4 text-white md:p-8">
+    return (
+    <GamePageLayout className="bg-black">
       <div className="pointer-events-none fixed inset-0 opacity-40">
         <div className="absolute left-1/2 top-0 h-[440px] w-[440px] -translate-x-1/2 rounded-full bg-orange-500/10 blur-3xl" />
         <div className="absolute bottom-0 right-0 h-[340px] w-[340px] rounded-full bg-yellow-500/10 blur-3xl" />
@@ -863,13 +866,13 @@ export default function GatoGame({
         onSecondaryAction={handleRematch}
       />
 
-      <RoomChat
+            <RoomChat
         roomCode={code}
         context="game"
         currentPlayerName={currentPlayerName}
         currentUserId={currentPlayer?.user_id ?? null}
         isGuest={currentPlayer?.is_guest ?? true}
       />
-    </main>
+    </GamePageLayout>
   );
 }

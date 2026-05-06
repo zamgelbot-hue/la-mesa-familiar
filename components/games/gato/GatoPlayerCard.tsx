@@ -1,63 +1,127 @@
 // 📍 Ruta del archivo: components/games/gato/GatoPlayerCard.tsx
 
-import type { RoomPlayer } from "./utils";
+import PlayerAvatar from "@/components/PlayerAvatar";
+import {
+  GameBadge,
+  GameInfoCard,
+} from "@/components/games/core";
+import { motion } from "framer-motion";
+
+import {
+  getAvatarByKey,
+  getFrameByKey,
+} from "@/lib/profile/profileCosmetics";
+
+import type {
+  GatoProfileMap,
+  GatoRoomPlayer,
+} from "./gatoTypes";
 
 type Props = {
-  player: RoomPlayer;
+  player: GatoRoomPlayer;
   currentPlayerName: string;
-  symbol: "X" | "O" | null;
+  profileMap: GatoProfileMap;
+  symbol: "X" | "O";
+  score: number;
   isCurrentTurn: boolean;
-  isWinner: boolean;
+  isChampion: boolean;
 };
 
 export default function GatoPlayerCard({
   player,
   currentPlayerName,
+  profileMap,
   symbol,
+  score,
   isCurrentTurn,
-  isWinner,
+  isChampion,
 }: Props) {
   const isMe = player.player_name === currentPlayerName;
 
+  const profile = player.user_id
+    ? profileMap[player.user_id]
+    : null;
+
+  const avatar = getAvatarByKey(
+    player.is_guest
+      ? "avatar_guest"
+      : profile?.avatar_key ?? "avatar_sun",
+  );
+
+  const frame = getFrameByKey(
+    player.is_guest
+      ? "frame_guest"
+      : profile?.frame_key ?? "frame_orange",
+  );
+
+  const cardToneClass = isChampion
+    ? "border-yellow-400/40 bg-yellow-500/10"
+    : isCurrentTurn
+      ? "border-emerald-400/40 bg-emerald-500/10"
+      : "border-white/10 bg-white/[0.05]";
+
+  const roleText = isMe
+    ? "Tú"
+    : player.player_name.includes("Bot Familiar")
+      ? "Rival automático"
+      : player.is_guest
+        ? "Invitado"
+        : "Jugador";
+
   return (
-    <div
-      className={`rounded-3xl border p-5 transition ${
-        isWinner
-          ? "border-yellow-400/40 bg-yellow-500/10 shadow-[0_0_30px_rgba(250,204,21,0.10)]"
-          : isCurrentTurn
-            ? "border-orange-400/40 bg-orange-500/10 shadow-[0_0_30px_rgba(249,115,22,0.10)]"
-            : isMe
-              ? "border-emerald-400/35 bg-emerald-500/10"
-              : "border-white/10 bg-white/[0.05]"
-      }`}
-    >
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <p className="truncate text-xl font-black text-white">
-            {player.player_name} {player.is_host ? "👑" : ""}
-          </p>
+    <motion.div layout>
+      <GameInfoCard className={`transition ${cardToneClass}`}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <PlayerAvatar
+              avatar={avatar}
+              frame={frame}
+              size="md"
+            />
 
-          <p className="mt-1 text-sm text-white/55">
-            {isMe
-              ? "Tú"
-              : player.player_name.includes("Bot Familiar")
-                ? "Rival automático"
-                : player.is_guest
-                  ? "Invitado"
-                  : "Jugador"}
-          </p>
+            <div className="min-w-0">
+              <p className="truncate text-xl font-black text-white">
+                {player.player_name}{" "}
+                {player.is_host ? "👑" : ""}
+              </p>
 
+              <p className="text-sm text-white/55">
+                {roleText}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-end gap-2">
+            <GameBadge tone="orange">
+              Símbolo: {symbol}
+            </GameBadge>
+
+            <div className="rounded-2xl bg-black/30 px-4 py-3 text-center">
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-white/35">
+                Puntos
+              </p>
+
+              <p className="text-2xl font-black text-yellow-300">
+                {score}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center gap-2">
           {isCurrentTurn && (
-            <p className="mt-2 text-sm font-bold text-orange-300">
+            <GameBadge tone="success">
               Turno actual
-            </p>
+            </GameBadge>
+          )}
+
+          {isChampion && (
+            <GameBadge tone="warning">
+              Ganador
+            </GameBadge>
           )}
         </div>
-
-        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-black/35 text-4xl font-black text-orange-300">
-          {symbol ?? "?"}
-        </div>
-      </div>
-    </div>
+      </GameInfoCard>
+    </motion.div>
   );
 }
