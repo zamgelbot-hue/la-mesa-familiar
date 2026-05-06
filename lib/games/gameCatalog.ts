@@ -274,7 +274,6 @@ export function buildRoomSettings(
   variantKey: string,
   maxPlayers: number,
 ) {
-  // 📍 Ruta del archivo: lib/games/gameCatalog.ts
 
   if (gameSlug === "loteria-mexicana") {
     const winCondition =
@@ -289,7 +288,7 @@ export function buildRoomSettings(
       deck_slug: "tradicional",
       win_condition: winCondition,
       board_size: 4,
-      max_players: selectedPlayers,
+      max_players: maxPlayers,
       min_players: 2,
     };
   }
