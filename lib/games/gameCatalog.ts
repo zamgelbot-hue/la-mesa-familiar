@@ -123,7 +123,7 @@ export const GAME_CONFIGS: Record<string, GameConfig> = {
     maxPlayersOptions: [2],
     variants: [
       { key: "clasico", label: "Clásico 3x3", description: "Gana conectando 3 en línea.", available: true },
-      { key: "grande", label: "Grande 5x5", description: "Gana conectando 5 en línea.", available: true },
+      { key: "grande", label: "Grande 5x5", description: "Gana conectando 4 en línea.", available: true },
       { key: "epico", label: "Épico 7x7", description: "Gana conectando 5. Bonus si conectas 7.", available: true },
       { key: "bot_clasico", label: "Vs Bot 3x3", description: "Juega El Gato clásico contra la computadora. Recompensa mínima: 1 punto.", available: true },
     ],
@@ -341,7 +341,7 @@ export function buildRoomSettings(
       }
     > = {
       clasico: { board_size: 3, win_length: 3, bonus_win_length: null },
-      grande: { board_size: 5, win_length: 5, bonus_win_length: null },
+      grande: { board_size: 5, win_length: 4, bonus_win_length: null },
       epico: { board_size: 7, win_length: 5, bonus_win_length: 7 },
       bot_clasico: { board_size: 3, win_length: 3, bonus_win_length: null },
     };

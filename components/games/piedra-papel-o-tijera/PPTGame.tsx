@@ -4,115 +4,30 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
-import { getAvatarByKey, getFrameByKey } from "@/lib/profile/profileCosmetics";
 import { applyHeadToHeadMatchRewards } from "@/lib/gameRewards";
 import RoomChat from "@/components/RoomChat";
-import GameResultOverlay from "@/components/games/core/GameResultOverlay";
-import { returnToRoom } from "@/lib/games/gameNavigation";
-import type { Choice, GameState, PPTGameProps, ProfileMap, RoomPlayer } from "./pptTypes";
 import {
-  DEFAULT_STATE,
-  buildFreshState,
-  getModeConfig,
-  getPlayerStorageKey,
-  getRoundOutcome,
-  playPPTSfx,
-} from "./pptUtils";
-
-const BOT_PLAYER_NAME = "Bot Familiar 🤖";
-const BOT_REWARD_COOLDOWN_MS = 60000;
-
-const BOT_CHOICES: Exclude<Choice, null>[] = ["piedra", "papel", "tijera"];
-
-function getRandomBotChoice(): Exclude<Choice, null> {
-  return BOT_CHOICES[Math.floor(Math.random() * BOT_CHOICES.length)];
-}
-
-function buildBotPlayer(roomCode: string): RoomPlayer {
-  return {
-    id: `bot-${roomCode}`,
-    room_code: roomCode,
-    player_name: BOT_PLAYER_NAME,
-    is_host: false,
-    is_ready: true,
-    created_at: "9999-12-31T23:59:59.999Z",
-    user_id: null,
-    is_guest: true,
-  };
-}
-
-function withBotPlayer(
-  realPlayers: RoomPlayer[],
-  roomCode: string,
-  vsBot: boolean,
-) {
-  if (!vsBot) return realPlayers;
-  if (realPlayers.some((player) => player.player_name === BOT_PLAYER_NAME)) {
-    return realPlayers;
-  }
-
-  return [...realPlayers, buildBotPlayer(roomCode)];
-}
-
-async function applyBotWinReward({
-  supabase,
-  userId,
-}: {
-  supabase: any;
-  userId: string | null | undefined;
-}) {
-  if (!userId) return;
-  if (!userId || userId.startsWith("guest:")) return;
-
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("points, total_points_earned, last_reward_at")
-    .eq("id", userId)
-    .single();
-
-  if (profileError || !profile) return;
-
-  const lastRewardAt = profile.last_reward_at
-    ? new Date(profile.last_reward_at).getTime()
-    : 0;
-
-  const now = Date.now();
-
-  if (now - lastRewardAt < BOT_REWARD_COOLDOWN_MS) {
-    console.log("⏳ Reward VS Bot en cooldown");
-    return;
-  }
-
-  const rewardedAt = new Date().toISOString();
-
-  const { error: updateError } = await supabase
-    .from("profiles")
-    .update({
-      points: (profile.points ?? 0) + 1,
-      total_points_earned: (profile.total_points_earned ?? 0) + 1,
-      last_reward_at: rewardedAt,
-    })
-    .eq("id", userId);
-
-  if (updateError) {
-    console.error("Error dando reward VS Bot:", updateError);
-    return;
-  }
-
-  const { error: eventError } = await supabase.from("reward_events").insert({
-    user_id: userId,
-    game_type: "ppt_bot",
-    points_awarded: 1,
-    placement: 1,
-    created_at: rewardedAt,
-  });
-
-  if (eventError) {
-    console.error("Error guardando reward_event VS Bot:", eventError);
-  }
-}
+  GamePageLayout,
+  GameResultOverlay,
+} from "@/components/games/core";
+import PPTChoiceButtons from "./PPTChoiceButtons";
+import PPTHeader from "./PPTHeader";
+import PPTLiveSummary from "./PPTLiveSummary";
+import PPTPlayerCard from "./PPTPlayerCard";
+import { BOT_PLAYER_NAME, getRandomBotChoice, withBotPlayer } from "./pptBot";
+import { applyBotWinReward } from "./pptRewards";
+import {
+  fetchPPTGameState,
+  fetchPPTPlayers,
+  fetchPPTProfilesMap,
+  fetchPPTRoomStatus,
+  upsertPPTGameState,
+} from "./pptQueries";
+import { detectStoredPlayerName, persistPlayerName } from "./pptStorage";
+import type { Choice, GameState, PPTGameProps, ProfileMap, RoomPlayer } from "./pptTypes";
+import { DEFAULT_STATE, buildFreshState, getModeConfig, getRoundOutcome, playPPTSfx } from "./pptUtils";
 
 export default function PPTGame({
   roomCode,
@@ -149,12 +64,16 @@ export default function PPTGame({
   const botMoveRef = useRef<NodeJS.Timeout | null>(null);
   const resolvingRoundRef = useRef(false);
   const lastResolvedKeyRef = useRef("");
-  const lastChampionRef = useRef<string | null>(null);
 
   const { roundsToWin, modeLabel, variantLabel } = useMemo(
     () => getModeConfig(roomVariant, roomSettings),
     [roomVariant, roomSettings],
   );
+
+  const modeDescription = useMemo(() => {
+    if (isVsBot) return "Contra bot familiar";
+    return `Gana quien llegue a ${roundsToWin} ronda${roundsToWin !== 1 ? "s" : ""}`;
+  }, [isVsBot, roundsToWin]);
 
   const sortedRealPlayers = useMemo(() => {
     return [...players].sort((a, b) => {
@@ -168,488 +87,196 @@ export default function PPTGame({
     return withBotPlayer(sortedRealPlayers, code, isVsBot);
   }, [sortedRealPlayers, code, isVsBot]);
 
+  const hostPlayer = useMemo(() => {
+    return sortedRealPlayers.find((player) => player.is_host) ?? null;
+  }, [sortedRealPlayers]);
+
+  const currentPlayer = useMemo(() => {
+    return sortedRealPlayers.find((player) => player.player_name === currentPlayerName) ?? null;
+  }, [sortedRealPlayers, currentPlayerName]);
+
+  const isHost = hostPlayer?.player_name === currentPlayerName;
+
   const bothPlayersPresent = isVsBot
     ? sortedRealPlayers.length >= 1
     : sortedPlayers.length >= 2;
 
-  const hostPlayer = useMemo(() => {
-    return sortedRealPlayers.find((p) => p.is_host) ?? null;
-  }, [sortedRealPlayers]);
-
-  const currentPlayer = useMemo(() => {
-    return sortedRealPlayers.find((p) => p.player_name === currentPlayerName) ?? null;
-  }, [sortedRealPlayers, currentPlayerName]);
-
-  const detectStoredPlayerName = useCallback((roomCode: string) => {
-    if (typeof window === "undefined") return "";
-
-    const canonicalKey = getPlayerStorageKey(roomCode);
-
-    const localCanonical = localStorage.getItem(canonicalKey);
-    if (localCanonical) {
-      try {
-        const parsed = JSON.parse(localCanonical);
-        if (parsed?.playerName && typeof parsed.playerName === "string") {
-          return parsed.playerName.trim();
-        }
-      } catch {}
-    }
-
-    const sessionCanonical = sessionStorage.getItem(canonicalKey);
-    if (sessionCanonical) {
-      try {
-        const parsed = JSON.parse(sessionCanonical);
-        if (parsed?.playerName && typeof parsed.playerName === "string") {
-          return parsed.playerName.trim();
-        }
-      } catch {}
-    }
-
-    const legacyKeys = [
-      `la-mesa-player-name-${roomCode}`,
-      `mesa-player-name-${roomCode}`,
-      `player_name_${roomCode}`,
-      `playerName_${roomCode}`,
-      `room_player_name_${roomCode}`,
-      `roomPlayerName_${roomCode}`,
-      "player_name",
-      "playerName",
-      "nombreJugador",
-    ];
-
-    for (const key of legacyKeys) {
-      const value = localStorage.getItem(key);
-      if (value && value.trim()) return value.trim();
-    }
-
-    for (const key of legacyKeys) {
-      const value = sessionStorage.getItem(key);
-      if (value && value.trim()) return value.trim();
-    }
-
-    return "";
-  }, []);
-
-  const persistPlayerName = useCallback((roomCode: string, playerName: string) => {
-    if (typeof window === "undefined") return;
-
-    const value = playerName.trim();
-    if (!value) return;
-
-    const payload = JSON.stringify({
-      roomCode,
-      playerName: value,
-      savedAt: new Date().toISOString(),
-    });
-
-    localStorage.setItem(getPlayerStorageKey(roomCode), payload);
-    sessionStorage.setItem(getPlayerStorageKey(roomCode), payload);
-
-    const legacyKeys = [
-      `la-mesa-player-name-${roomCode}`,
-      `mesa-player-name-${roomCode}`,
-      `player_name_${roomCode}`,
-      `playerName_${roomCode}`,
-      `room_player_name_${roomCode}`,
-      `roomPlayerName_${roomCode}`,
-      "player_name",
-      "playerName",
-      "nombreJugador",
-    ];
-
-    for (const key of legacyKeys) {
-      localStorage.setItem(key, value);
-      sessionStorage.setItem(key, value);
-    }
-  }, []);
-
-  const resolveCurrentPlayerName = useCallback(
-    (playerList: RoomPlayer[]) => {
-      const storedName = detectStoredPlayerName(code);
-
-      if (
-        storedName &&
-        playerList.some((player) => player.player_name === storedName)
-      ) {
-        return storedName;
-      }
-
-      return "";
-    },
-    [code, detectStoredPlayerName],
-  );
-
-  const isHost = useMemo(() => {
-    return hostPlayer?.player_name === currentPlayerName;
-  }, [hostPlayer, currentPlayerName]);
-
   const opponentName = useMemo(() => {
     if (isVsBot) return BOT_PLAYER_NAME;
-
-    return sortedPlayers.find((p) => p.player_name !== currentPlayerName)?.player_name ?? "";
-  }, [sortedPlayers, currentPlayerName, isVsBot]);
+    return sortedPlayers.find((player) => player.player_name !== currentPlayerName)?.player_name ?? "";
+  }, [isVsBot, sortedPlayers, currentPlayerName]);
 
   const myChoice = gameState.playerChoices?.[currentPlayerName] ?? null;
-  const opponentChoice = gameState.playerChoices?.[opponentName] ?? null;
-
   const bothChoicesSubmitted = useMemo(() => {
     if (sortedPlayers.length < 2) return false;
 
-    const p1 = sortedPlayers[0]?.player_name;
-    const p2 = sortedPlayers[1]?.player_name;
+    const playerOne = sortedPlayers[0]?.player_name;
+    const playerTwo = sortedPlayers[1]?.player_name;
 
-    if (!p1 || !p2) return false;
+    if (!playerOne || !playerTwo) return false;
 
-    return Boolean(gameState.playerChoices?.[p1] && gameState.playerChoices?.[p2]);
+    return Boolean(gameState.playerChoices?.[playerOne] && gameState.playerChoices?.[playerTwo]);
   }, [sortedPlayers, gameState.playerChoices]);
 
   const shouldRevealChoices =
-    bothChoicesSubmitted || !!gameState.roundWinner || !!gameState.matchOver;
+    bothChoicesSubmitted || !!gameState.roundWinner || gameState.matchOver;
 
-  const leadingPlayerName = useMemo(() => {
-    if (sortedPlayers.length < 2) return null;
+  const needsIdentitySelection =
+    sortedRealPlayers.length > 0 &&
+    (!currentPlayerName ||
+      !sortedRealPlayers.some((player) => player.player_name === currentPlayerName));
 
-    const [a, b] = sortedPlayers;
-    const scoreA = gameState.scores?.[a.player_name] ?? 0;
-    const scoreB = gameState.scores?.[b.player_name] ?? 0;
+  const loadPlayers = useCallback(async () => {
+    const list = await fetchPPTPlayers({ supabase, roomCode: code });
+    setPlayers(list);
 
-    if (scoreA === scoreB) return null;
-    return scoreA > scoreB ? a.player_name : b.player_name;
-  }, [sortedPlayers, gameState.scores]);
+    const nextProfilesMap = await fetchPPTProfilesMap({ supabase, players: list });
+    setProfilesMap(nextProfilesMap);
 
-  const fetchProfilesForPlayers = useCallback(
-    async (playerList: RoomPlayer[]) => {
-      try {
-        const userIds = Array.from(
-          new Set(playerList.map((p) => p.user_id).filter(Boolean)),
-        ) as string[];
+    const storedName = detectStoredPlayerName(code);
+    const nextPlayerName = list.some((player) => player.player_name === storedName)
+      ? storedName
+      : "";
 
-        if (userIds.length === 0) {
-          setProfilesMap({});
-          return;
-        }
-
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("id, display_name, avatar_key, frame_key, points, games_played, games_won, games_lost")
-          .in("id", userIds);
-
-        if (error) {
-          console.error("Error cargando perfiles del juego:", error);
-          setProfilesMap({});
-          return;
-        }
-
-        const nextMap: ProfileMap = {};
-        for (const profile of data ?? []) {
-          nextMap[profile.id] = {
-            display_name: profile.display_name,
-            avatar_key: profile.avatar_key,
-            frame_key: profile.frame_key,
-            points: profile.points,
-            games_played: profile.games_played,
-            games_won: profile.games_won,
-            games_lost: profile.games_lost,
-          };
-        }
-
-        setProfilesMap(nextMap);
-      } catch (error) {
-        console.error("Error inesperado cargando perfiles del juego:", error);
-        setProfilesMap({});
-      }
-    },
-    [supabase],
-  );
-
-  const fetchPlayers = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from("room_players")
-        .select("*")
-        .eq("room_code", code)
-        .order("created_at", { ascending: true });
-
-      if (error) {
-        console.error("Error cargando jugadores:", error);
-        return [];
-      }
-
-      const list = (data ?? []) as RoomPlayer[];
-      setPlayers(list);
-      await fetchProfilesForPlayers(list);
-
-      const resolvedName = resolveCurrentPlayerName(list);
-      setCurrentPlayerName(resolvedName);
-
-      return list;
-    } catch (error) {
-      console.error("Error inesperado cargando jugadores:", error);
-      return [];
-    }
-  }, [supabase, code, resolveCurrentPlayerName, fetchProfilesForPlayers]);
-
-  const fetchRoom = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from("rooms")
-        .select("status")
-        .eq("code", code)
-        .maybeSingle();
-
-      if (error) {
-        console.error("Error cargando room:", error);
-        return;
-      }
-
-      if (data?.status) {
-        setRoomStatus(data.status);
-      }
-    } catch (error) {
-      console.error("Error inesperado cargando room:", error);
-    }
+    setCurrentPlayerName(nextPlayerName);
+    return list;
   }, [supabase, code]);
 
-  const ensureGameStateRow = useCallback(
+  const loadRoomStatus = useCallback(async () => {
+    const status = await fetchPPTRoomStatus({ supabase, roomCode: code });
+    setRoomStatus(status);
+    return status;
+  }, [supabase, code]);
+
+  const loadGameState = useCallback(async () => {
+    const state = await fetchPPTGameState({ supabase, roomCode: code });
+
+    if (!state) return null;
+
+    const merged: GameState = {
+      ...DEFAULT_STATE,
+      ...state,
+    };
+
+    setGameState(merged);
+    return merged;
+  }, [supabase, code]);
+
+  const ensureGameState = useCallback(
     async (playerList: RoomPlayer[]) => {
-      try {
-        const gamePlayers = withBotPlayer(playerList, code, isVsBot);
+      const gamePlayers = withBotPlayer(playerList, code, isVsBot);
+      const existingState = await fetchPPTGameState({ supabase, roomCode: code });
 
-        const { data, error } = await supabase
-          .from("game_state")
-          .select("id, state")
-          .eq("room_code", code)
-          .maybeSingle();
+      const hasBotInState =
+        existingState?.playerChoices &&
+        Object.prototype.hasOwnProperty.call(existingState.playerChoices, BOT_PLAYER_NAME);
 
-        if (error) {
-          console.error("Error consultando game_state:", error);
-          return;
-        }
+      if (existingState && (!isVsBot || hasBotInState)) {
+        const merged: GameState = {
+          ...DEFAULT_STATE,
+          ...existingState,
+        };
 
-        const existingState = data?.state as Partial<GameState> | undefined;
-        const hasBotInState =
-          existingState?.playerChoices &&
-          Object.prototype.hasOwnProperty.call(existingState.playerChoices, BOT_PLAYER_NAME);
-
-        if (data && (!isVsBot || hasBotInState)) {
-          const merged: GameState = {
-            ...DEFAULT_STATE,
-            ...(data.state as Partial<GameState>),
-          };
-          setGameState(merged);
-          return;
-        }
-
-        const fresh = buildFreshState(gamePlayers);
-
-        if (data) {
-          const { error: updateError } = await supabase
-            .from("game_state")
-            .update({
-              state: fresh,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("room_code", code);
-
-          if (updateError) {
-            console.error("Error actualizando game_state para bot:", updateError);
-            return;
-          }
-
-          setGameState(fresh);
-          return;
-        }
-
-        const { error: insertError } = await supabase.from("game_state").insert({
-          room_code: code,
-          state: fresh,
-          updated_at: new Date().toISOString(),
-        });
-
-        if (insertError) {
-          console.error("Error creando game_state:", insertError);
-
-          const { data: retryData, error: retryError } = await supabase
-            .from("game_state")
-            .select("id, state")
-            .eq("room_code", code)
-            .maybeSingle();
-
-          if (retryError) {
-            console.error("Error releyendo game_state tras conflicto:", retryError);
-            return;
-          }
-
-          if (retryData?.state) {
-            const mergedRetry: GameState = {
-              ...DEFAULT_STATE,
-              ...(retryData.state as Partial<GameState>),
-            };
-            setGameState(mergedRetry);
-          }
-          return;
-        }
-
-        setGameState(fresh);
-      } catch (error) {
-        console.error("Error inesperado asegurando game_state:", error);
+        setGameState(merged);
+        return merged;
       }
+
+      const freshState = buildFreshState(gamePlayers);
+
+      await upsertPPTGameState({
+        supabase,
+        roomCode: code,
+        state: freshState,
+      });
+
+      setGameState(freshState);
+      return freshState;
     },
     [supabase, code, isVsBot],
   );
 
-  const refreshGameState = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from("game_state")
-        .select("state")
-        .eq("room_code", code)
-        .maybeSingle();
-
-      if (error) {
-        console.error("Error refrescando game_state:", error);
-        return;
-      }
-
-      if (!data?.state) return;
-
-      const merged: GameState = {
-        ...DEFAULT_STATE,
-        ...(data.state as Partial<GameState>),
-      };
-
-      setGameState(merged);
-    } catch (error) {
-      console.error("Error inesperado refrescando game_state:", error);
-    }
-  }, [supabase, code]);
-
   const updateGameState = useCallback(
     async (updater: (prev: GameState) => GameState) => {
-      try {
-        const { data, error } = await supabase
-          .from("game_state")
-          .select("state")
-          .eq("room_code", code)
-          .maybeSingle();
+      const freshState = await fetchPPTGameState({ supabase, roomCode: code });
+      const previousState: GameState = {
+        ...DEFAULT_STATE,
+        ...((freshState as Partial<GameState> | null) ?? {}),
+      };
 
-        if (error) {
-          console.error("Error leyendo state antes de actualizar:", error);
-          return;
-        }
+      const nextState = updater(previousState);
 
-        const prev: GameState = {
-          ...DEFAULT_STATE,
-          ...((data?.state as Partial<GameState>) ?? {}),
-        };
+      await upsertPPTGameState({
+        supabase,
+        roomCode: code,
+        state: nextState,
+      });
 
-        const next = updater(prev);
-
-        const { error: updateError } = await supabase
-          .from("game_state")
-          .update({
-            state: next,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("room_code", code);
-
-        if (updateError) {
-          console.error("Error actualizando state:", updateError);
-          return;
-        }
-
-        setGameState(next);
-      } catch (error) {
-        console.error("Error inesperado actualizando game_state:", error);
-      }
+      setGameState(nextState);
+      return nextState;
     },
     [supabase, code],
   );
 
-  const writeGameState = useCallback(
-    async (nextState: GameState) => {
-      try {
-        const { error } = await supabase
-          .from("game_state")
-          .update({
-            state: nextState,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("room_code", code);
+  const refreshProfiles = useCallback(async () => {
+    const nextProfilesMap = await fetchPPTProfilesMap({
+      supabase,
+      players: sortedRealPlayers,
+    });
 
-        if (error) {
-          console.error("Error guardando game_state:", error);
-          return false;
-        }
-
-        setGameState(nextState);
-        return true;
-      } catch (error) {
-        console.error("Error inesperado guardando game_state:", error);
-        return false;
-      }
-    },
-    [supabase, code],
-  );
+    setProfilesMap(nextProfilesMap);
+  }, [supabase, sortedRealPlayers]);
 
   const awardPoints = useCallback(
     async (championName: string | null) => {
-      try {
-        if (!championName) return;
+      if (!championName) return;
 
-        if (isVsBot) {
-          const humanPlayer = sortedRealPlayers.find(
-            (player) => player.player_name === championName,
-          );
-
-          if (!humanPlayer) return;
-
-await applyBotWinReward({
-  supabase,
-  userId: humanPlayer.user_id,
-});
-
-await fetchProfilesForPlayers(sortedRealPlayers);
-return;
-        }
-
-        if (sortedRealPlayers.length < 2) return;
-
-        const winner = sortedRealPlayers.find(
+      if (isVsBot) {
+        const humanPlayer = sortedRealPlayers.find(
           (player) => player.player_name === championName,
         );
-        const loser = sortedRealPlayers.find(
-          (player) => player.player_name !== championName,
-        );
 
-        await applyHeadToHeadMatchRewards({
+        if (!humanPlayer) return;
+
+        await applyBotWinReward({
           supabase,
-          winnerUserId: winner?.user_id,
-          loserUserId: loser?.user_id,
-          gameType: "ppt_human",
+          userId: humanPlayer.user_id,
         });
 
-        await fetchProfilesForPlayers(sortedRealPlayers);
-      } catch (error) {
-        console.error("Error general dando puntos/stats:", error);
+        await refreshProfiles();
+        return;
       }
+
+      if (sortedRealPlayers.length < 2) return;
+
+      const winner = sortedRealPlayers.find(
+        (player) => player.player_name === championName,
+      );
+
+      const loser = sortedRealPlayers.find(
+        (player) => player.player_name !== championName,
+      );
+
+      await applyHeadToHeadMatchRewards({
+        supabase,
+        winnerUserId: winner?.user_id,
+        loserUserId: loser?.user_id,
+        gameType: "ppt_human",
+      });
+
+      await refreshProfiles();
     },
-    [isVsBot, sortedRealPlayers, supabase, fetchProfilesForPlayers],
+    [isVsBot, sortedRealPlayers, supabase, refreshProfiles],
   );
 
   const clearGameChat = useCallback(async () => {
-    try {
-      const { error } = await supabase
-        .from("room_messages")
-        .delete()
-        .eq("room_code", code)
-        .eq("context", "game");
+    const { error } = await supabase
+      .from("room_messages")
+      .delete()
+      .eq("room_code", code)
+      .eq("context", "game");
 
-      if (error) {
-        console.error("Error limpiando chat de partida:", error);
-      }
-    } catch (error) {
-      console.error("Error inesperado limpiando chat de partida:", error);
+    if (error) {
+      console.error("Error limpiando chat de partida:", error);
     }
   }, [supabase, code]);
 
@@ -660,72 +287,60 @@ return;
     if (gameState.roundWinner) return;
     if (resolvingRoundRef.current) return;
 
-    const p1 = sortedPlayers[0]?.player_name;
-    const p2 = sortedPlayers[1]?.player_name;
+    const playerOne = sortedPlayers[0]?.player_name;
+    const playerTwo = sortedPlayers[1]?.player_name;
 
-    if (!p1 || !p2) return;
+    if (!playerOne || !playerTwo) return;
 
-    const c1 = gameState.playerChoices?.[p1];
-    const c2 = gameState.playerChoices?.[p2];
+    const choiceOne = gameState.playerChoices?.[playerOne];
+    const choiceTwo = gameState.playerChoices?.[playerTwo];
 
-    if (!c1 || !c2) return;
+    if (!choiceOne || !choiceTwo) return;
 
     resolvingRoundRef.current = true;
-
-    let awardedChampion: string | null = null;
+    let championToReward: string | null = null;
 
     await updateGameState((prev) => {
-      const player1 = sortedPlayers[0]?.player_name;
-      const player2 = sortedPlayers[1]?.player_name;
+      const prevChoiceOne = prev.playerChoices?.[playerOne];
+      const prevChoiceTwo = prev.playerChoices?.[playerTwo];
 
-      if (!player1 || !player2) return prev;
-
-      const choice1 = prev.playerChoices?.[player1];
-      const choice2 = prev.playerChoices?.[player2];
-
-      if (!choice1 || !choice2) return prev;
+      if (!prevChoiceOne || !prevChoiceTwo) return prev;
       if (prev.roundWinner || prev.matchOver) return prev;
 
       const scores = { ...(prev.scores ?? {}) };
+      const outcome = getRoundOutcome(prevChoiceOne, prevChoiceTwo);
 
       let roundWinner: string | null = null;
       let resultText = "Empate";
-      let resultDetail = "Ambos eligieron lo mismo.";
+      let resultDetail = outcome.detailText;
       let champion: string | null = null;
       let matchOver = false;
       let canAdvanceRound = true;
 
-      const outcome = getRoundOutcome(choice1, choice2);
-
       if (outcome.winnerSide === "a") {
-        roundWinner = player1;
-        scores[player1] = (scores[player1] ?? 0) + 1;
-        resultText = `${player1} gana la ronda`;
-        resultDetail = outcome.detailText;
+        roundWinner = playerOne;
+        scores[playerOne] = (scores[playerOne] ?? 0) + 1;
+        resultText = `${playerOne} gana la ronda`;
       } else if (outcome.winnerSide === "b") {
-        roundWinner = player2;
-        scores[player2] = (scores[player2] ?? 0) + 1;
-        resultText = `${player2} gana la ronda`;
-        resultDetail = outcome.detailText;
-      } else {
-        resultText = "Empate";
-        resultDetail = outcome.detailText;
+        roundWinner = playerTwo;
+        scores[playerTwo] = (scores[playerTwo] ?? 0) + 1;
+        resultText = `${playerTwo} gana la ronda`;
       }
 
-      if ((scores[player1] ?? 0) >= roundsToWin) {
-        champion = player1;
-        awardedChampion = player1;
+      if ((scores[playerOne] ?? 0) >= roundsToWin) {
+        champion = playerOne;
+        championToReward = playerOne;
         matchOver = true;
         canAdvanceRound = false;
-        resultText = `${player1} es el campeón`;
-        resultDetail = `${player1} gana la partida en formato ${variantLabel.toLowerCase()}`;
-      } else if ((scores[player2] ?? 0) >= roundsToWin) {
-        champion = player2;
-        awardedChampion = player2;
+        resultText = `${playerOne} es el campeón`;
+        resultDetail = `${playerOne} gana la partida en formato ${variantLabel.toLowerCase()}`;
+      } else if ((scores[playerTwo] ?? 0) >= roundsToWin) {
+        champion = playerTwo;
+        championToReward = playerTwo;
         matchOver = true;
         canAdvanceRound = false;
-        resultText = `${player2} es el campeón`;
-        resultDetail = `${player2} gana la partida en formato ${variantLabel.toLowerCase()}`;
+        resultText = `${playerTwo} es el campeón`;
+        resultDetail = `${playerTwo} gana la partida en formato ${variantLabel.toLowerCase()}`;
       }
 
       return {
@@ -740,8 +355,8 @@ return;
       };
     });
 
-    if (awardedChampion) {
-      await awardPoints(awardedChampion);
+    if (championToReward) {
+      await awardPoints(championToReward);
     }
 
     resolvingRoundRef.current = false;
@@ -761,11 +376,12 @@ return;
   const handleChoice = async (choice: Exclude<Choice, null>) => {
     if (!currentPlayerName) return;
     if (!bothPlayersPresent) return;
+    if (needsIdentitySelection) return;
     if (gameState.matchOver) return;
     if (gameState.roundWinner) return;
     if (gameState.playerChoices?.[currentPlayerName]) return;
 
-    playPPTSfx(choice as "piedra" | "papel" | "tijera");
+    playPPTSfx(choice);
 
     await updateGameState((prev) => {
       if (prev.matchOver || prev.roundWinner) return prev;
@@ -781,20 +397,20 @@ return;
     });
   };
 
-  const goBackToRoom = useCallback(async () => {
-    const fresh = buildFreshState(sortedPlayers);
+  const handleBackToRoom = useCallback(async () => {
+    const freshState = buildFreshState(sortedPlayers);
 
     const { error: roomError } = await supabase
       .from("rooms")
       .update({
         status: "waiting",
         started_at: null,
+        last_activity_at: new Date().toISOString(),
       })
       .eq("code", code);
 
     if (roomError) {
-      console.error("Error actualizando room:", roomError);
-      return;
+      console.error("Error actualizando room PPT:", roomError);
     }
 
     const { error: playersError } = await supabase
@@ -803,20 +419,33 @@ return;
       .eq("room_code", code);
 
     if (playersError) {
-      console.error("Error reseteando ready:", playersError);
-      return;
+      console.error("Error reseteando ready PPT:", playersError);
     }
 
     await clearGameChat();
-    await writeGameState(fresh);
-    returnToRoom({ router, roomCode: code });
-  }, [sortedPlayers, supabase, code, clearGameChat, writeGameState, router]);
+
+    await upsertPPTGameState({
+      supabase,
+      roomCode: code,
+      state: freshState,
+    });
+
+    router.push(`/sala/${code}`);
+  }, [sortedPlayers, supabase, code, clearGameChat, router]);
 
   const handleRematch = async () => {
     if (!currentPlayerName) return;
 
     if (isVsBot) {
-      await updateGameState(() => buildFreshState(sortedPlayers));
+      const freshState = buildFreshState(sortedPlayers);
+
+      await upsertPPTGameState({
+        supabase,
+        roomCode: code,
+        state: freshState,
+      });
+
+      setGameState(freshState);
       return;
     }
 
@@ -843,20 +472,6 @@ return;
     setCurrentPlayerName(playerName);
   };
 
-  const getVisibleChoiceLabel = (selected: Choice, isCurrent: boolean) => {
-    if (!selected) return "Aún no elige";
-
-    if (shouldRevealChoices) {
-      return selected;
-    }
-
-    if (isCurrent) {
-      return "Elección bloqueada";
-    }
-
-    return "Esperando...";
-  };
-
   useEffect(() => {
     let mounted = true;
 
@@ -864,11 +479,11 @@ return;
       setLoading(true);
 
       try {
-        const playerList = await fetchPlayers();
-        await fetchRoom();
-        await ensureGameStateRow(playerList);
+        const playerList = await loadPlayers();
+        await loadRoomStatus();
+        await ensureGameState(playerList);
       } catch (error) {
-        console.error("Error inicializando juego:", error);
+        console.error("Error inicializando PPT:", error);
       } finally {
         if (mounted) {
           setLoading(false);
@@ -877,13 +492,13 @@ return;
     };
 
     if (code) {
-      init();
+      void init();
     }
 
     return () => {
       mounted = false;
     };
-  }, [code, fetchPlayers, fetchRoom, ensureGameStateRow]);
+  }, [code, loadPlayers, loadRoomStatus, ensureGameState]);
 
   useEffect(() => {
     if (!code) return;
@@ -899,7 +514,7 @@ return;
           filter: `room_code=eq.${code}`,
         },
         async () => {
-          await fetchPlayers();
+          await loadPlayers();
         },
       )
       .on(
@@ -911,7 +526,7 @@ return;
           filter: `room_code=eq.${code}`,
         },
         async () => {
-          await refreshGameState();
+          await loadGameState();
         },
       )
       .on(
@@ -931,9 +546,11 @@ return;
             if (nextStatus === "waiting") {
               router.push(`/sala/${code}`);
             }
-          } else {
-            await fetchRoom();
+
+            return;
           }
+
+          await loadRoomStatus();
         },
       )
       .subscribe();
@@ -941,7 +558,7 @@ return;
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, code, fetchPlayers, refreshGameState, fetchRoom, router]);
+  }, [supabase, code, loadPlayers, loadGameState, loadRoomStatus, router]);
 
   useEffect(() => {
     if (!isVsBot) return;
@@ -991,7 +608,7 @@ return;
   ]);
 
   useEffect(() => {
-    resolveRoundIfNeeded();
+    void resolveRoundIfNeeded();
   }, [resolveRoundIfNeeded]);
 
   useEffect(() => {
@@ -1008,6 +625,7 @@ return;
         if (!prev.canAdvanceRound || prev.matchOver) return prev;
 
         const clearedChoices: Record<string, Choice> = {};
+
         for (const name of Object.keys(prev.playerChoices ?? {})) {
           clearedChoices[name] = null;
         }
@@ -1034,13 +652,8 @@ return;
 
   useEffect(() => {
     return () => {
-      if (autoAdvanceRef.current) {
-        clearTimeout(autoAdvanceRef.current);
-      }
-
-      if (botMoveRef.current) {
-        clearTimeout(botMoveRef.current);
-      }
+      if (autoAdvanceRef.current) clearTimeout(autoAdvanceRef.current);
+      if (botMoveRef.current) clearTimeout(botMoveRef.current);
     };
   }, []);
 
@@ -1053,11 +666,11 @@ return;
     ].join("|");
 
     if (!gameState.resultText || key === lastResolvedKeyRef.current) return;
+
     lastResolvedKeyRef.current = key;
 
     if (gameState.matchOver && gameState.champion) {
       playPPTSfx("victoria");
-      lastChampionRef.current = gameState.champion;
       return;
     }
 
@@ -1071,6 +684,7 @@ return;
       playPPTSfx("empate");
     } else {
       const detail = gameState.resultDetail ?? "";
+
       setRoundPopup({
         visible: true,
         title: gameState.resultText,
@@ -1118,132 +732,33 @@ return;
     );
   }
 
-  const needsIdentitySelection =
-    sortedRealPlayers.length > 0 &&
-    (!currentPlayerName ||
-      !sortedRealPlayers.some((player) => player.player_name === currentPlayerName));
-
-  const renderGameAvatar = (
-    avatar: { emoji?: string; image?: string; label?: string },
-    frame: { className?: string; image?: string; label?: string },
-  ) => {
-    return (
-      <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-black">
-        {frame.image ? (
-          <img
-            src={frame.image}
-            alt={frame.label ?? "Frame"}
-            className="absolute inset-0 h-full w-full object-contain"
-          />
-        ) : (
-          <div
-            className={`absolute inset-0 rounded-full border-4 ${frame.className ?? ""}`}
-          />
-        )}
-
-        {avatar.image ? (
-          <img
-            src={avatar.image}
-            alt={avatar.label ?? "Avatar"}
-            className="relative z-10 h-10 w-10 object-contain"
-          />
-        ) : (
-          <span className="relative z-10 text-2xl">{avatar.emoji}</span>
-        )}
-      </div>
-    );
-  };
-
-  const getPlayerCardStyles = (playerName: string, isCurrent: boolean) => {
-    const isRoundWinner = gameState.roundWinner === playerName;
-    const isChampion = gameState.champion === playerName;
-    const isLeading = leadingPlayerName === playerName && !gameState.matchOver;
-
-    if (isChampion) {
-      return "border-yellow-400/40 bg-yellow-500/10 shadow-[0_0_28px_rgba(250,204,21,0.12)]";
-    }
-
-    if (isRoundWinner) {
-      return "border-orange-400/40 bg-orange-500/10 shadow-[0_0_24px_rgba(249,115,22,0.12)]";
-    }
-
-    if (isCurrent) {
-      return "border-emerald-400/40 bg-emerald-500/10 shadow-[0_0_24px_rgba(16,185,129,0.10)]";
-    }
-
-    if (isLeading) {
-      return "border-yellow-400/20 bg-yellow-500/5";
-    }
-
-    return "border-white/10 bg-white/5";
-  };
+  const choiceButtonsDisabled =
+    !bothPlayersPresent ||
+    !currentPlayerName ||
+    needsIdentitySelection ||
+    !!myChoice ||
+    !!gameState.roundWinner ||
+    gameState.matchOver;
 
   return (
-    <main className="min-h-screen bg-neutral-950 p-4 text-white md:p-8">
-      <div className="mx-auto max-w-6xl">
-        <motion.div
-          initial={{ opacity: 0, y: -18 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6 flex flex-col gap-4 rounded-3xl border border-white/10 bg-white/5 p-5 md:flex-row md:items-center md:justify-between"
-        >
-          <div>
-            <p className="text-sm uppercase tracking-[0.2em] text-white/60">La Mesa Familiar</p>
-            <h1 className="text-3xl font-bold">Piedra, Papel o Tijera</h1>
-            <p className="mt-1 text-white/70">
-              Sala: <span className="font-semibold text-white">{code}</span>
-            </p>
-            <p className="text-white/70">
-              Estado: <span className="font-semibold text-white">{roomStatus}</span>
-            </p>
-            <p className="text-white/70">
-              Jugador actual:{" "}
-              <span className="font-semibold text-emerald-400">
-                {currentPlayerName || "No seleccionado"}
-              </span>
-            </p>
+  <GamePageLayout>
+    <PPTHeader
+      code={code}
+      roomStatus={roomStatus}
+      currentPlayerName={currentPlayerName}
+      modeLabel={isVsBot ? "Vs Bot" : modeLabel}
+      modeDescription={modeDescription}
+      isVsBot={isVsBot}
+      onBackToRoom={handleBackToRoom}
+    />
 
-            {isVsBot && (
-              <p className="mt-2 inline-flex rounded-full border border-cyan-400/25 bg-cyan-500/10 px-3 py-1 text-sm font-bold text-cyan-200">
-                Modo contra bot · ganas 1 punto si vences
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-3 md:items-end">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="rounded-2xl bg-white/5 px-4 py-3 text-center shadow-[0_0_24px_rgba(250,204,21,0.05)]"
-            >
-              <p className="text-sm text-white/60">Modo</p>
-              <p className="text-xl font-bold text-yellow-400">
-                {isVsBot ? "Vs Bot" : modeLabel}
-              </p>
-              <p className="text-sm text-white/60">
-                Gana quien llegue a {roundsToWin} ronda{roundsToWin !== 1 ? "s" : ""}
-              </p>
-            </motion.div>
-
-            <div className="flex flex-col gap-2 sm:flex-row">
-  <motion.button
-    whileHover={{ scale: 1.03 }}
-    whileTap={{ scale: 0.96 }}
-    onClick={goBackToRoom}
-    className="rounded-2xl bg-orange-500 px-4 py-2 font-bold text-black transition hover:bg-orange-400"
-  >
-    Volver a sala
-  </motion.button>
-</div>
-          </div>
-        </motion.div>
-
-        <AnimatePresence>
+    <AnimatePresence>
           {needsIdentitySelection && (
             <motion.div
               initial={{ opacity: 0, y: -12 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              className="mb-6 rounded-3xl border border-cyan-400/25 bg-cyan-500/10 p-5"
+              className="rounded-3xl border border-cyan-400/25 bg-cyan-500/10 p-5"
             >
               <p className="text-lg font-semibold text-cyan-300">
                 Este navegador todavía no sabe qué jugador eres
@@ -1278,7 +793,7 @@ return;
               initial={{ opacity: 0, y: -12 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              className="mb-6 rounded-3xl border border-yellow-500/20 bg-yellow-500/10 p-5"
+              className="rounded-3xl border border-yellow-500/20 bg-yellow-500/10 p-5"
             >
               <p className="text-lg font-semibold text-yellow-300">
                 Esperando al segundo jugador...
@@ -1294,7 +809,7 @@ return;
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -18, scale: 0.96 }}
               transition={{ duration: 0.22 }}
-              className={`mb-6 overflow-hidden rounded-3xl border p-5 text-center shadow-[0_0_28px_rgba(249,115,22,0.12)] ${
+              className={`overflow-hidden rounded-3xl border p-5 text-center shadow-[0_0_28px_rgba(249,115,22,0.12)] ${
                 roundPopup.accent === "yellow"
                   ? "border-yellow-400/30 bg-yellow-500/10"
                   : roundPopup.accent === "emerald"
@@ -1302,96 +817,42 @@ return;
                     : "border-orange-400/30 bg-orange-500/10"
               }`}
             >
-              <p className="text-sm uppercase tracking-[0.3em] text-orange-200">Resultado de ronda</p>
-              <h2 className="mt-2 text-2xl font-extrabold text-white">{roundPopup.title}</h2>
+              <p className="text-sm uppercase tracking-[0.3em] text-orange-200">
+                Resultado de ronda
+              </p>
+              <h2 className="mt-2 text-2xl font-extrabold text-white">
+                {roundPopup.title}
+              </h2>
               <p className="mt-2 text-white/75">{roundPopup.subtitle}</p>
             </motion.div>
           )}
         </AnimatePresence>
 
-        <div className="mb-6 grid gap-4 md:grid-cols-2">
-          {sortedPlayers.map((player, index) => {
-            const score = gameState.scores?.[player.player_name] ?? 0;
-            const selected = gameState.playerChoices?.[player.player_name] ?? null;
-            const isCurrent = player.player_name === currentPlayerName;
-            const visibleChoice = getVisibleChoiceLabel(selected, isCurrent);
-
-            const profile = player.user_id ? profilesMap[player.user_id] : null;
-
-            const avatar = player.player_name === BOT_PLAYER_NAME
-              ? { emoji: "🤖", label: "Bot" }
-              : getAvatarByKey(
-                  player.is_guest ? "avatar_guest" : profile?.avatar_key ?? "avatar_sun",
-                );
-
-            const frame = player.player_name === BOT_PLAYER_NAME
-              ? { className: "border-cyan-400/60", label: "Bot" }
-              : getFrameByKey(
-                  player.is_guest ? "frame_guest" : profile?.frame_key ?? "frame_orange",
-                );
-
-            return (
-              <motion.div
-                key={player.id}
-                initial={{ opacity: 0, x: index === 0 ? -20 : 20 }}
-                animate={{
-                  opacity: 1,
-                  x: 0,
-                  scale: gameState.roundWinner === player.player_name ? [1, 1.02, 1] : 1,
-                }}
-                transition={{ duration: 0.28 }}
-                className={`rounded-3xl border p-5 ${getPlayerCardStyles(
-                  player.player_name,
-                  isCurrent,
-                )}`}
-              >
-                <div className="mb-3 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    {renderGameAvatar(avatar, frame)}
-
-                    <div>
-                      <p className="text-xl font-bold">
-                        {player.player_name} {player.is_host ? "👑" : ""}
-                      </p>
-                      <p className="text-sm text-white/60">
-                        {player.player_name === BOT_PLAYER_NAME
-                          ? "Rival automático"
-                          : isCurrent
-                            ? "Tú"
-                            : "Rival"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <motion.div
-                    animate={{
-                      scale: gameState.roundWinner === player.player_name ? [1, 1.12, 1] : 1,
-                    }}
-                    transition={{ duration: 0.28 }}
-                    className="rounded-2xl bg-black/30 px-4 py-2 text-center"
-                  >
-                    <p className="text-xs uppercase tracking-widest text-white/50">Marcador</p>
-                    <p className="text-2xl font-bold text-yellow-400">{score}</p>
-                  </motion.div>
-                </div>
-
-                <div className="rounded-2xl bg-black/20 px-4 py-3">
-                  <p className="text-sm text-white/60">Jugada actual</p>
-                  <p className="text-lg font-semibold capitalize">{visibleChoice}</p>
-                </div>
-              </motion.div>
-            );
-          })}
+        <div className="grid gap-4 md:grid-cols-2">
+          {sortedPlayers.map((player) => (
+            <PPTPlayerCard
+              key={player.id}
+              player={player}
+              currentPlayerName={currentPlayerName}
+              profileMap={profilesMap}
+              score={gameState.scores?.[player.player_name] ?? 0}
+              currentChoice={gameState.playerChoices?.[player.player_name] ?? null}
+              shouldRevealChoices={shouldRevealChoices}
+              isChampion={gameState.champion === player.player_name}
+            />
+          ))}
         </div>
 
         {!gameState.matchOver && (
           <motion.div
             layout
-            className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-5"
+            className="rounded-3xl border border-white/10 bg-white/5 p-5"
           >
             <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-sm uppercase tracking-[0.2em] text-white/60">Ronda actual</p>
+                <p className="text-sm uppercase tracking-[0.2em] text-white/60">
+                  Ronda actual
+                </p>
                 <h2 className="text-2xl font-bold">Ronda {gameState.round}</h2>
                 <p className="mt-1 text-sm text-white/60">
                   Formato activo: {isVsBot ? "Vs Bot" : variantLabel}
@@ -1413,55 +874,11 @@ return;
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-3">
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.96 }}
-                onClick={() => handleChoice("piedra")}
-                disabled={
-                  !bothPlayersPresent ||
-                  !currentPlayerName ||
-                  needsIdentitySelection ||
-                  !!myChoice ||
-                  !!gameState.roundWinner
-                }
-                className="rounded-2xl border border-white/10 bg-white/10 px-5 py-4 text-lg font-semibold transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                ✊ Piedra
-              </motion.button>
-
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.96 }}
-                onClick={() => handleChoice("papel")}
-                disabled={
-                  !bothPlayersPresent ||
-                  !currentPlayerName ||
-                  needsIdentitySelection ||
-                  !!myChoice ||
-                  !!gameState.roundWinner
-                }
-                className="rounded-2xl border border-white/10 bg-white/10 px-5 py-4 text-lg font-semibold transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                ✋ Papel
-              </motion.button>
-
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.96 }}
-                onClick={() => handleChoice("tijera")}
-                disabled={
-                  !bothPlayersPresent ||
-                  !currentPlayerName ||
-                  needsIdentitySelection ||
-                  !!myChoice ||
-                  !!gameState.roundWinner
-                }
-                className="rounded-2xl border border-white/10 bg-white/10 px-5 py-4 text-lg font-semibold transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                ✌️ Tijera
-              </motion.button>
-            </div>
+            <PPTChoiceButtons
+              disabled={choiceButtonsDisabled}
+              selectedChoice={myChoice}
+              onSelectChoice={handleChoice}
+            />
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               {sortedPlayers.map((player) => {
@@ -1478,11 +895,11 @@ return;
                         {player.player_name}
                       </span>
                       <div className="flex items-center gap-2">
-                        {dots.map((_, idx) => (
+                        {dots.map((_, index) => (
                           <span
-                            key={idx}
+                            key={index}
                             className={`h-2.5 w-2.5 rounded-full ${
-                              idx < score ? "bg-yellow-400" : "bg-white/15"
+                              index < score ? "bg-yellow-400" : "bg-white/15"
                             }`}
                           />
                         ))}
@@ -1495,82 +912,53 @@ return;
           </motion.div>
         )}
 
-        <AnimatePresence>
-         <GameResultOverlay
-  show={gameState.matchOver}
-  tone={
-    gameState.champion === currentPlayerName
-      ? "win"
-      : gameState.champion === BOT_PLAYER_NAME
-        ? "lose"
-        : "neutral"
-  }
-  title={
-    gameState.champion === currentPlayerName
-      ? "¡Ganaste!"
-      : gameState.champion === BOT_PLAYER_NAME
-        ? "Ganó el bot"
-        : "Partida terminada"
-  }
-  subtitle={
-    isVsBot
-      ? gameState.champion === BOT_PLAYER_NAME
-        ? "El Bot Familiar ganó esta vez. Intenta la revancha."
-        : "Ganaste contra el bot."
-      : `La partida terminó. Ya tenemos campeón del ${modeLabel.toLowerCase()}.`
-  }
-  winnerName={gameState.champion}
-  resultText={`Marcador final: ${sortedPlayers
-    .map(
-      (player) =>
-        `${player.player_name}: ${gameState.scores?.[player.player_name] ?? 0}`,
-    )
-    .join(" · ")}`}
-  pointsText={
-    isVsBot && gameState.champion === currentPlayerName
-      ? "Recibiste 1 punto por vencer al bot."
-      : undefined
-  }
-  primaryActionLabel="Volver a sala"
-  secondaryActionLabel="Revancha"
-  onPrimaryAction={goBackToRoom}
-  onSecondaryAction={handleRematch}
-/> 
-        </AnimatePresence>
+        <GameResultOverlay
+          show={gameState.matchOver}
+          tone={
+            gameState.champion === currentPlayerName
+              ? "win"
+              : gameState.champion === BOT_PLAYER_NAME
+                ? "lose"
+                : "neutral"
+          }
+          title={
+            gameState.champion === currentPlayerName
+              ? "¡Ganaste!"
+              : gameState.champion === BOT_PLAYER_NAME
+                ? "Ganó el bot"
+                : "Partida terminada"
+          }
+          subtitle={
+            isVsBot
+              ? gameState.champion === BOT_PLAYER_NAME
+                ? "El Bot Familiar ganó esta vez. Intenta la revancha."
+                : "Ganaste contra el bot."
+              : `La partida terminó. Ya tenemos campeón del ${modeLabel.toLowerCase()}.`
+          }
+          winnerName={gameState.champion}
+          resultText={`Marcador final: ${sortedPlayers
+            .map(
+              (player) =>
+                `${player.player_name}: ${gameState.scores?.[player.player_name] ?? 0}`,
+            )
+            .join(" · ")}`}
+          pointsText={
+            isVsBot && gameState.champion === currentPlayerName
+              ? "Recibiste 1 punto por vencer al bot."
+              : undefined
+          }
+          primaryActionLabel="Volver a sala"
+          secondaryActionLabel="Revancha"
+          onPrimaryAction={handleBackToRoom}
+          onSecondaryAction={handleRematch}
+        />
 
-        <motion.div
-          layout
-          className="rounded-3xl border border-white/10 bg-white/5 p-5"
-        >
-          <h3 className="mb-3 text-xl font-bold">Resumen en tiempo real</h3>
-          <div className="space-y-2 text-white/75">
-            <p>
-              Tu jugada:{" "}
-              <span className="font-semibold capitalize text-white">
-                {!myChoice ? "Aún no eliges" : shouldRevealChoices ? myChoice : "Elección bloqueada"}
-              </span>
-            </p>
-            <p>
-              Jugada rival:{" "}
-              <span className="font-semibold capitalize text-white">
-                {!opponentChoice ? "Esperando..." : shouldRevealChoices ? opponentChoice : "Esperando..."}
-              </span>
-            </p>
-            <p>
-              Resultado:{" "}
-              <span className="font-semibold text-white">
-                {gameState.resultText ?? "Sin resultado todavía"}
-              </span>
-            </p>
-            {gameState.resultDetail && (
-              <p>
-                Detalle:{" "}
-                <span className="font-semibold text-white">{gameState.resultDetail}</span>
-              </p>
-            )}
-          </div>
-        </motion.div>
-      </div>
+        <PPTLiveSummary
+          players={sortedPlayers}
+          gameState={gameState}
+          modeLabel={isVsBot ? "Vs Bot" : modeLabel}
+          shouldRevealChoices={shouldRevealChoices}
+        />
 
       <RoomChat
         roomCode={code}
@@ -1579,6 +967,6 @@ return;
         currentUserId={currentPlayer?.user_id ?? null}
         isGuest={currentPlayer?.is_guest ?? true}
       />
-    </main>
+    </GamePageLayout>
   );
 }
