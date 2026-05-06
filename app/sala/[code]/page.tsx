@@ -3,147 +3,41 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import RoomChat from "@/components/RoomChat";
-import PlayerAvatar from "@/components/PlayerAvatar";
-import ShareRoomButton from "@/components/room/ShareRoomButton";
 import { useParams, useRouter } from "next/navigation";
+import RoomChat from "@/components/RoomChat";
+import RoomAccessNotice from "@/components/room/RoomAccessNotice";
+import RoomHeader from "@/components/room/RoomHeader";
+import RoomStatusCard from "@/components/room/RoomStatusCard";
+import PlayersList from "@/components/room/PlayersList";
 import { createClient } from "@/lib/supabase/client";
 import { getPlayerIdentity, type PlayerIdentity } from "@/lib/profile/getPlayerIdentity";
-import { getAvatarByKey, getFrameByKey } from "@/lib/profile/profileCosmetics";
 import {
   GAME_CONFIGS,
-  buildRoomSettings,
   getAvailableVariantsForGame,
   getVariantLabel,
 } from "@/lib/games/gameCatalog";
-
-type Room = {
-  id: string;
-  code: string;
-  status: string;
-  started_at: string | null;
-  game_slug: string | null;
-  max_players: number | null;
-  game_variant: string | null;
-  room_settings: Record<string, unknown> | null;
-  visibility: "private" | "public" | "friends" | null;
-  created_by: string | null;
-  last_activity_at: string | null;
-};
-
-type RoomPlayer = {
-  id: string;
-  room_code: string;
-  player_name: string;
-  is_host: boolean;
-  is_ready: boolean;
-  created_at: string;
-  user_id: string | null;
-  is_guest: boolean;
-};
-
-type Game = {
-  id: string;
-  slug: string;
-  name: string;
-  description: string | null;
-  min_players: number;
-  max_players: number;
-  status: "available" | "coming_soon";
-  sort_order: number;
-};
-
-type ProfileMap = Record<
-  string,
-  {
-    display_name: string | null;
-    avatar_key: string | null;
-    frame_key: string | null;
-    points: number | null;
-  }
->;
-
-const getPlayerStorageKey = (roomCode: string) => `lmf:player:${roomCode}`;
-
-const savePlayerIdentity = (
-  roomCode: string,
-  playerName: string,
-  isHost: boolean,
-) => {
-  if (typeof window === "undefined") return;
-
-  const payload = JSON.stringify({
-    roomCode,
-    playerName,
-    isHost,
-    savedAt: new Date().toISOString(),
-  });
-
-  localStorage.setItem(getPlayerStorageKey(roomCode), payload);
-  sessionStorage.setItem(getPlayerStorageKey(roomCode), payload);
-
-  const legacyKeys = [
-    `la-mesa-player-name-${roomCode}`,
-    `mesa-player-name-${roomCode}`,
-    `player_name_${roomCode}`,
-    `playerName_${roomCode}`,
-    `room_player_name_${roomCode}`,
-    `roomPlayerName_${roomCode}`,
-    "player_name",
-    "playerName",
-    "nombreJugador",
-  ];
-
-  for (const key of legacyKeys) {
-    localStorage.setItem(key, playerName);
-    sessionStorage.setItem(key, playerName);
-  }
-};
-
-const readStoredPlayerName = (roomCode: string) => {
-  if (typeof window === "undefined") return "";
-
-  const canonical = localStorage.getItem(getPlayerStorageKey(roomCode));
-  if (canonical) {
-    try {
-      const parsed = JSON.parse(canonical);
-      if (parsed?.playerName) return String(parsed.playerName);
-    } catch {}
-  }
-
-  const sessionCanonical = sessionStorage.getItem(getPlayerStorageKey(roomCode));
-  if (sessionCanonical) {
-    try {
-      const parsed = JSON.parse(sessionCanonical);
-      if (parsed?.playerName) return String(parsed.playerName);
-    } catch {}
-  }
-
-  const legacyKeys = [
-    `la-mesa-player-name-${roomCode}`,
-    `mesa-player-name-${roomCode}`,
-    `player_name_${roomCode}`,
-    `playerName_${roomCode}`,
-    `room_player_name_${roomCode}`,
-    `roomPlayerName_${roomCode}`,
-    "player_name",
-    "playerName",
-    "nombreJugador",
-  ];
-
-  for (const key of legacyKeys) {
-    const value = localStorage.getItem(key);
-    if (value?.trim()) return value.trim();
-  }
-
-  for (const key of legacyKeys) {
-    const value = sessionStorage.getItem(key);
-    if (value?.trim()) return value.trim();
-  }
-
-  return "";
-};
+import {
+  autoJoinRoomIfNeeded,
+  changeRoomVariant,
+  copyRoomCode,
+  leaveRoom,
+  startRoomGame,
+  togglePlayerReady,
+} from "@/lib/room/roomActions";
+import {
+  fetchGameBySlug,
+  fetchProfilesMapForPlayers,
+  fetchRoomByCode,
+  fetchRoomPlayers,
+} from "@/lib/room/roomQueries";
+import {
+  findCurrentPlayer,
+  resolveCurrentPlayerName,
+  sortRoomPlayers,
+} from "@/lib/room/roomPlayerIdentity";
+import { subscribeToRoomRealtime } from "@/lib/room/roomRealtime";
+import { saveRoomPlayerIdentity } from "@/lib/room/roomStorage";
+import type { Game, ProfileMap, Room, RoomPlayer } from "@/lib/room/roomTypes";
 
 function LoadingView() {
   return (
@@ -179,16 +73,13 @@ export default function SalaPage() {
   const playerIdentityRef = useRef<PlayerIdentity | null>(null);
   const lastProfilesKeyRef = useRef("");
 
-  const sortedPlayers = useMemo(() => {
-    return [...players].sort((a, b) => {
-      if (a.is_host && !b.is_host) return -1;
-      if (!a.is_host && b.is_host) return 1;
-      return a.created_at.localeCompare(b.created_at);
-    });
-  }, [players]);
+  const sortedPlayers = useMemo(() => sortRoomPlayers(players), [players]);
 
   const currentPlayer = useMemo(() => {
-    return sortedPlayers.find((p) => p.player_name === currentPlayerName) ?? null;
+    return findCurrentPlayer({
+      players: sortedPlayers,
+      currentPlayerName,
+    });
   }, [sortedPlayers, currentPlayerName]);
 
   const isHost = !!currentPlayer?.is_host;
@@ -210,22 +101,9 @@ export default function SalaPage() {
   const allReady = useMemo(() => {
     return (
       sortedPlayers.length >= minPlayersToStart &&
-      sortedPlayers.every((p) => p.is_ready)
+      sortedPlayers.every((player) => player.is_ready)
     );
   }, [sortedPlayers, minPlayersToStart]);
-
-  const touchRoomActivity = useCallback(async () => {
-    if (!code) return;
-
-    const { error } = await supabase
-      .from("rooms")
-      .update({ last_activity_at: new Date().toISOString() })
-      .eq("code", code);
-
-    if (error) {
-      console.error("Error actualizando actividad de sala:", error);
-    }
-  }, [supabase, code]);
 
   const loadPlayerIdentity = useCallback(async () => {
     try {
@@ -241,67 +119,24 @@ export default function SalaPage() {
     }
   }, []);
 
-  const fetchRoom = useCallback(
-    async (retries = 10, delayMs = 700) => {
-      for (let attempt = 0; attempt < retries; attempt++) {
-        const { data, error } = await supabase
-          .from("rooms")
-          .select("*")
-          .eq("code", code)
-          .maybeSingle();
+  const fetchRoom = useCallback(async () => {
+    const nextRoom = await fetchRoomByCode({
+      supabase,
+      code,
+    });
 
-        if (error) {
-          console.error("Error cargando room:", error);
-        }
-
-        if (data) {
-          const nextRoom = data as Room;
-          setRoom(nextRoom);
-          return nextRoom;
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-      }
-
-      const { data: fallbackData, error: fallbackError } = await supabase
-        .from("rooms")
-        .select("*")
-        .ilike("code", code)
-        .maybeSingle();
-
-      if (fallbackError) {
-        console.error("Error cargando room fallback:", fallbackError);
-      }
-
-      if (fallbackData) {
-        const nextRoom = fallbackData as Room;
-        setRoom(nextRoom);
-        return nextRoom;
-      }
-
-      setRoom(null);
-      return null;
-    },
-    [supabase, code],
-  );
+    setRoom(nextRoom);
+    return nextRoom;
+  }, [supabase, code]);
 
   const fetchGame = useCallback(
     async (gameSlug?: string | null) => {
       const slugToLoad = gameSlug ?? room?.game_slug;
-      if (!slugToLoad) return null;
+      const nextGame = await fetchGameBySlug({
+        supabase,
+        gameSlug: slugToLoad,
+      });
 
-      const { data, error } = await supabase
-        .from("games")
-        .select("*")
-        .eq("slug", slugToLoad)
-        .maybeSingle();
-
-      if (error) {
-        console.error("Error cargando game:", error);
-        return null;
-      }
-
-      const nextGame = (data ?? null) as Game | null;
       setGame(nextGame);
       return nextGame;
     },
@@ -311,7 +146,7 @@ export default function SalaPage() {
   const fetchProfilesForPlayers = useCallback(
     async (playerList: RoomPlayer[]) => {
       const userIds = Array.from(
-        new Set(playerList.map((p) => p.user_id).filter(Boolean)),
+        new Set(playerList.map((player) => player.user_id).filter(Boolean)),
       ) as string[];
 
       const requestKey = userIds.sort().join("|");
@@ -326,25 +161,10 @@ export default function SalaPage() {
 
       lastProfilesKeyRef.current = requestKey;
 
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, display_name, avatar_key, frame_key, points")
-        .in("id", userIds);
-
-      if (error) {
-        console.error("Error cargando perfiles:", error);
-        return;
-      }
-
-      const nextMap: ProfileMap = {};
-      for (const profile of data ?? []) {
-        nextMap[profile.id] = {
-          display_name: profile.display_name,
-          avatar_key: profile.avatar_key,
-          frame_key: profile.frame_key,
-          points: profile.points,
-        };
-      }
+      const nextMap = await fetchProfilesMapForPlayers({
+        supabase,
+        players: playerList,
+      });
 
       setProfilesMap(nextMap);
     },
@@ -353,53 +173,24 @@ export default function SalaPage() {
 
   const resolveCurrentPlayerFromList = useCallback(
     (playerList: RoomPlayer[], identity: PlayerIdentity | null) => {
-      if (identity?.user_id) {
-        const authMatched = playerList.find((p) => p.user_id === identity.user_id);
-        if (authMatched) {
-          setCurrentPlayerName(authMatched.player_name);
-          savePlayerIdentity(code, authMatched.player_name, authMatched.is_host);
-          return authMatched.player_name;
-        }
-      }
+      const resolvedName = resolveCurrentPlayerName({
+        code,
+        players: playerList,
+        identity,
+      });
 
-      if (identity?.is_guest && identity.name) {
-        const guestMatched = playerList.find(
-          (p) => p.is_guest && !p.user_id && p.player_name === identity.name,
-        );
-
-        if (guestMatched) {
-          setCurrentPlayerName(guestMatched.player_name);
-          savePlayerIdentity(code, guestMatched.player_name, guestMatched.is_host);
-          return guestMatched.player_name;
-        }
-      }
-
-      const storedName = readStoredPlayerName(code);
-      if (storedName && playerList.some((p) => p.player_name === storedName)) {
-        setCurrentPlayerName(storedName);
-        return storedName;
-      }
-
-      setCurrentPlayerName("");
-      return "";
+      setCurrentPlayerName(resolvedName);
+      return resolvedName;
     },
     [code],
   );
 
   const fetchPlayers = useCallback(
     async (identityOverride?: PlayerIdentity | null) => {
-      const { data, error } = await supabase
-        .from("room_players")
-        .select("*")
-        .eq("room_code", code)
-        .order("created_at", { ascending: true });
-
-      if (error) {
-        console.error("Error cargando players:", error);
-        return [];
-      }
-
-      const list = (data ?? []) as RoomPlayer[];
+      const list = await fetchRoomPlayers({
+        supabase,
+        code,
+      });
 
       setPlayers((prev) => {
         const prevSerialized = JSON.stringify(prev);
@@ -425,71 +216,18 @@ export default function SalaPage() {
       currentPlayers: RoomPlayer[],
       identity: PlayerIdentity | null,
     ) => {
-      if (!currentRoom) return false;
-      if (!identity) return false;
-      if (currentRoom.status !== "waiting") return false;
-      if (autoJoinAttemptedRef.current) return false;
-
-      const alreadyInRoom = currentPlayers.some((player) => {
-        if (identity.user_id && player.user_id) {
-          return player.user_id === identity.user_id;
-        }
-
-        if (identity.is_guest && !player.user_id) {
-          return player.player_name === identity.name;
-        }
-
-        return false;
+      return autoJoinRoomIfNeeded({
+        supabase,
+        room: currentRoom,
+        players: currentPlayers,
+        identity,
+        autoJoinAttemptedRef,
+        setJoiningInvite,
+        setCurrentPlayerName,
+        resolveCurrentPlayerFromList,
       });
-
-      if (alreadyInRoom) {
-        resolveCurrentPlayerFromList(currentPlayers, identity);
-        autoJoinAttemptedRef.current = true;
-        return false;
-      }
-
-      const capacity = Number(currentRoom.max_players ?? 2);
-      if (currentPlayers.length >= capacity) {
-        autoJoinAttemptedRef.current = true;
-        return false;
-      }
-
-      try {
-        setJoiningInvite(true);
-        autoJoinAttemptedRef.current = true;
-
-        let finalName = identity.name;
-        let suffix = 2;
-
-        while (currentPlayers.some((p) => p.player_name === finalName)) {
-          finalName = `${identity.name} ${suffix}`;
-          suffix += 1;
-        }
-
-        const { error } = await supabase.from("room_players").insert({
-          room_code: currentRoom.code,
-          player_name: finalName,
-          is_host: false,
-          is_ready: false,
-          user_id: identity.user_id,
-          is_guest: identity.is_guest,
-        });
-
-        if (error) {
-          console.error("Error auto-uniendo jugador:", error);
-          return false;
-        }
-
-        await touchRoomActivity();
-
-        savePlayerIdentity(currentRoom.code, finalName, false);
-        setCurrentPlayerName(finalName);
-        return true;
-      } finally {
-        setJoiningInvite(false);
-      }
     },
-    [supabase, resolveCurrentPlayerFromList, touchRoomActivity],
+    [supabase, resolveCurrentPlayerFromList],
   );
 
   useEffect(() => {
@@ -587,78 +325,32 @@ export default function SalaPage() {
   useEffect(() => {
     if (!code) return;
 
-    const channel = supabase
-      .channel(`sala-${code}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "room_players",
-          filter: `room_code=eq.${code}`,
-        },
-        async () => {
-          await fetchPlayers(playerIdentityRef.current);
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "rooms",
-          filter: `code=eq.${code}`,
-        },
-        async (payload) => {
-          const nextRoom = payload.new as Room | null;
-
-          if (nextRoom) {
-            setRoom(nextRoom);
-
-            if (nextRoom.game_slug) {
-              await fetchGame(nextRoom.game_slug);
-            }
-
-            if (nextRoom.status === "closed") {
-              const me = players.find((p) => p.player_name === currentPlayerName);
-
-              if (!me?.is_host) {
-                window.alert("El host cerró la sala. Serás enviado al inicio.");
-              }
-
-              setTimeout(() => {
-                router.replace("/");
-              }, 100);
-
-              return;
-            }
-
-            if (nextRoom.status === "playing") {
-              router.replace(`/juego/${code}`);
-            }
-          } else {
-            const freshRoom = await fetchRoom();
-
-            if (freshRoom?.game_slug) {
-              await fetchGame(freshRoom.game_slug);
-            }
-          }
-        },
-      )
-      .subscribe();
+    const channel = subscribeToRoomRealtime({
+      supabase,
+      code,
+      router,
+      players,
+      currentPlayerName,
+      setRoom,
+      fetchPlayers: async () => fetchPlayers(playerIdentityRef.current),
+      fetchRoom,
+      fetchGame,
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
     };
   }, [
     supabase,
     code,
-    fetchPlayers,
-    fetchRoom,
-    fetchGame,
     router,
     players,
     currentPlayerName,
+    fetchPlayers,
+    fetchRoom,
+    fetchGame,
   ]);
 
   useEffect(() => {
@@ -670,174 +362,72 @@ export default function SalaPage() {
   useEffect(() => {
     if (!code || !currentPlayerName || players.length === 0) return;
 
-    const me = players.find((p) => p.player_name === currentPlayerName);
+    const me = players.find((player) => player.player_name === currentPlayerName);
     if (!me) return;
 
-    savePlayerIdentity(code, me.player_name, me.is_host);
+    saveRoomPlayerIdentity(code, me.player_name, me.is_host);
   }, [code, players, currentPlayerName]);
 
   const handleSelectIdentity = (playerName: string) => {
-    const me = players.find((p) => p.player_name === playerName);
-    savePlayerIdentity(code, playerName, !!me?.is_host);
+    const me = players.find((player) => player.player_name === playerName);
+    saveRoomPlayerIdentity(code, playerName, !!me?.is_host);
     setCurrentPlayerName(playerName);
   };
 
   const handleBackHome = async () => {
-    if (!room) {
-      router.push("/");
-      return;
-    }
-
-    try {
-      const me =
-        currentPlayer ??
-        players.find((p) => p.player_name === currentPlayerName) ??
-        null;
-
-      if (isHost) {
-        const { error: closeError } = await supabase
-          .from("rooms")
-          .update({
-            status: "closed",
-            last_activity_at: new Date().toISOString(),
-          })
-          .eq("code", code);
-
-        if (closeError) {
-          console.error("Error cerrando sala:", closeError);
-        }
-
-        const { error: deleteAllError } = await supabase
-          .from("room_players")
-          .delete()
-          .eq("room_code", code);
-
-        if (deleteAllError) {
-          console.error("Error borrando jugadores de sala:", deleteAllError);
-        }
-
-        router.push("/");
-        return;
-      }
-
-      if (me?.id) {
-        const { error: deleteError } = await supabase
-          .from("room_players")
-          .delete()
-          .eq("id", me.id);
-
-        if (deleteError) {
-          console.error("Error borrando jugador:", deleteError);
-        }
-      }
-
-      const remainingPlayers = await fetchPlayers(playerIdentityRef.current);
-
-      if (remainingPlayers.length === 0) {
-        await supabase
-          .from("rooms")
-          .update({
-            status: "closed",
-            last_activity_at: new Date().toISOString(),
-          })
-          .eq("code", code);
-      } else {
-        await touchRoomActivity();
-      }
-
-      router.push("/");
-    } catch (error) {
-      console.error("Error saliendo de la sala:", error);
-      router.push("/");
-    }
+    await leaveRoom({
+      supabase,
+      router,
+      code,
+      room,
+      isHost,
+      currentPlayer,
+      currentPlayerName,
+      players,
+      playerIdentityRef,
+      fetchPlayers,
+    });
   };
 
   const handleToggleReady = async () => {
-    if (!currentPlayerName) return;
-
-    const me = players.find((p) => p.player_name === currentPlayerName);
-    if (!me) return;
-
-    const { error } = await supabase
-      .from("room_players")
-      .update({ is_ready: !me.is_ready })
-      .eq("id", me.id);
-
-    if (error) {
-      console.error("Error actualizando ready:", error);
-      return;
-    }
-
-    await touchRoomActivity();
+    await togglePlayerReady({
+      supabase,
+      code,
+      currentPlayerName,
+      players,
+    });
   };
 
   const handleChangeVariant = async (variantKey: string) => {
-    if (!room || !isHost) return;
-    if (room.status !== "waiting") return;
-    if (!room.game_slug) return;
-
-    const nextSettings = buildRoomSettings(
-      room.game_slug,
-      variantKey,
+    await changeRoomVariant({
+      supabase,
+      code,
+      room,
+      isHost,
       roomMaxPlayers,
-    );
-
-    const nextMaxPlayers =
-      typeof nextSettings.max_players === "number"
-        ? nextSettings.max_players
-        : roomMaxPlayers;
-
-    const { error } = await supabase
-      .from("rooms")
-      .update({
-        game_variant: variantKey,
-        room_settings: nextSettings,
-        max_players: nextMaxPlayers,
-        last_activity_at: new Date().toISOString(),
-      })
-      .eq("code", code);
-
-    if (error) {
-      console.error("Error cambiando variante:", error);
-    }
+      variantKey,
+    });
   };
 
   const handleStartGame = async () => {
-    if (!room || !isHost || !allReady || sortedPlayers.length < minPlayersToStart) {
-      return;
-    }
-
-    try {
-      setStarting(true);
-
-      const { error } = await supabase
-        .from("rooms")
-        .update({
-          status: "playing",
-          started_at: new Date().toISOString(),
-          last_activity_at: new Date().toISOString(),
-        })
-        .eq("code", code);
-
-      if (error) {
-        console.error("Error iniciando partida:", error);
-        return;
-      }
-
-      router.replace(`/juego/${code}`);
-    } finally {
-      setStarting(false);
-    }
+    await startRoomGame({
+      supabase,
+      router,
+      code,
+      room,
+      isHost,
+      allReady,
+      players: sortedPlayers,
+      minPlayersToStart,
+      setStarting,
+    });
   };
 
   const handleCopyCode = async () => {
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch (error) {
-      console.error("Error copiando código:", error);
-    }
+    await copyRoomCode({
+      code,
+      setCopied,
+    });
   };
 
   const needsAccess = !playerIdentity && !currentPlayerName;
@@ -889,303 +479,53 @@ export default function SalaPage() {
             <div className="absolute bottom-[-80px] right-[-40px] h-[220px] w-[220px] rounded-full bg-orange-400/10 blur-3xl" />
           </div>
 
-          <div className="relative flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
-            <div>
-              <div className="inline-flex items-center rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-orange-200">
-                Lobby
-              </div>
-
-              <h1 className="mt-4 text-4xl font-extrabold md:text-5xl">
-                {game?.name ?? "Sala"}
-              </h1>
-
-              <p className="mt-3 text-base text-white/70 md:text-lg">
-                {sortedPlayers.length}/{roomMaxPlayers}{" "}
-                {isVsBot ? "jugador" : "jugadores"} —{" "}
-                {joiningInvite
-                  ? "Uniéndote a la sala..."
-                  : starting
-                    ? "Iniciando partida..."
-                    : allReady
-                      ? "Todo listo"
-                      : sortedPlayers.length < minPlayersToStart
-                        ? "Esperando jugadores..."
-                        : "Esperando confirmación"}
-              </p>
-
-              <p className="mt-2 text-sm text-orange-200">
-                Variante activa:{" "}
-                <span className="font-bold text-white">{variantLabel}</span>
-              </p>
-
-              <p className="mt-2 text-sm text-white/55">
-                Tipo de sala:{" "}
-                <span className="font-bold text-white">
-                  {room.visibility === "public"
-                    ? "Pública 🌍"
-                    : room.visibility === "friends"
-                      ? "Solo amigos 👥"
-                      : "Privada 🔒"}
-                </span>
-              </p>
-
-              {isVsBot && (
-                <p className="mt-2 inline-flex rounded-full border border-cyan-400/25 bg-cyan-500/10 px-3 py-1 text-sm font-bold text-cyan-200">
-                  Modo contra bot · recompensa mínima 1 punto
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-4 xl:items-end">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="rounded-2xl bg-orange-500 px-5 py-3 text-xl font-extrabold tracking-[0.25em] text-black shadow-[0_0_25px_rgba(249,115,22,0.18)] sm:text-2xl">
-                  {room.code}
-                </div>
-
-                <button
-                  onClick={handleCopyCode}
-                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-bold text-white transition hover:bg-white/10"
-                >
-                  {copied ? "Copiado" : "Copiar código"}
-                </button>
-
-                <ShareRoomButton
-                  roomCode={room.code}
-                  roomUrl={
-                    typeof window !== "undefined"
-                      ? `${window.location.origin}/sala/${room.code}`
-                      : undefined
-                  }
-                  gameName={game?.name ?? "La Mesa Familiar"}
-                />
-              </div>
-            </div>
+          <div className="relative">
+            <RoomHeader
+              code={code}
+              room={room}
+              game={game}
+              copied={copied}
+              joiningInvite={joiningInvite}
+              starting={starting}
+              allReady={allReady}
+              sortedPlayersCount={sortedPlayers.length}
+              roomMaxPlayers={roomMaxPlayers}
+              minPlayersToStart={minPlayersToStart}
+              isVsBot={isVsBot}
+              variantLabel={variantLabel}
+              onCopyCode={handleCopyCode}
+            />
           </div>
 
-          {needsAccess && (
-            <div className="relative mt-8 rounded-[28px] border border-cyan-400/25 bg-cyan-500/10 p-6">
-              <p className="text-lg font-semibold text-cyan-300">
-                Para unirte a esta sala primero necesitas una identidad activa
-              </p>
-
-              <p className="mt-1 text-white/70">
-                Puedes iniciar sesión, crear tu cuenta o entrar como invitado.
-              </p>
-
-              <div className="mt-4 flex flex-wrap gap-3">
-                <Link
-                  href={`/acceso?next=${encodeURIComponent(`/sala/${code}`)}`}
-                  className="rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black transition hover:bg-orange-400"
-                >
-                  Continuar
-                </Link>
-
-                <Link
-                  href="/"
-                  className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-bold text-white transition hover:bg-white/10"
-                >
-                  Volver al inicio
-                </Link>
-              </div>
-            </div>
-          )}
-
-          {needsIdentitySelection && (
-            <div className="relative mt-8 rounded-[28px] border border-cyan-400/25 bg-cyan-500/10 p-6">
-              <p className="text-lg font-semibold text-cyan-300">
-                Este navegador todavía no sabe qué jugador eres
-              </p>
-
-              <p className="mt-1 text-white/70">
-                Selecciona tu identidad una sola vez en este navegador.
-              </p>
-
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                {sortedPlayers.map((player) => (
-                  <button
-                    key={player.id}
-                    onClick={() => handleSelectIdentity(player.player_name)}
-                    className="rounded-2xl border border-white/15 bg-white/10 px-4 py-4 text-left transition hover:bg-white/15"
-                  >
-                    <p className="text-lg font-bold">
-                      {player.player_name} {player.is_host ? "👑" : ""}
-                    </p>
-
-                    <p className="text-sm text-white/60">
-                      Usar esta identidad en este navegador
-                    </p>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          <RoomAccessNotice
+            code={code}
+            needsAccess={needsAccess}
+            needsIdentitySelection={needsIdentitySelection}
+            players={sortedPlayers}
+            onSelectIdentity={handleSelectIdentity}
+          />
 
           <div className="relative mt-8 grid gap-6 xl:grid-cols-[1.25fr_0.85fr]">
-            <div className="space-y-4">
-              {sortedPlayers.map((player) => {
-                const isMe = player.player_name === currentPlayerName;
-                const profile = player.user_id ? profilesMap[player.user_id] : null;
-                const avatar = getAvatarByKey(
-                  player.is_guest ? "avatar_guest" : profile?.avatar_key ?? "avatar_sun",
-                );
-                const frame = getFrameByKey(
-                  player.is_guest ? "frame_guest" : profile?.frame_key ?? "frame_orange",
-                );
-
-                return (
-                  <div
-                    key={player.id}
-                    className={`rounded-[26px] border px-5 py-5 transition ${
-                      player.is_ready
-                        ? "border-orange-400/30 bg-orange-500/10 shadow-[0_0_25px_rgba(249,115,22,0.12)]"
-                        : isMe
-                          ? "border-emerald-400/35 bg-emerald-500/10 shadow-[0_0_25px_rgba(16,185,129,0.08)]"
-                          : "border-white/10 bg-white/[0.03]"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex min-w-0 items-center gap-4">
-                        <PlayerAvatar avatar={avatar} frame={frame} size="md" />
-
-                        <div className="min-w-0">
-                          <p className="truncate text-2xl font-extrabold md:text-3xl">
-                            {player.player_name} {player.is_host ? "👑" : ""}
-                          </p>
-
-                          <p className="mt-1 text-sm text-white/60 md:text-base">
-                            {isMe
-                              ? "Tú"
-                              : player.is_guest
-                                ? "Invitado en sala"
-                                : "Jugador registrado"}
-                          </p>
-                        </div>
-                      </div>
-
-                      <span
-                        className={`shrink-0 rounded-full px-5 py-2 text-sm font-bold ${
-                          player.is_ready
-                            ? "bg-emerald-500/15 text-emerald-300"
-                            : "bg-white/10 text-white/60"
-                        }`}
-                      >
-                        {player.is_ready ? "Listo" : "No listo"}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {isVsBot && (
-                <div className="rounded-[26px] border border-cyan-400/20 bg-cyan-500/10 px-5 py-5">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-2xl font-extrabold md:text-3xl">
-                        Bot Familiar 🤖
-                      </p>
-                      <p className="mt-1 text-sm text-cyan-100/70 md:text-base">
-                        Rival automático
-                      </p>
-                    </div>
-
-                    <span className="rounded-full bg-cyan-500/15 px-5 py-2 text-sm font-bold text-cyan-200">
-                      Listo
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {!isVsBot &&
-                Array.from({
-                  length: Math.max(roomMaxPlayers - sortedPlayers.length, 0),
-                }).map((_, index) => (
-                  <div
-                    key={`empty-slot-${index}`}
-                    className="rounded-[26px] border border-dashed border-white/10 bg-white/[0.03] px-5 py-8 text-center text-white/50"
-                  >
-                    Esperando jugador...
-                  </div>
-                ))}
-            </div>
+            <PlayersList
+              players={sortedPlayers}
+              profilesMap={profilesMap}
+              currentPlayerName={currentPlayerName}
+              roomMaxPlayers={roomMaxPlayers}
+              isVsBot={isVsBot}
+            />
 
             <div className="space-y-6">
-              <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
-                <p className="text-xs font-bold uppercase tracking-[0.25em] text-orange-200">
-                  Preview
-                </p>
-
-                <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-800/60 p-6 text-center">
-                  <p className="text-lg font-bold text-white">
-                    {game?.name ?? "Juego"}
-                  </p>
-
-                  <p className="mt-2 text-sm text-white/60">
-                    Variante activa: {variantLabel}
-                  </p>
-
-                  {isHost && room?.status === "waiting" && availableVariants.length > 1 && (
-                    <div className="mt-4 flex flex-wrap justify-center gap-2">
-                      {availableVariants.map((variant) => (
-                        <button
-                          key={variant.key}
-                          type="button"
-                          onClick={() => handleChangeVariant(variant.key)}
-                          className={`rounded-xl px-3 py-2 text-sm font-bold transition ${
-                            room.game_variant === variant.key
-                              ? "bg-orange-500 text-black"
-                              : "bg-white/10 text-white hover:bg-white/20"
-                          }`}
-                        >
-                          {variant.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
-                <p className="text-xs font-bold uppercase tracking-[0.25em] text-orange-200">
-                  Estado
-                </p>
-
-                <div className="mt-4 space-y-3">
-                  <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
-                    <span className="text-sm text-white/60">
-                      {isVsBot ? "Jugador conectado" : "Jugadores conectados"}
-                    </span>
-                    <span className="font-bold">
-                      {sortedPlayers.length}/{roomMaxPlayers}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
-                    <span className="text-sm text-white/60">Juego</span>
-                    <span className="font-bold">{game?.name ?? "Sin seleccionar"}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
-                    <span className="text-sm text-white/60">Variante</span>
-                    <span className="font-bold">{variantLabel}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
-                    <span className="text-sm text-white/60">Tipo de sala</span>
-                    <span className="font-bold">
-                      {room.visibility === "public"
-                        ? "Pública"
-                        : room.visibility === "friends"
-                          ? "Solo amigos"
-                          : "Privada"}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
-                    <span className="text-sm text-white/60">Mínimo para iniciar</span>
-                    <span className="font-bold">{minPlayersToStart}</span>
-                  </div>
-                </div>
-              </div>
+              <RoomStatusCard
+                room={room}
+                game={game}
+                variantLabel={variantLabel}
+                roomMaxPlayers={roomMaxPlayers}
+                sortedPlayersCount={sortedPlayers.length}
+                minPlayersToStart={minPlayersToStart}
+                availableVariants={availableVariants}
+                isHost={isHost}
+                onChangeVariant={handleChangeVariant}
+              />
 
               {tutorialSteps.length > 0 && (
                 <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
@@ -1215,7 +555,7 @@ export default function SalaPage() {
                 disabled={needsIdentitySelection || !currentPlayerName || joiningInvite}
                 className="rounded-2xl bg-orange-500 px-6 py-3.5 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {players.find((p) => p.player_name === currentPlayerName)?.is_ready
+                {players.find((player) => player.player_name === currentPlayerName)?.is_ready
                   ? "Quitar listo"
                   : "Estoy listo"}
               </button>
