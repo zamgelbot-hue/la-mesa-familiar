@@ -1021,22 +1021,24 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
           primaryActionLabel={
   isHost
     ? allPlayersReadyForRematch
-      ? "Iniciar revancha"
+      ? `Iniciar revancha (${matchPlayers.filter((player) => player.is_rematch_ready).length}/${Math.max(matchPlayers.length, 2)})`
       : currentPlayerRematchReady
-        ? "Esperando rival..."
-        : "Quiero revancha"
+        ? `Esperando rival (${matchPlayers.filter((player) => player.is_rematch_ready).length}/${Math.max(matchPlayers.length, 2)})`
+        : `Quiero revancha (${matchPlayers.filter((player) => player.is_rematch_ready).length}/${Math.max(matchPlayers.length, 2)})`
     : currentPlayerRematchReady
-      ? "Esperando host..."
-      : "Quiero revancha"
+      ? `Esperando host (${matchPlayers.filter((player) => player.is_rematch_ready).length}/${Math.max(matchPlayers.length, 2)})`
+      : `Quiero revancha (${matchPlayers.filter((player) => player.is_rematch_ready).length}/${Math.max(matchPlayers.length, 2)})`
 }
 secondaryActionLabel="Volver a sala"
 onPrimaryAction={() => {
-  if (isHost) {
+  if (isHost && allPlayersReadyForRematch) {
     void handleRematch();
     return;
   }
 
-  void handleVoteRematch();
+  if (!currentPlayerRematchReady) {
+    void handleVoteRematch();
+  }
 }}
 onSecondaryAction={() => void handleBackToRoom()}
         />
