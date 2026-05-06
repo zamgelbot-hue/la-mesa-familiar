@@ -138,7 +138,7 @@ export const GAME_CONFIGS: Record<string, GameConfig> = {
   },
 
   "guerra-total": {
-    maxPlayersOptions: [1, 2],
+    maxPlayersOptions: [2],
     variants: [
       { key: "mar", label: "Mar", description: "Batalla clásica con flotas sobre el océano.", available: true },
       { key: "aire", label: "Aire", description: "Combate estratégico con escuadrones y radar.", available: true },
