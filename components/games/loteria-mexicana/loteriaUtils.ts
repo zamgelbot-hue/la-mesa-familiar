@@ -1,8 +1,11 @@
+// 📍 Ruta del archivo: components/games/loteria-mexicana/loteriaUtils.ts
+
 import type {
   LoteriaCardData,
   LoteriaCardVisualState,
   LoteriaDeckDefinition,
   LoteriaValidationResult,
+  LoteriaWinCondition,
   LoteriaWinningPattern,
 } from "./loteriaTypes";
 
@@ -234,10 +237,13 @@ export function resolveCardVisualState(params: {
   return "markable";
 }
 
+// 📍 Ruta del archivo: components/games/loteria-mexicana/loteriaUtils.ts
+
 export function validateLoteriaWin(
   boardCardKeys: string[],
   markedCardKeys: string[],
-  calledCardKeys: string[]
+  calledCardKeys: string[],
+  winCondition: LoteriaWinCondition = "line"
 ): LoteriaValidationResult {
   if (boardCardKeys.length !== BOARD_SIZE) {
     return {
@@ -251,10 +257,39 @@ export function validateLoteriaWin(
     markedCardKeys.filter((cardKey) => calledCardKeys.includes(cardKey))
   );
 
+  if (winCondition === "corners") {
+    const cornerIndexes = [0, 3, 12, 15];
+    const cornerCardKeys = getWinningLineCardKeys(boardCardKeys, cornerIndexes);
+
+    const isComplete = cornerCardKeys.every((cardKey) =>
+      validMarkedKeys.has(cardKey)
+    );
+
+    return {
+      isWinner: isComplete,
+      pattern: isComplete ? "corners" : null,
+      winningCardKeys: isComplete ? cornerCardKeys : [],
+    };
+  }
+
+  if (winCondition === "full_card") {
+    const isComplete = boardCardKeys.every((cardKey) =>
+      validMarkedKeys.has(cardKey)
+    );
+
+    return {
+      isWinner: isComplete,
+      pattern: isComplete ? "full_card" : null,
+      winningCardKeys: isComplete ? boardCardKeys : [],
+    };
+  }
+
   for (const line of WINNING_LINES) {
     const lineCardKeys = getWinningLineCardKeys(boardCardKeys, line.indexes);
 
-    const isComplete = lineCardKeys.every((cardKey) => validMarkedKeys.has(cardKey));
+    const isComplete = lineCardKeys.every((cardKey) =>
+      validMarkedKeys.has(cardKey)
+    );
 
     if (isComplete) {
       return {
@@ -272,12 +307,20 @@ export function validateLoteriaWin(
   };
 }
 
+// 📍 Ruta del archivo: components/games/loteria-mexicana/loteriaUtils.ts
+
 export function canClaimLoteria(
   boardCardKeys: string[],
   markedCardKeys: string[],
-  calledCardKeys: string[]
+  calledCardKeys: string[],
+  winCondition: LoteriaWinCondition = "line"
 ): boolean {
-  return validateLoteriaWin(boardCardKeys, markedCardKeys, calledCardKeys).isWinner;
+  return validateLoteriaWin(
+    boardCardKeys,
+    markedCardKeys,
+    calledCardKeys,
+    winCondition
+  ).isWinner;
 }
 
 export function getNextCalledCardKeys(
@@ -391,6 +434,10 @@ export function formatWinningPatternLabel(
       return "Diagonal principal";
     case "diagonal_anti":
       return "Diagonal invertida";
+    case "corners":
+      return "4 esquinas";
+    case "full_card":
+      return "Cartón lleno";
     default:
       return "Sin patrón";
   }

@@ -1,3 +1,5 @@
+// 📍 Ruta del archivo: components/games/loteria-mexicana/loteriaTypes.ts
+
 export type LoteriaCardData = {
   id: number;
   key: string;
@@ -17,11 +19,15 @@ export type LoteriaDeckDefinition = {
 
 export type LoteriaMatchStatus = "waiting" | "playing" | "finished";
 
+export type LoteriaWinCondition = "line" | "corners" | "full_card";
+
 export type LoteriaWinningPattern =
   | "row"
   | "column"
   | "diagonal_main"
-  | "diagonal_anti";
+  | "diagonal_anti"
+  | "corners"
+  | "full_card";
 
 export type LoteriaCardVisualState =
   | "idle"

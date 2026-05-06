@@ -26,6 +26,7 @@ import type {
   LoteriaGameProps,
   LoteriaMatchPlayerRow,
   LoteriaMatchRow,
+  LoteriaWinCondition,
 } from "./loteriaTypes";
 import {
   canClaimLoteria,
@@ -55,6 +56,8 @@ type RoomRow = {
   code: string;
   status: string;
   game_slug: string | null;
+  game_variant: string | null;
+  room_settings: Record<string, any> | null;
 };
 
 type RoomPlayerRow = {
@@ -71,6 +74,50 @@ type RoomPlayerRow = {
 const LOTERIA_DRAW_INTERVAL_MS = 5000;
 const LOTERIA_START_DELAY_MS = 2000;
 const DEFAULT_DECK_SLUG = "tradicional";
+
+function resolveLoteriaSettings(room: RoomRow | null): {
+  deckSlug: string;
+  winCondition: LoteriaWinCondition;
+  winConditionLabel: string;
+  boardSize: number;
+  boardCardCount: number;
+} {
+  const settings = room?.room_settings ?? {};
+  const rawVariant = room?.game_variant ?? "";
+
+  const deckSlug = String(settings.deck_slug ?? DEFAULT_DECK_SLUG);
+
+  const rawWinCondition = String(
+    settings.win_condition ??
+      (rawVariant === "clasica_esquinas"
+        ? "corners"
+        : rawVariant === "clasica_llena"
+          ? "full_card"
+          : "line")
+  );
+
+  const winCondition: LoteriaWinCondition =
+    rawWinCondition === "corners" || rawWinCondition === "full_card"
+      ? rawWinCondition
+      : "line";
+
+  const boardSize = Number(settings.board_size ?? 4);
+
+  const winConditionLabel =
+    winCondition === "corners"
+      ? "4 esquinas"
+      : winCondition === "full_card"
+        ? "Cartón lleno"
+        : "Línea clásica";
+
+  return {
+    deckSlug,
+    winCondition,
+    winConditionLabel,
+    boardSize,
+    boardCardCount: boardSize * boardSize,
+  };
+}
 
 export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
   const router = useRouter();
@@ -103,8 +150,14 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
   const lastWinnerRef = useRef<string | null>(null);
   const rewardsAppliedMatchIdRef = useRef<string | null>(null);
 
-  const deckSlug = match?.deck_slug ?? DEFAULT_DECK_SLUG;
+  const loteriaSettings = useMemo(() => resolveLoteriaSettings(room), [room]);
+
+  const deckSlug = match?.deck_slug ?? loteriaSettings.deckSlug;
   const deck = useMemo(() => getLoteriaDeckBySlug(deckSlug), [deckSlug]);
+
+  const winCondition = loteriaSettings.winCondition;
+  const winConditionLabel = loteriaSettings.winConditionLabel;
+  const boardCardCount = loteriaSettings.boardCardCount;
 
   const currentRoomPlayer = useMemo(() => {
     if (!playerIdentity) return null;
@@ -157,10 +210,11 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
       currentMatchPlayer.board_card_keys ?? [],
       localMarkedCardKeys,
       calledCardKeys,
+      winCondition
     );
 
     return result.winningCardKeys;
-  }, [match, currentMatchPlayer, localMarkedCardKeys, calledCardKeys]);
+  }, [match, currentMatchPlayer, localMarkedCardKeys, calledCardKeys, winCondition]);
 
   const remainingCount = useMemo(() => {
     return getRemainingCardCount(deck, calledCardKeys);
@@ -192,11 +246,12 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
     if (!currentMatchPlayer) return false;
 
     return canClaimLoteria(
-      currentMatchPlayer.board_card_keys ?? [],
-      localMarkedCardKeys,
-      calledCardKeys,
-    );
-  }, [currentMatchPlayer, localMarkedCardKeys, calledCardKeys]);
+  currentMatchPlayer.board_card_keys ?? [],
+  localMarkedCardKeys,
+  calledCardKeys,
+  winCondition,
+);
+  }, [currentMatchPlayer, localMarkedCardKeys, calledCardKeys, winCondition]);
 
   const gameStatusLabel = useMemo(() => {
     if (!match) return "Preparando partida";
@@ -213,7 +268,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
   const loadRoom = useCallback(async () => {
     const { data, error } = await supabase
       .from("rooms")
-      .select("code, status, game_slug")
+      .select("code, status, game_slug, game_variant, room_settings")
       .eq("code", roomCode)
       .maybeSingle();
 
@@ -318,7 +373,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
         .from("loteria_matches")
         .insert({
           room_code: roomCode,
-          deck_slug: DEFAULT_DECK_SLUG,
+          deck_slug: loteriaSettings.deckSlug,
           status: "waiting",
           draw_order: drawOrder,
           called_card_keys: [],
@@ -342,7 +397,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
         room_code: roomCode,
         user_id: player.user_id,
         player_name: player.player_name,
-        board_card_keys: generateBoardCardKeys(deck),
+        board_card_keys: generateBoardCardKeys(deck, boardCardCount),
         marked_card_keys: [],
         has_claimed: false,
         is_rematch_ready: false,
@@ -364,14 +419,16 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
     }
   }, [
     room,
-    playerIdentity,
-    isHost,
-    roomPlayers,
-    match,
-    deck,
-    roomCode,
-    supabase,
-    loadMatchPlayers,
+  playerIdentity,
+  isHost,
+  roomPlayers,
+  match,
+  deck,
+  roomCode,
+  supabase,
+  loadMatchPlayers,
+  loteriaSettings.deckSlug,
+  boardCardCount,
   ]);
 
   const awardLoteriaPoints = useCallback(
@@ -616,10 +673,11 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
         currentMatchPlayer.board_card_keys ?? [],
         mergedMarked,
         calledCardKeys,
+        winCondition
       );
 
       if (!result.isWinner) {
-        setMessage("Aún no completas una línea válida.");
+        setMessage(`Aún no completas el objetivo: ${winConditionLabel}.`);
         return;
       }
 
@@ -749,7 +807,7 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
 
       const resetRows = playersNow.map((player) => ({
         id: player.id,
-        board_card_keys: generateBoardCardKeys(deck),
+        board_card_keys: generateBoardCardKeys(deck, boardCardCount),
         marked_card_keys: [],
         has_claimed: false,
         is_rematch_ready: false,
@@ -1045,7 +1103,7 @@ onSecondaryAction={() => void handleBackToRoom()}
 
         <LoteriaHeader
           roomCode={roomCode}
-          deckName={deck.name}
+          deckName={`${deck.name} · ${winConditionLabel}`}
           gameStatusLabel={gameStatusLabel}
           isHost={isHost}
           leavingToRoom={leavingToRoom}
@@ -1108,10 +1166,10 @@ onSecondaryAction={() => void handleBackToRoom()}
                 claiming
               }
               helperText={
-                canCurrentPlayerClaim
-                  ? "Tu tablero tiene una línea válida. ¡Puedes reclamar tu victoria!"
-                  : "Marca a tiempo las cartas cantadas. Si pasan 2 turnos sin marcarlas, se perderán."
-              }
+  canCurrentPlayerClaim
+    ? `Tu tablero cumple el objetivo: ${winConditionLabel}. ¡Puedes reclamar tu victoria!`
+    : `Objetivo: ${winConditionLabel}. Marca a tiempo las cartas cantadas.`
+}
             />
 
             <LoteriaCalledCards

@@ -19,18 +19,49 @@ type MemoramaVariantSettings = {
 };
 
 export const GAME_CONFIGS: Record<string, GameConfig> = {
+  // 📍 Ruta del archivo: lib/games/gameCatalog.ts
+
   "loteria-mexicana": {
-    maxPlayersOptions: [2, 4, 6],
+    maxPlayersOptions: [2, 3, 4, 5, 6, 7, 8],
     variants: [
-      { key: "clasica", label: "Clásica", description: "La versión tradicional de siempre.", available: true },
-      { key: "familia-palomares", label: "Familia Palomares", description: "Edición especial próximamente.", available: false },
-      { key: "comidas-mexicanas", label: "Comidas Mexicanas", description: "Nueva variante próximamente.", available: false },
+      {
+        key: "clasica_linea",
+        label: "Clásica - Línea",
+        description: "Gana completando una línea horizontal, vertical o diagonal.",
+        available: true,
+      },
+      {
+        key: "clasica_esquinas",
+        label: "Clásica - 4 esquinas",
+        description: "Gana marcando las cuatro esquinas del tablero.",
+        available: true,
+      },
+      {
+        key: "clasica_llena",
+        label: "Clásica - Cartón lleno",
+        description: "Gana llenando todo tu tablero.",
+        available: true,
+      },
+
+      {
+        key: "familia_palomares",
+        label: "Familia Palomares",
+        description: "Nueva baraja familiar personalizada.",
+        available: false,
+      },
+      {
+        key: "comidas_mexicanas",
+        label: "Comidas Mexicanas",
+        description: "Baraja temática de comida mexicana.",
+        available: false,
+      },
     ],
     tutorial: [
-      "Escucha las cartas que se van cantando",
-      "Marca tu tablero si tienes la carta",
-      "No puedes marcar cartas incorrectas",
-      "Completa tu tablero para ganar",
+      "Escucha la carta cantada",
+      "Marca las cartas que aparezcan en tu tablero",
+      "Solo tienes pocos turnos para marcar una carta llamada",
+      "Reclama Lotería cuando completes el modo de victoria",
+      "Gana quien complete primero el objetivo",
     ],
   },
 
@@ -243,13 +274,23 @@ export function buildRoomSettings(
   variantKey: string,
   maxPlayers: number,
 ) {
+  // 📍 Ruta del archivo: lib/games/gameCatalog.ts
+
   if (gameSlug === "loteria-mexicana") {
+    const winCondition =
+      variantKey === "clasica_esquinas"
+        ? "corners"
+        : variantKey === "clasica_llena"
+          ? "full_card"
+          : "line";
+
     return {
-      mode: "standard",
-      deck_variant: variantKey,
+      mode: "loteria",
+      deck_slug: "tradicional",
+      win_condition: winCondition,
       board_size: 4,
-      win_condition: "tabla",
-      max_players: maxPlayers,
+      max_players: selectedPlayers,
+      min_players: 2,
     };
   }
 
