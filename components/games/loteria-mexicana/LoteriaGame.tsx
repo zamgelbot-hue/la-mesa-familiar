@@ -1018,10 +1018,27 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
           }
           winnerName={winnerLabel}
           resultText="Lotería Mexicana finalizada"
-          primaryActionLabel="Quiero revancha"
-          secondaryActionLabel="Volver a sala"
-          onPrimaryAction={() => void handleVoteRematch()}
-          onSecondaryAction={() => void handleBackToRoom()}
+          primaryActionLabel={
+  isHost
+    ? allPlayersReadyForRematch
+      ? "Iniciar revancha"
+      : currentPlayerRematchReady
+        ? "Esperando rival..."
+        : "Quiero revancha"
+    : currentPlayerRematchReady
+      ? "Esperando host..."
+      : "Quiero revancha"
+}
+secondaryActionLabel="Volver a sala"
+onPrimaryAction={() => {
+  if (isHost) {
+    void handleRematch();
+    return;
+  }
+
+  void handleVoteRematch();
+}}
+onSecondaryAction={() => void handleBackToRoom()}
         />
 
         <LoteriaHeader
