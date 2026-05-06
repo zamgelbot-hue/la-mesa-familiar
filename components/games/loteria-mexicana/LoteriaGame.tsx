@@ -961,6 +961,18 @@ export default function LoteriaGame({ roomCode }: LoteriaGameProps) {
   }, [supabase, roomCode, loadRoom, loadRoomPlayers, loadMatch]);
 
   useEffect(() => {
+  if (!room) return;
+
+  if (room.status === "waiting") {
+    router.replace(`/sala/${roomCode}`);
+  }
+
+  if (room.status === "closed") {
+    router.replace("/");
+  }
+}, [room?.status, router, roomCode]);
+
+  useEffect(() => {
     if (!match?.id) return;
 
     const playersChannel = supabase
