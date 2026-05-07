@@ -12,6 +12,7 @@ import GatoGame from "@/components/games/gato/GatoGame";
 import PersonajeSecretoGame from "@/components/games/personaje-secreto/PersonajeSecretoGame";
 import GuerraTotalGame from "@/components/games/guerra-total/GuerraTotalGame";
 import MemoramaGame from "@/components/games/memorama/MemoramaGame";
+import SecuenciaOcultaGame from "@/components/games/secuencia-oculta/SecuenciaOcultaGame";
 
 type RoomRow = {
   code: string;
@@ -221,6 +222,16 @@ export default function JuegoPage() {
     />
   );
 }
+
+if (room.game_slug === "secuencia-oculta") {
+    return (
+      <SecuenciaOcultaGame
+        roomCode={code}
+        roomVariant={room.game_variant}
+        roomSettings={room.room_settings}
+      />
+    );
+  }
 
   return (
     <main className="min-h-screen bg-black px-6 py-12 text-white">
