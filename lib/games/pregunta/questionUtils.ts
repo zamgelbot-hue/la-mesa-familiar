@@ -75,6 +75,8 @@ export function categoryLabel(category: QuestionCategory): string {
       return "Geografía";
     case "ciencias":
       return "Ciencias";
+    case "astronomia":
+      return "Astronomía";
     case "sabelotodo":
       return "¡Sabelotodo!";
     default:

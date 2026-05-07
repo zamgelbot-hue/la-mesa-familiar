@@ -120,6 +120,7 @@ function getCategoryFromVariantOrSettings(
     "ingles",
     "geografia",
     "ciencias",
+    "astronomia",
     "sabelotodo",
   ];
 
