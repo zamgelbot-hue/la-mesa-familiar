@@ -348,3 +348,62 @@ export function buildRoomSettings(
     min_players: 2,
   };
 }
+export const GAME_CONFIGS = GAME_CATALOG;
+
+export function getDefaultVariantForGame(
+  gameSlug: string,
+): string {
+  return (
+    GAME_CATALOG[gameSlug]?.variants.find(
+      (variant) => variant.available !== false,
+    )?.key ??
+    GAME_CATALOG[gameSlug]?.variants[0]?.key ??
+    "default"
+  );
+}
+
+export function getDefaultMaxPlayersForGame(
+  gameSlug: string,
+): number {
+  return GAME_CATALOG[gameSlug]?.maxPlayersOptions[0] ?? 2;
+}
+
+export function getAvailableVariantsForGame(
+  gameSlug: string,
+): GameVariant[] {
+  return (
+    GAME_CATALOG[gameSlug]?.variants.filter(
+      (variant) => variant.available !== false,
+    ) ?? []
+  );
+}
+
+export function getVariantLabel(
+  gameSlug: string,
+  variantKey?: string | null,
+): string {
+  if (!variantKey) return "Clásico";
+
+  return (
+    GAME_CATALOG[gameSlug]?.variants.find(
+      (variant) => variant.key === variantKey,
+    )?.label ?? variantKey
+  );
+}
+
+export function getGameIcon(
+  gameSlug: string,
+): string {
+  const icons: Record<string, string> = {
+    ppt: "✊",
+    "loteria-mexicana": "🎴",
+    "pregunta-pregunta": "❓",
+    gato: "⭕",
+    "personaje-secreto": "🕵️",
+    "guerra-total": "💥",
+    memorama: "🧠",
+    "secuencia-oculta": "🔢",
+  };
+
+  return icons[gameSlug] ?? "🎲";
+}
