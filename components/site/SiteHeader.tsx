@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import SettingsModal from "@/components/settings/SettingsModal";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profile/profileCosmetics";
@@ -33,6 +33,7 @@ export default function SiteHeader({
   showLoginButton = false,
 }: SiteHeaderProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const supabase = createClient();
 
   const [pendingRoomInvites, setPendingRoomInvites] = useState(0);
@@ -44,6 +45,16 @@ export default function SiteHeader({
   const selectedFrame = getFrameByKey(playerIdentity?.frame_key);
 
   const totalNotifications = pendingRoomInvites + pendingFriendRequests;
+
+  const getAccessPath = () => {
+    const nextPath = pathname && pathname !== "/acceso" ? pathname : "/";
+    return `/acceso?next=${encodeURIComponent(nextPath)}`;
+  };
+
+  const handleLoginClick = () => {
+    router.push(getAccessPath());
+    setMenuOpen(false);
+  };
 
   const loadSocialNotifications = useCallback(async () => {
     if (!playerIdentity?.user_id || playerIdentity.is_guest) {
@@ -150,7 +161,7 @@ export default function SiteHeader({
             ) : (
               showLoginButton && (
                 <button
-                  onClick={() => router.push("/")}
+                  onClick={handleLoginClick}
                   className="rounded-2xl bg-orange-500 px-5 py-2.5 font-bold text-black hover:bg-orange-400"
                 >
                   Iniciar sesión
@@ -176,21 +187,22 @@ export default function SiteHeader({
           {menuOpen && (
             <div className="absolute right-6 top-20 z-50 w-72 rounded-3xl border border-white/10 bg-zinc-950 p-4 shadow-xl">
               <MenuButton label="🎲 Juegos" onClick={() => goTo("/#juegos")} />
-              <MenuButton
-                label="📘 Tutoriales"
-                onClick={() => goTo("/tutoriales")}
-              />
+              <MenuButton label="📘 Tutoriales" onClick={() => goTo("/tutoriales")} />
               <MenuButton label="+ Crear sala" onClick={() => goTo("/crear")} />
 
               <div className="my-2 border-t border-white/10" />
 
-              <MenuButton label="👤 Perfil" onClick={() => goTo("/perfil")} />
-              <MenuButton label="👥 Amigos" onClick={() => goTo("/amigos")} />
+              {playerIdentity ? (
+                <>
+                  <MenuButton label="👤 Perfil" onClick={() => goTo("/perfil")} />
+                  <MenuButton label="👥 Amigos" onClick={() => goTo("/amigos")} />
+                </>
+              ) : (
+                <MenuButton label="🔐 Iniciar sesión" onClick={handleLoginClick} />
+              )}
+
               <MenuButton label="🏆 Ranking" onClick={() => goTo("/ranking")} />
-              <MenuButton
-                label="🛒 Tienda"
-                onClick={() => goTo("/perfil?tab=shop")}
-              />
+              <MenuButton label="🛒 Tienda" onClick={() => goTo("/perfil?tab=shop")} />
 
               <button
                 onClick={() => {
