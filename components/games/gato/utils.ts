@@ -74,7 +74,10 @@ export function getModeConfig(
   roomVariant?: string | null,
   roomSettings?: Record<string, any> | null,
 ) {
-  const isVsBot = roomSettings?.vs_bot === true || roomVariant === "bot_clasico";
+  const isVsBot =
+  roomSettings?.vs_bot === true ||
+  roomVariant === "vs_bot" ||
+  roomVariant === "bot_clasico";
 
   const boardSizeFromSettings = Number(roomSettings?.board_size ?? 0);
   const winLengthFromSettings = Number(roomSettings?.win_length ?? 0);

@@ -83,7 +83,10 @@ export default function GatoGame({
   const supabase = supabaseRef.current;
 
   const code = String(roomCode ?? "").toUpperCase();
-  const isVsBot = roomSettings?.vs_bot === true || roomVariant === "bot_clasico";
+  const isVsBot =
+  roomSettings?.vs_bot === true ||
+  roomVariant === "vs_bot" ||
+  roomVariant === "bot_clasico";
 
   const { boardSize, winLength, bonusWinLength, modeLabel } = useMemo(
     () => getModeConfig(roomVariant, roomSettings),

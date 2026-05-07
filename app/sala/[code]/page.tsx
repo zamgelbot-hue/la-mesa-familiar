@@ -86,7 +86,11 @@ export default function SalaPage() {
   }, [sortedPlayers, currentPlayerName]);
 
   const isHost = !!currentPlayer?.is_host;
-  const isVsBot = room?.room_settings?.vs_bot === true;
+  const isVsBot =
+  room?.room_settings?.vs_bot === true ||
+  ["vs_bot", "bot_bo3", "bot_clasico"].includes(
+    String(room?.game_variant ?? ""),
+  );
   const roomMaxPlayers = isVsBot ? 1 : room?.max_players ?? game?.max_players ?? 2;
   const minPlayersToStart = isVsBot ? 1 : game?.min_players ?? 2;
   const variantLabel = getVariantLabel(room?.game_slug, room?.game_variant);
