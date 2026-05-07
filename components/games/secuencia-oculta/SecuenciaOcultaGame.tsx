@@ -220,18 +220,6 @@ export default function SecuenciaOcultaGame({
     setRoomPlayers((data ?? []) as RoomPlayerRow[]);
   }, [supabase, roomCode]);
 
-  const ensureGameState = useCallback(async () => {
-    if (!room || players.length < 1) return;
-
-    const saved = room.room_settings?.secuencia_oculta;
-
-    if (saved?.cells?.length) return;
-
-    await updateGameState(() =>
-      createInitialSecuenciaGameState(roomVariant, players),
-    );
-  }, [room, players, roomVariant, updateGameState]);
-
   const playToneSequence = (
     notes: number[],
     type: OscillatorType = "triangle",
@@ -449,8 +437,33 @@ export default function SecuenciaOcultaGame({
   }, [room?.status, router, roomCode]);
 
   useEffect(() => {
-    void ensureGameState();
-  }, [ensureGameState]);
+  if (!room) return;
+  if (players.length < 1) return;
+
+  const existing =
+    room.room_settings?.secuencia_oculta;
+
+  if (existing?.cells?.length) {
+    return;
+  }
+
+  if (!isHost) {
+    return;
+  }
+
+  void updateGameState(() =>
+    createInitialSecuenciaGameState(
+      roomVariant,
+      players,
+    ),
+  );
+}, [
+  room,
+  players,
+  isHost,
+  roomVariant,
+  updateGameState,
+]);
 
   if (loading) {
     return (
