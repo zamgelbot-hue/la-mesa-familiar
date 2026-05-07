@@ -205,14 +205,27 @@ export async function togglePlayerReady(params: {
 }) {
   const { supabase, code, currentPlayerName, players } = params;
 
-  if (!currentPlayerName) return;
+  if (!currentPlayerName) {
+    console.error("No currentPlayerName");
+    return;
+  }
 
-  const me = players.find((player) => player.player_name === currentPlayerName);
-  if (!me) return;
+  const me = players.find(
+    (player) => player.player_name === currentPlayerName,
+  );
+
+  if (!me) {
+    console.error("No se encontró jugador actual:", currentPlayerName);
+    return;
+  }
+
+  const nextReady = !me.is_ready;
 
   const { error } = await supabase
     .from("room_players")
-    .update({ is_ready: !me.is_ready })
+    .update({
+      is_ready: nextReady,
+    })
     .eq("id", me.id);
 
   if (error) {

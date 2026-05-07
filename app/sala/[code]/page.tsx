@@ -10,7 +10,10 @@ import RoomHeader from "@/components/room/RoomHeader";
 import RoomStatusCard from "@/components/room/RoomStatusCard";
 import PlayersList from "@/components/room/PlayersList";
 import { createClient } from "@/lib/supabase/client";
-import { getPlayerIdentity, type PlayerIdentity } from "@/lib/profile/getPlayerIdentity";
+import {
+  getPlayerIdentity,
+  type PlayerIdentity,
+} from "@/lib/profile/getPlayerIdentity";
 import {
   GAME_CONFIGS,
   getAvailableVariantsForGame,
@@ -132,6 +135,7 @@ export default function SalaPage() {
   const fetchGame = useCallback(
     async (gameSlug?: string | null) => {
       const slugToLoad = gameSlug ?? room?.game_slug;
+
       const nextGame = await fetchGameBySlug({
         supabase,
         gameSlug: slugToLoad,
@@ -201,7 +205,9 @@ export default function SalaPage() {
       await fetchProfilesForPlayers(list);
 
       const identityToUse =
-        identityOverride !== undefined ? identityOverride : playerIdentityRef.current;
+        identityOverride !== undefined
+          ? identityOverride
+          : playerIdentityRef.current;
 
       resolveCurrentPlayerFromList(list, identityToUse);
 
@@ -265,7 +271,12 @@ export default function SalaPage() {
           await fetchGame(loadedRoom.game_slug);
         }
 
-        const joined = await autoJoinIfNeeded(loadedRoom, loadedPlayers, identity);
+        const joined = await autoJoinIfNeeded(
+          loadedRoom,
+          loadedPlayers,
+          identity,
+        );
+
         if (!active) return;
 
         if (joined) {
@@ -274,6 +285,7 @@ export default function SalaPage() {
         }
       } catch (error) {
         console.error("Error inicializando sala:", error);
+
         if (active) {
           setErrorMessage("No se pudo cargar la sala correctamente.");
         }
@@ -329,10 +341,10 @@ export default function SalaPage() {
       supabase,
       code,
       router,
-      players,
-      currentPlayerName,
       setRoom,
-      fetchPlayers: async () => fetchPlayers(playerIdentityRef.current),
+      fetchPlayers: async () => {
+        await fetchPlayers(playerIdentityRef.current);
+      },
       fetchRoom,
       fetchGame,
     });
@@ -342,16 +354,7 @@ export default function SalaPage() {
         supabase.removeChannel(channel);
       }
     };
-  }, [
-    supabase,
-    code,
-    router,
-    players,
-    currentPlayerName,
-    fetchPlayers,
-    fetchRoom,
-    fetchGame,
-  ]);
+  }, [supabase, code, router, fetchPlayers, fetchRoom, fetchGame]);
 
   useEffect(() => {
     if (room?.status === "playing") {
@@ -444,7 +447,9 @@ export default function SalaPage() {
     return (
       <main className="min-h-screen bg-black px-6 py-8 text-white">
         <div className="mx-auto max-w-6xl rounded-[34px] border border-red-500/20 bg-red-500/10 p-10 text-center">
-          <p className="text-3xl font-bold text-red-300">No encontramos esta sala.</p>
+          <p className="text-3xl font-bold text-red-300">
+            No encontramos esta sala.
+          </p>
 
           <button
             onClick={() => void handleBackHome()}
@@ -536,7 +541,7 @@ export default function SalaPage() {
                   <ul className="mt-4 space-y-2">
                     {tutorialSteps.map((step, index) => (
                       <li
-                        key={index}
+                        key={`${step}-${index}`}
                         className="rounded-xl bg-white/5 px-4 py-3 text-sm text-white/80"
                       >
                         {index + 1}. {step}
@@ -555,7 +560,8 @@ export default function SalaPage() {
                 disabled={needsIdentitySelection || !currentPlayerName || joiningInvite}
                 className="rounded-2xl bg-orange-500 px-6 py-3.5 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {players.find((player) => player.player_name === currentPlayerName)?.is_ready
+                {players.find((player) => player.player_name === currentPlayerName)
+                  ?.is_ready
                   ? "Quitar listo"
                   : "Estoy listo"}
               </button>
@@ -570,7 +576,11 @@ export default function SalaPage() {
                 }
                 className="rounded-2xl bg-orange-900/70 px-6 py-3.5 font-bold text-orange-100 transition hover:bg-orange-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {starting ? "Iniciando..." : isVsBot ? "Iniciar contra bot" : "Iniciar partida"}
+                {starting
+                  ? "Iniciando..."
+                  : isVsBot
+                    ? "Iniciar contra bot"
+                    : "Iniciar partida"}
               </button>
             </div>
           )}

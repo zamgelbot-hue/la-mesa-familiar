@@ -2,16 +2,14 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
-import type { Game, Room, RoomPlayer } from "./roomTypes";
+import type { Game, Room } from "./roomTypes";
 
 export function subscribeToRoomRealtime(params: {
   supabase: SupabaseClient;
   code: string;
   router: AppRouterInstance;
-  players: RoomPlayer[];
-  currentPlayerName: string;
   setRoom: (room: Room) => void;
-  fetchPlayers: () => Promise<RoomPlayer[]>;
+  fetchPlayers: () => Promise<void>;
   fetchRoom: () => Promise<Room | null>;
   fetchGame: (gameSlug?: string | null) => Promise<Game | null>;
 }) {
@@ -19,8 +17,6 @@ export function subscribeToRoomRealtime(params: {
     supabase,
     code,
     router,
-    players,
-    currentPlayerName,
     setRoom,
     fetchPlayers,
     fetchRoom,
@@ -62,23 +58,13 @@ export function subscribeToRoomRealtime(params: {
           }
 
           if (nextRoom.status === "closed") {
-            const me = players.find(
-              (player) => player.player_name === currentPlayerName,
-            );
-
-            if (!me?.is_host) {
-              window.alert("El host cerró la sala. Serás enviado al inicio.");
-            }
-
-            setTimeout(() => {
-              router.replace("/");
-            }, 100);
-
+            router.replace("/");
             return;
           }
 
           if (nextRoom.status === "playing") {
             router.replace(`/juego/${code}`);
+            return;
           }
 
           return;

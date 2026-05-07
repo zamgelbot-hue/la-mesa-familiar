@@ -98,21 +98,60 @@ export const GAME_CATALOG: GameCatalog = {
   },
 
   "pregunta-pregunta": {
-    maxPlayersOptions: [2, 3, 4, 5, 6],
-    variants: [
-      {
-        key: "clasico",
-        label: "Clásico",
-        description: "Trivia clásica por rondas.",
-        available: true,
-      },
-    ],
-    tutorial: [
-      "Lee la pregunta",
-      "Selecciona tu respuesta antes del tiempo límite",
-      "Gana quien consiga más puntos",
-    ],
-  },
+  maxPlayersOptions: [2, 3, 4, 5, 6],
+  variants: [
+    {
+      key: "sabelotodo",
+      label: "Sabelotodo",
+      description:
+        "Preguntas mezcladas de todas las categorías.",
+      available: true,
+    },
+    {
+      key: "espanol",
+      label: "Español",
+      description:
+        "Ortografía, gramática y comprensión.",
+      available: true,
+    },
+    {
+      key: "matematicas",
+      label: "Matemáticas",
+      description:
+        "Operaciones, lógica y problemas rápidos.",
+      available: true,
+    },
+    {
+      key: "ingles",
+      label: "Inglés",
+      description:
+        "Vocabulario y traducciones.",
+      available: true,
+    },
+    {
+      key: "geografia",
+      label: "Geografía",
+      description:
+        "Países, capitales y mapas.",
+      available: true,
+    },
+    {
+      key: "ciencias",
+      label: "Ciencias",
+      description:
+        "Naturaleza, química y física básica.",
+      available: true,
+    },
+  ],
+  tutorial: [
+    "Lee rápidamente la pregunta",
+    "Todos responden al mismo tiempo",
+    "Las respuestas permanecen ocultas",
+    "El tiempo afecta los puntos obtenidos",
+    "Las respuestas correctas dan bonus",
+    "Gana quien consiga más puntos al final",
+  ],
+},
 
   gato: {
     maxPlayersOptions: [2],
