@@ -1,3 +1,10 @@
+// 📍 Ruta del archivo: lib/audio/useGameSounds.ts
+
+import {
+  areEffectsEnabled,
+  areSoundsEnabled,
+} from "@/lib/audio/audioSettings";
+
 type SoundKey =
   | "round_start"
   | "timer_warning"
@@ -19,6 +26,13 @@ const SOUND_PATHS: Record<SoundKey, string> = {
   victory: "/audio/pregunta/victory.mp3",
 };
 
+const EFFECT_SOUNDS: SoundKey[] = [
+  "correct",
+  "wrong",
+  "reveal",
+  "victory",
+];
+
 export function createGameSounds(options?: CreateGameSoundsOptions) {
   const cache = new Map<SoundKey, HTMLAudioElement>();
   const baseVolume = options?.baseVolume ?? 0.7;
@@ -37,6 +51,8 @@ export function createGameSounds(options?: CreateGameSoundsOptions) {
   }
 
   function preloadAll() {
+    if (!areSoundsEnabled()) return;
+
     (Object.keys(SOUND_PATHS) as SoundKey[]).forEach((key) => {
       const audio = getAudio(key);
       audio.load();
@@ -44,6 +60,14 @@ export function createGameSounds(options?: CreateGameSoundsOptions) {
   }
 
   function play(key: SoundKey, volume?: number) {
+    if (!areSoundsEnabled()) return;
+
+    const isEffect = EFFECT_SOUNDS.includes(key);
+
+    if (isEffect && !areEffectsEnabled()) {
+      return;
+    }
+
     const audio = getAudio(key);
 
     audio.pause();
@@ -55,6 +79,7 @@ export function createGameSounds(options?: CreateGameSoundsOptions) {
 
   function stop(key: SoundKey) {
     const audio = cache.get(key);
+
     if (!audio) return;
 
     audio.pause();
