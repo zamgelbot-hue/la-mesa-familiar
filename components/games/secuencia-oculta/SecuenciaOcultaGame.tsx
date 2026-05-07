@@ -273,12 +273,17 @@ if (savedState) {
     playToneSequence([523.25, 659.25, 783.99, 1046.5], "triangle", 0.18, 0.2);
 
   const handleCellClick = async (cell: SecuenciaCell) => {
-    if (!currentPlayerKey || !currentRoomPlayer) return;
-    if (gameState.phase !== "playing") return;
-    if (!isMyTurn) return;
-    if (saving || hidingRef.current) return;
+  if (!currentPlayerKey || !currentRoomPlayer) return;
+  if (gameState.phase !== "playing") return;
+  if (!isMyTurn) return;
+  if (saving || hidingRef.current) return;
 
-    const expected = gameState.nextNumber;
+  let wasCorrect = false;
+  let wasWinner = false;
+  let failedState: SecuenciaGameState | null = null;
+
+  await updateGameState((current) => {
+    const expected = current.nextNumber;
     const correct = cell.value === expected;
 
     const move: SecuenciaMove = {
@@ -291,54 +296,64 @@ if (savedState) {
     };
 
     if (correct) {
-      await updateGameState((current) => {
-        const winner = expected >= current.maxNumber;
+      const winner = expected >= current.maxNumber;
 
-        return {
-          ...current,
-          phase: winner ? "finished" : current.phase,
-          winnerKey: winner ? currentPlayerKey : current.winnerKey,
-          winnerName: winner
-            ? currentRoomPlayer.player_name
-            : current.winnerName,
-          nextNumber: winner ? current.nextNumber : current.nextNumber + 1,
-          cells: revealCell(clearFailedCells(current.cells), cell.id),
-          moves: [move, ...(current.moves ?? [])],
-        };
-      });
+      wasCorrect = true;
+      wasWinner = winner;
 
-      if (expected >= gameState.maxNumber) {
-        playWinSound();
-      } else {
-        playCorrectSound();
-      }
-
-      return;
+      return {
+        ...current,
+        phase: winner ? "finished" : current.phase,
+        winnerKey: winner ? currentPlayerKey : current.winnerKey,
+        winnerName: winner ? currentRoomPlayer.player_name : current.winnerName,
+        nextNumber: winner ? current.nextNumber : current.nextNumber + 1,
+        cells: revealCell(clearFailedCells(current.cells), cell.id),
+        moves: [move, ...(current.moves ?? [])],
+      };
     }
 
     const nextPlayer = getNextPlayer(players, currentPlayerKey);
 
-    await updateGameState((current) => ({
+    failedState = {
       ...current,
+      nextNumber: 1,
       currentTurnKey: nextPlayer?.key ?? current.currentTurnKey,
       currentTurnName: nextPlayer?.name ?? current.currentTurnName,
-      cells: markFailedCell(current.cells, cell.id),
+      cells: markFailedCell(clearFailedCells(current.cells), cell.id),
       moves: [move, ...(current.moves ?? [])],
-    }));
+    };
 
-    playFailSound();
+    return failedState;
+  });
 
-    hidingRef.current = true;
+  if (wasCorrect) {
+    if (wasWinner) {
+      playWinSound();
+    } else {
+      playCorrectSound();
+    }
 
-    window.setTimeout(() => {
-      void updateGameState((current) => ({
-        ...current,
-        cells: hideAllCells(current.cells),
-      })).finally(() => {
-        hidingRef.current = false;
-      });
-    }, FAIL_HIDE_DELAY_MS);
-  };
+    return;
+  }
+
+  playFailSound();
+  hidingRef.current = true;
+
+  window.setTimeout(() => {
+    if (!failedState) {
+      hidingRef.current = false;
+      return;
+    }
+
+    void updateGameState(() => ({
+      ...failedState!,
+      cells: hideAllCells(failedState!.cells),
+      nextNumber: 1,
+    })).finally(() => {
+      hidingRef.current = false;
+    });
+  }, FAIL_HIDE_DELAY_MS);
+};
 
   const handleRematch = async () => {
     await updateGameState(() =>

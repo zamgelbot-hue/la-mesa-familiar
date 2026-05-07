@@ -60,7 +60,10 @@ export function createInitialSecuenciaGameState(
   const cleanVariant = normalizeSecuenciaVariant(variant);
   const boardSize = getBoardSizeFromVariant(cleanVariant);
   const maxNumber = boardSize * boardSize;
-  const firstPlayer = players[0] ?? null;
+  const firstPlayer =
+    players.length > 0
+      ? players[Math.floor(Math.random() * players.length)]
+      : null;
 
   return {
     phase: "playing",
