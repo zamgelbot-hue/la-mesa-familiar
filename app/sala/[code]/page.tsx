@@ -378,6 +378,7 @@ export default function SalaPage() {
   };
 
   const handleBackHome = async () => {
+  try {
     await leaveRoom({
       supabase,
       router,
@@ -390,7 +391,13 @@ export default function SalaPage() {
       playerIdentityRef,
       fetchPlayers,
     });
-  };
+
+    router.replace("/");
+  } catch (error) {
+    console.error("Error volviendo al home:", error);
+    router.replace("/");
+  }
+};
 
   const handleToggleReady = async () => {
     await togglePlayerReady({

@@ -47,7 +47,7 @@ import QuestionStatusPanel from "./QuestionStatusPanel";
 import QuestionMessages from "./QuestionMessages";
 import QuestionBoard from "./QuestionBoard";
 import QuestionScoreboard from "./QuestionScoreboard";
-import QuestionFinal from "./QuestionFinal";
+import { GameResultOverlay } from "@/components/games/core";
 
 type QuestionGameProps = {
   roomCode: string;
@@ -1019,15 +1019,34 @@ export default function QuestionGame({
               currentPlayerSessionKey={currentPlayerSessionKey}
             />
 
-            {phase === "finished" && (
-              <QuestionFinal
-                players={sortedPlayers}
-                isHost={isHost}
-                leavingToRoom={leavingToRoom}
-                onTerminateMatch={() => void handleTerminateMatch()}
-                onBackToRoom={() => void handleBackToRoom()}
-              />
-            )}
+            <GameResultOverlay
+  show={phase === "finished"}
+  tone={
+    sortedPlayers[0]?.playerId === currentPlayerSessionKey
+      ? "win"
+      : "lose"
+  }
+  title={
+    sortedPlayers[0]?.playerId === currentPlayerSessionKey
+      ? "¡Ganaste la partida!"
+      : "Partida terminada"
+  }
+  subtitle={
+    sortedPlayers[0]
+      ? `${sortedPlayers[0].name} ganó Pregunta Pregunta`
+      : "La partida ha terminado."
+  }
+  resultText={`Tu puntuación: ${
+    sortedPlayers.find((player) => player.playerId === currentPlayerSessionKey)
+      ?.score ?? 0
+  } puntos`}
+  winnerName={sortedPlayers[0]?.name ?? null}
+  pointsText="Recompensas calculadas según posición, aciertos y desempeño."
+  primaryActionLabel="Volver a sala"
+  secondaryActionLabel={isHost ? "Terminar partida" : undefined}
+  onPrimaryAction={() => void handleBackToRoom()}
+  onSecondaryAction={isHost ? () => void handleTerminateMatch() : undefined}
+/>
           </div>
         </div>
       </div>

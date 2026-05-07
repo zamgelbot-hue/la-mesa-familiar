@@ -1,3 +1,5 @@
+// 📍 Ruta del archivo: lib/games/pregunta/questionProfileRewards.ts
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { applyRewardsEngine } from "@/lib/rewards/rewardEngine";
 import type { FinalStanding, GlobalRewardBreakdown } from "./questionTypes";
@@ -14,17 +16,13 @@ function calculateSmartPreguntaReward(
   const accuracy = totalAnswers > 0 ? correctAnswers / totalAnswers : 0;
 
   const accuracyMultiplier =
-    accuracy >= 0.8 ? 1.3 :
-    accuracy >= 0.6 ? 1.15 :
-    1;
+    accuracy >= 0.8 ? 1.3 : accuracy >= 0.6 ? 1.15 : 1;
 
   const placementMultiplier =
-    player.position === 1 ? 1.2 :
-    player.position === 2 ? 1.1 :
-    1;
+    player.position === 1 ? 1.2 : player.position === 2 ? 1.1 : 1;
 
   return Math.round(
-    reward.totalReward * accuracyMultiplier * placementMultiplier
+    reward.totalReward * accuracyMultiplier * placementMultiplier,
   );
 }
 
@@ -48,6 +46,7 @@ export async function applyQuestionGameProfileRewards(
 
   await applyRewardsEngine({
     supabase,
+    gameType: "pregunta-pregunta",
     players: registeredStandings
       .map((player) => {
         const reward = rewardMap.get(player.playerId);
