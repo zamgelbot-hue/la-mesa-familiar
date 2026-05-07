@@ -113,7 +113,7 @@ export default function SiteHeader({
             </button>
 
             <button
-              onClick={() => router.push("/#como-funciona")}
+              onClick={() => router.push("/tutoriales")}
               className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white hover:bg-white/10"
             >
               Tutoriales
@@ -178,7 +178,7 @@ export default function SiteHeader({
               <MenuButton label="🎲 Juegos" onClick={() => goTo("/#juegos")} />
               <MenuButton
                 label="📘 Tutoriales"
-                onClick={() => goTo("/#como-funciona")}
+                onClick={() => goTo("/tutoriales")}
               />
               <MenuButton label="+ Crear sala" onClick={() => goTo("/crear")} />
 
