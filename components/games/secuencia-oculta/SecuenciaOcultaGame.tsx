@@ -133,22 +133,21 @@ export default function SecuenciaOcultaGame({
   );
 
   const extractGameState = useCallback(
-    (settings: Record<string, any> | null | undefined) => {
-      const saved = settings?.secuencia_oculta;
+  (settings: Record<string, any> | null | undefined) => {
+    const saved = settings?.secuencia_oculta;
 
-      if (!saved) {
-        return createInitialSecuenciaGameState(roomVariant, players);
-      }
+    if (!saved) {
+      return null;
+    }
 
-      return {
-        ...createInitialSecuenciaGameState(roomVariant, players),
-        ...saved,
-        cells: saved.cells ?? [],
-        moves: saved.moves ?? [],
-      } as SecuenciaGameState;
-    },
-    [roomVariant, players],
-  );
+    return {
+      ...saved,
+      cells: saved.cells ?? [],
+      moves: saved.moves ?? [],
+    } as SecuenciaGameState;
+  },
+  [],
+);
 
   const updateGameState = useCallback(
     async (updater: (current: SecuenciaGameState) => SecuenciaGameState) => {
@@ -157,8 +156,11 @@ export default function SecuenciaOcultaGame({
       setSaving(true);
 
       const currentSettings = room.room_settings ?? {};
-      const currentState = extractGameState(currentSettings);
-      const nextState = updater(currentState);
+      const currentState =
+  extractGameState(currentSettings) ??
+  createInitialSecuenciaGameState(roomVariant, players);
+
+const nextState = updater(currentState);
 
       const nextSettings = {
         ...currentSettings,
@@ -199,8 +201,14 @@ export default function SecuenciaOcultaGame({
 
     if (!data) return;
 
-    setRoom(data as RoomRow);
-    setGameState(extractGameState(data.room_settings));
+    const nextRoom = data as RoomRow;
+const savedState = extractGameState(nextRoom.room_settings);
+
+setRoom(nextRoom);
+
+if (savedState) {
+  setGameState(savedState);
+}
   }, [supabase, roomCode, extractGameState]);
 
   const loadRoomPlayers = useCallback(async () => {
@@ -381,14 +389,15 @@ export default function SecuenciaOcultaGame({
   };
 
   useEffect(() => {
-    const boot = async () => {
-      setLoading(true);
-      await Promise.all([loadRoomPlayers(), loadRoom()]);
-      setLoading(false);
-    };
+  const boot = async () => {
+    setLoading(true);
+    await Promise.all([loadRoomPlayers(), loadRoom()]);
+    setLoading(false);
+  };
 
-    void boot();
-  }, [loadRoom, loadRoomPlayers]);
+  void boot();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
 
   useEffect(() => {
     const channel = supabase
