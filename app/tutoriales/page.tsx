@@ -1,7 +1,15 @@
 // 📍 Ruta del archivo: app/tutoriales/page.tsx
 
+"use client";
+
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import SiteHeader from "@/components/site/SiteHeader";
+import { createClient } from "@/lib/supabase/client";
+import {
+  getPlayerIdentity,
+  type PlayerIdentity,
+} from "@/lib/profile/getPlayerIdentity";
 
 const tutorialSections = [
   {
@@ -55,12 +63,51 @@ const tutorialSections = [
 ];
 
 export default function TutorialesPage() {
+  const supabaseRef = useRef(createClient());
+  const supabase = supabaseRef.current;
+
+  const [playerIdentity, setPlayerIdentity] =
+    useState<PlayerIdentity | null>(null);
+
+  const [signingOut, setSigningOut] = useState(false);
+
+  useEffect(() => {
+    async function loadIdentity() {
+      const identity = await getPlayerIdentity();
+      setPlayerIdentity(identity);
+    }
+
+    void loadIdentity();
+  }, []);
+
+  const handleSignOut = async () => {
+    try {
+      setSigningOut(true);
+
+      await supabase.auth.signOut();
+
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("lmf:guest-profile");
+        sessionStorage.removeItem("lmf:guest-profile");
+      }
+
+      setPlayerIdentity(null);
+
+      window.location.href = "/";
+    } finally {
+      setSigningOut(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-black text-white">
       <SiteHeader
+        playerIdentity={playerIdentity}
+        onSignOut={playerIdentity ? handleSignOut : undefined}
+        signingOut={signingOut}
         showHomeButton
-        showProfileButton
-        showLoginButton
+        showProfileButton={!!playerIdentity}
+        showLoginButton={!playerIdentity}
       />
 
       <section className="mx-auto max-w-7xl px-6 py-16">

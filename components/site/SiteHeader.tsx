@@ -150,7 +150,7 @@ export default function SiteHeader({
             ) : (
               showLoginButton && (
                 <button
-                  onClick={() => router.push("/login")}
+                  onClick={() => router.push("/auth")}
                   className="rounded-2xl bg-orange-500 px-5 py-2.5 font-bold text-black hover:bg-orange-400"
                 >
                   Iniciar sesión

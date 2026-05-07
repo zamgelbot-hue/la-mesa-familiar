@@ -45,7 +45,9 @@ export default function CreateRoomConfigurator({
   const visual = getGameVisualInfo(selectedGame?.slug ?? "");
 
   const selectedVariant =
-    selectedGameConfig?.variants.find((variant) => variant.key === selectedVariantKey) ??
+    selectedGameConfig?.variants.find(
+      (variant) => variant.key === selectedVariantKey,
+    ) ??
     selectedGameConfig?.variants[0] ??
     null;
 
@@ -72,6 +74,7 @@ export default function CreateRoomConfigurator({
           </p>
         ) : (
           <>
+            {/* 🎮 CARD PRINCIPAL */}
             <div className="mt-5 rounded-[28px] border border-white/10 bg-black/35 p-5">
               <div className="flex items-start gap-4">
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-black/40 text-4xl">
@@ -104,40 +107,7 @@ export default function CreateRoomConfigurator({
               </div>
             </div>
 
-            <div className="mt-6">
-              <p className="text-xs font-black uppercase tracking-[0.2em] text-white/45">
-                Variante
-              </p>
-
-              <div className="mt-3 grid max-h-[280px] gap-2 overflow-y-auto pr-1">
-                {(selectedGameConfig?.variants ?? []).map((variant) => {
-                  const available = variant.available !== false;
-                  const selected = selectedVariantKey === variant.key;
-
-                  return (
-                    <button
-                      key={variant.key}
-                      type="button"
-                      disabled={!available}
-                      onClick={() => onVariantChange(variant.key)}
-                      className={`rounded-2xl border px-4 py-3 text-left transition ${
-                        !available
-                          ? "cursor-not-allowed border-white/10 bg-white/[0.03] opacity-50"
-                          : selected
-                            ? "border-orange-500/45 bg-orange-500/15"
-                            : "border-white/10 bg-black/30 hover:bg-white/[0.07]"
-                      }`}
-                    >
-                      <p className="font-black text-white">{variant.label}</p>
-                      <p className="mt-1 text-sm text-white/50">
-                        {variant.description}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
+            {/* 👥 JUGADORES */}
             <div className="mt-6">
               <p className="text-xs font-black uppercase tracking-[0.2em] text-white/45">
                 Jugadores
@@ -163,6 +133,45 @@ export default function CreateRoomConfigurator({
               </div>
             </div>
 
+            {/* 🧩 VARIANTES */}
+            <div className="mt-6">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-white/45">
+                Variante
+              </p>
+
+              <div className="mt-3 grid max-h-[280px] gap-2 overflow-y-auto pr-1">
+                {(selectedGameConfig?.variants ?? []).map((variant) => {
+                  const available = variant.available !== false;
+                  const selected = selectedVariantKey === variant.key;
+
+                  return (
+                    <button
+                      key={variant.key}
+                      type="button"
+                      disabled={!available}
+                      onClick={() => onVariantChange(variant.key)}
+                      className={`rounded-2xl border px-4 py-3 text-left transition ${
+                        !available
+                          ? "cursor-not-allowed border-white/10 bg-white/[0.03] opacity-50"
+                          : selected
+                            ? "border-orange-500/45 bg-orange-500/15"
+                            : "border-white/10 bg-black/30 hover:bg-white/[0.07]"
+                      }`}
+                    >
+                      <p className="font-black text-white">
+                        {variant.label}
+                      </p>
+
+                      <p className="mt-1 text-sm text-white/50">
+                        {variant.description}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 🌍 TIPO SALA */}
             <div className="mt-6">
               <p className="text-xs font-black uppercase tracking-[0.2em] text-white/45">
                 Tipo de sala
@@ -173,24 +182,29 @@ export default function CreateRoomConfigurator({
                   {
                     key: "private",
                     label: "Privada 🔒",
-                    description: "Solo entra quien tenga el código.",
+                    description:
+                      "Solo entra quien tenga el código.",
                   },
                   {
                     key: "public",
                     label: "Pública 🌍",
-                    description: "Aparece en salas abiertas.",
+                    description:
+                      "Aparece en salas abiertas.",
                   },
                   {
                     key: "friends",
                     label: "Solo amigos 👥",
-                    description: "Visible para tus amigos.",
+                    description:
+                      "Visible para tus amigos.",
                   },
                 ].map((option) => (
                   <button
                     key={option.key}
                     type="button"
                     onClick={() =>
-                      onRoomVisibilityChange(option.key as RoomVisibility)
+                      onRoomVisibilityChange(
+                        option.key as RoomVisibility,
+                      )
                     }
                     className={`rounded-2xl border px-4 py-3 text-left transition ${
                       roomVisibility === option.key
@@ -198,7 +212,10 @@ export default function CreateRoomConfigurator({
                         : "border-white/10 bg-black/30 hover:bg-white/[0.07]"
                     }`}
                   >
-                    <p className="font-black text-white">{option.label}</p>
+                    <p className="font-black text-white">
+                      {option.label}
+                    </p>
+
                     <p className="mt-1 text-sm text-white/50">
                       {option.description}
                     </p>
@@ -207,20 +224,25 @@ export default function CreateRoomConfigurator({
               </div>
             </div>
 
+            {/* 📋 RESUMEN */}
             <div className="mt-6 rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-white/65">
               <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">
                 Resumen
               </p>
 
               <p className="mt-2">
-                <span className="font-black text-white">{selectedGame.name}</span>
+                <span className="font-black text-white">
+                  {selectedGame.name}
+                </span>
                 {" · "}
                 {selectedVariant?.label ?? "Variante"}
                 {" · "}
-                {maxPlayers} jugador{maxPlayers !== 1 ? "es" : ""}
+                {maxPlayers} jugador
+                {maxPlayers !== 1 ? "es" : ""}
               </p>
             </div>
 
+            {/* 🚀 CREAR */}
             <button
               type="button"
               disabled={creating || !canCreate}
