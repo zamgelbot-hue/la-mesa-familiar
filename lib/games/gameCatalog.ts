@@ -136,6 +136,13 @@ export const GAME_CATALOG: GameCatalog = {
       available: true,
     },
     {
+      key: "astronomia",
+      label: "Astronomía",
+      description:
+      "Planetas, estrellas y misterios del espacio.",
+      available: true,
+    },
+    {
       key: "sabelotodo",
       label: "Sabelotodo",
       description:

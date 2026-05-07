@@ -4,6 +4,7 @@ export type QuestionCategory =
   | "ingles"
   | "geografia"
   | "ciencias"
+  | "astronomia"
   | "sabelotodo";
 
 export type QuestionDifficulty = "facil" | "media" | "dificil";
