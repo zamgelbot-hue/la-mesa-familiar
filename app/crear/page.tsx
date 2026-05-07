@@ -22,6 +22,11 @@ import type { Game, OpenRoom, RoomVisibility } from "@/lib/home/homeTypes";
 import { createHomeRoom, joinHomeRoom } from "@/lib/home/homeRoomActions";
 import { loadFriendRooms, loadPublicRooms } from "@/lib/home/homeRoomQueries";
 
+function getConfigSlug(slug: string) {
+  if (slug === "piedra-papel-o-tijera") return "ppt";
+  return slug;
+}
+
 export default function CrearPage() {
   const router = useRouter();
   const supabaseRef = useRef(createClient());
@@ -63,8 +68,8 @@ export default function CrearPage() {
   }, [visibleGames, selectedGameSlug]);
 
   const selectedGameConfig = useMemo(() => {
-    return GAME_CONFIGS[selectedGameSlug] ?? null;
-  }, [selectedGameSlug]);
+  return GAME_CONFIGS[getConfigSlug(selectedGameSlug)] ?? null;
+}, [selectedGameSlug]);
 
   const loadPlayerIdentity = useCallback(async () => {
     const identity = await getPlayerIdentity();
@@ -91,8 +96,10 @@ export default function CrearPage() {
 
     if (firstAvailable) {
       setSelectedGameSlug(firstAvailable.slug);
-      setSelectedVariantKey(getDefaultVariantForGame(firstAvailable.slug));
-      setMaxPlayers(getDefaultMaxPlayersForGame(firstAvailable.slug));
+      const configSlug = getConfigSlug(firstAvailable.slug);
+
+setSelectedVariantKey(getDefaultVariantForGame(configSlug));
+setMaxPlayers(getDefaultMaxPlayersForGame(configSlug));
     }
   }, [supabase]);
 
@@ -132,8 +139,10 @@ export default function CrearPage() {
 
   const handleSelectGame = (slug: string) => {
     setSelectedGameSlug(slug);
-    setSelectedVariantKey(getDefaultVariantForGame(slug));
-    setMaxPlayers(getDefaultMaxPlayersForGame(slug));
+    const configSlug = getConfigSlug(slug);
+
+setSelectedVariantKey(getDefaultVariantForGame(configSlug));
+setMaxPlayers(getDefaultMaxPlayersForGame(configSlug));
     setRoomVisibility("private");
   };
 
