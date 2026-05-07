@@ -1,3 +1,5 @@
+// 📍 Ruta del archivo: components/games/pregunta/QuestionGame.tsx
+
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -30,6 +32,7 @@ import {
   buildRoundQuestionSet,
   calculateResponseTimeMs,
   getRemainingMs,
+  mapQuestionRowToRoundQuestion,
 } from "@/lib/games/pregunta/questionUtils";
 import type {
   QuestionCategory,
@@ -38,6 +41,13 @@ import type {
   QuestionPlayerSummary,
   QuestionRow,
 } from "@/lib/games/pregunta/questionTypes";
+
+import QuestionHeader from "./QuestionHeader";
+import QuestionStatusPanel from "./QuestionStatusPanel";
+import QuestionMessages from "./QuestionMessages";
+import QuestionBoard from "./QuestionBoard";
+import QuestionScoreboard from "./QuestionScoreboard";
+import QuestionFinal from "./QuestionFinal";
 
 type QuestionGameProps = {
   roomCode: string;
@@ -99,7 +109,8 @@ function getCategoryFromVariantOrSettings(
   roomSettings?: Record<string, unknown> | null,
 ): QuestionCategory {
   const raw =
-    (typeof roomSettings?.categoryMode === "string" && roomSettings.categoryMode) ||
+    (typeof roomSettings?.categoryMode === "string" &&
+      roomSettings.categoryMode) ||
     roomVariant ||
     "sabelotodo";
 
@@ -152,17 +163,23 @@ export default function QuestionGame({
     return getAnswerTimeForMode(categoryMode);
   }, [roomSettings, categoryMode]);
 
-  const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(null);
+  const [playerIdentity, setPlayerIdentity] =
+    useState<PlayerIdentity | null>(null);
   const [room, setRoom] = useState<RoomRow | null>(null);
   const [roomPlayers, setRoomPlayers] = useState<RoomPlayerRow[]>([]);
   const [session, setSession] = useState<SessionRow | null>(null);
-  const [sessionPlayers, setSessionPlayers] = useState<QuestionPlayerSummary[]>([]);
+  const [sessionPlayers, setSessionPlayers] = useState<QuestionPlayerSummary[]>(
+    [],
+  );
   const [questionBank, setQuestionBank] = useState<QuestionRow[]>([]);
   const [roundQuestions, setRoundQuestions] = useState<QuestionForRound[]>([]);
-  const [currentQuestion, setCurrentQuestion] = useState<QuestionForRound | null>(null);
+  const [currentQuestion, setCurrentQuestion] =
+    useState<QuestionForRound | null>(null);
   const [phase, setPhase] = useState<QuestionGamePhase>("waiting");
   const [timeLeftMs, setTimeLeftMs] = useState(0);
-  const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | null>(null);
+  const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [leavingToRoom, setLeavingToRoom] = useState(false);
   const [message, setMessage] = useState("");
@@ -204,7 +221,8 @@ export default function QuestionGame({
     return host.user_id ?? `guest:${host.player_name}`;
   }, [roomPlayers]);
 
-  const currentPlayerName = currentRoomPlayer?.player_name ?? playerIdentity?.name ?? "Jugador";
+  const currentPlayerName =
+    currentRoomPlayer?.player_name ?? playerIdentity?.name ?? "Jugador";
 
   const sortedPlayers = useMemo(
     () =>
@@ -244,7 +262,9 @@ export default function QuestionGame({
   const loadRoomPlayers = useCallback(async () => {
     const { data, error } = await supabase
       .from("room_players")
-      .select("id, room_code, user_id, player_name, is_host, is_guest, is_ready, created_at")
+      .select(
+        "id, room_code, user_id, player_name, is_host, is_guest, is_ready, created_at",
+      )
       .eq("room_code", roomCode)
       .order("created_at", { ascending: true });
 
@@ -265,7 +285,9 @@ export default function QuestionGame({
 
       const dbPlayers = await fetchSessionPlayers(supabase, sessionId);
 
-      const mapped: QuestionPlayerSummary[] = (dbPlayers as SessionPlayerRow[]).map((p) => ({
+      const mapped: QuestionPlayerSummary[] = (
+        dbPlayers as SessionPlayerRow[]
+      ).map((p) => ({
         playerId: p.player_id,
         name: p.display_name || "Jugador",
         score: p.current_score ?? 0,
@@ -310,13 +332,7 @@ export default function QuestionGame({
     });
 
     setQuestionBank(fetchedQuestions);
-
-    const stableRoundQuestions = buildRoundQuestionSet(
-      fetchedQuestions,
-      totalRounds,
-    );
-
-    setRoundQuestions(stableRoundQuestions);
+    setRoundQuestions(buildRoundQuestionSet(fetchedQuestions, totalRounds));
 
     return fetchedQuestions;
   }, [supabase, categoryMode, totalRounds]);
@@ -462,6 +478,7 @@ export default function QuestionGame({
           if (!questionBank.length) {
             await loadQuestionBank();
           }
+
           await ensureSessionPlayersExist(activeSession.id);
         }
       } catch (error) {
@@ -563,10 +580,32 @@ export default function QuestionGame({
     [roundQuestions],
   );
 
+  const getQuestionById = useCallback(
+    (questionId: string | null) => {
+      if (!questionId) return null;
+
+      const existingRoundQuestion = roundQuestions.find(
+        (question) => question.id === questionId,
+      );
+
+      if (existingRoundQuestion) return existingRoundQuestion;
+
+      const bankQuestion = questionBank.find((question) => question.id === questionId);
+
+      if (!bankQuestion) return null;
+
+      return mapQuestionRowToRoundQuestion(bankQuestion);
+    },
+    [questionBank, roundQuestions],
+  );
+
   useEffect(() => {
     if (!session?.current_round) return;
 
-    const q = getQuestionForRound(session.current_round);
+    const q =
+      getQuestionById(session.current_question_id) ??
+      getQuestionForRound(session.current_round);
+
     if (!q) return;
 
     setCurrentQuestion((prev) => {
@@ -575,7 +614,12 @@ export default function QuestionGame({
     });
 
     setSelectedOptionIndex(null);
-  }, [getQuestionForRound, session?.current_round]);
+  }, [
+    getQuestionById,
+    getQuestionForRound,
+    session?.current_round,
+    session?.current_question_id,
+  ]);
 
   useEffect(() => {
     if (!session?.id) return;
@@ -607,6 +651,7 @@ export default function QuestionGame({
       if (!session || !isHost) return;
 
       const nextQuestion = getQuestionForRound(roundNumber);
+
       if (!nextQuestion) {
         await updateQuestionSession(supabase, session.id, {
           status: "finished",
@@ -617,6 +662,7 @@ export default function QuestionGame({
 
       resolvedRoundKeyRef.current = null;
       warningPlayedRef.current = null;
+
       setCurrentQuestion(nextQuestion);
       setPhase("question");
       setSelectedOptionIndex(null);
@@ -767,16 +813,20 @@ export default function QuestionGame({
   useEffect(() => {
     if (!session) return;
 
-    if (phase === "waiting" && isHost && session.current_round === 0 && questionBank.length) {
+    if (
+      phase === "waiting" &&
+      isHost &&
+      session.current_round === 0 &&
+      questionBank.length
+    ) {
       void startRound(1);
       return;
     }
 
     if (phase === "question") {
-      const questionEndsAt =
-        session.round_started_at
-          ? new Date(session.round_started_at).getTime() + QUESTION_INTRO_MS
-          : Date.now() + QUESTION_INTRO_MS;
+      const questionEndsAt = session.round_started_at
+        ? new Date(session.round_started_at).getTime() + QUESTION_INTRO_MS
+        : Date.now() + QUESTION_INTRO_MS;
 
       const tick = () => {
         const ms = Math.max(0, questionEndsAt - Date.now());
@@ -795,7 +845,12 @@ export default function QuestionGame({
         setTimeLeftMs(ms);
 
         const warningKey = `${session.id}:${session.current_round}`;
-        if (ms <= 3000 && ms > 2000 && warningPlayedRef.current !== warningKey) {
+
+        if (
+          ms <= 3000 &&
+          ms > 2000 &&
+          warningPlayedRef.current !== warningKey
+        ) {
           soundsRef.current.play("timer_warning");
           warningPlayedRef.current = warningKey;
         }
@@ -824,7 +879,14 @@ export default function QuestionGame({
     if (phase === "finished") {
       setTimeLeftMs(0);
     }
-  }, [isHost, phase, questionBank.length, resolveCurrentRound, session, startRound]);
+  }, [
+    isHost,
+    phase,
+    questionBank.length,
+    resolveCurrentRound,
+    session,
+    startRound,
+  ]);
 
   const handleSelectOption = async (originalIndex: number) => {
     if (!session || !currentQuestion || !currentPlayerSessionKey) return;
@@ -832,7 +894,10 @@ export default function QuestionGame({
     if (selectedOptionIndex !== null) return;
 
     const answeredAt = new Date().toISOString();
-    const responseTimeMs = calculateResponseTimeMs(session.round_started_at, answeredAt);
+    const responseTimeMs = calculateResponseTimeMs(
+      session.round_started_at,
+      answeredAt,
+    );
     const isCorrect = originalIndex === currentQuestion.correctOriginalIndex;
 
     setSelectedOptionIndex(originalIndex);
@@ -914,274 +979,54 @@ export default function QuestionGame({
   return (
     <main className="min-h-screen bg-black px-4 py-6 text-white md:px-6 md:py-8">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-6 flex flex-col gap-4 rounded-[32px] border border-orange-500/15 bg-zinc-950/90 p-5 shadow-[0_0_40px_rgba(249,115,22,0.05)] md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-orange-300/80">
-              La Mesa Familiar
-            </p>
-            <h1 className="mt-1 text-3xl font-extrabold text-white">
-              Pregunta Pregunta
-            </h1>
-            <p className="mt-2 text-sm text-white/60">
-              Sala: <span className="font-bold text-orange-300">{roomCode}</span>
-            </p>
-            <p className="mt-1 text-sm text-white/60">
-              Modo: <span className="font-bold text-white">{categoryMode}</span>
-            </p>
-            <p className="mt-1 text-sm text-white/60">
-              Jugando como: <span className="font-bold text-white">{currentPlayerName}</span>
-            </p>
-          </div>
+        <QuestionHeader
+          roomCode={roomCode}
+          categoryMode={categoryMode}
+          currentPlayerName={currentPlayerName}
+          phase={phase}
+          timeLeftMs={timeLeftMs}
+          isHost={isHost}
+          leavingToRoom={leavingToRoom}
+          onTerminateMatch={() => void handleTerminateMatch()}
+          onBackToRoom={() => void handleBackToRoom()}
+        />
 
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-                Fase
-              </p>
-              <p className="mt-1 font-bold text-white">{phase}</p>
-            </div>
+        <QuestionStatusPanel
+          currentRound={session?.current_round ?? 0}
+          totalRounds={session?.total_rounds ?? totalRounds}
+          playersCount={sessionPlayers.length}
+          status={session?.status ?? "preparando"}
+          hasAnswered={selectedOptionIndex !== null}
+        />
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-                Tiempo
-              </p>
-              <p className="mt-1 font-bold text-orange-300">
-                {Math.max(0, Math.ceil(timeLeftMs / 1000))}
-              </p>
-            </div>
-
-            {isHost && (
-              <button
-                type="button"
-                onClick={() => void handleTerminateMatch()}
-                disabled={leavingToRoom}
-                className="rounded-2xl bg-red-500/90 px-4 py-3 font-semibold text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {leavingToRoom ? "Terminando..." : "Terminar partida"}
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => void handleBackToRoom()}
-              disabled={leavingToRoom}
-              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {leavingToRoom ? "Volviendo..." : "Volver a sala"}
-            </button>
-          </div>
-        </div>
-
-        <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-              Ronda
-            </p>
-            <p className="mt-1 text-lg font-bold text-white">
-              {session?.current_round ?? 0}/{session?.total_rounds ?? totalRounds}
-            </p>
-          </div>
-
-          <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-              Jugadores
-            </p>
-            <p className="mt-1 text-lg font-bold text-white">{sessionPlayers.length}</p>
-          </div>
-
-          <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-              Estado
-            </p>
-            <p className="mt-1 text-lg font-bold text-white">
-              {session?.status ?? "preparando"}
-            </p>
-          </div>
-
-          <div className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-              Respuesta
-            </p>
-            <p className="mt-1 text-lg font-bold text-orange-300">
-              {selectedOptionIndex !== null ? "Enviada" : "Pendiente"}
-            </p>
-          </div>
-        </div>
-
-        {errorMessage && (
-          <div className="mb-5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
-            {errorMessage}
-          </div>
-        )}
-
-        {message && (
-          <div className="mb-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-emerald-300">
-            {message}
-          </div>
-        )}
+        <QuestionMessages errorMessage={errorMessage} message={message} />
 
         <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
           <div className="space-y-6">
-            <div className="rounded-[30px] border border-orange-500/15 bg-zinc-950/90 p-6">
-              {!currentQuestion ? (
-                <div className="text-white/60">Esperando pregunta...</div>
-              ) : (
-                <>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs font-medium text-orange-300">
-                      {currentQuestion.category}
-                    </span>
-                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-neutral-300">
-                      {currentQuestion.difficulty}
-                    </span>
-                  </div>
-
-                  <h2 className="mt-4 text-2xl font-bold leading-snug">
-                    {currentQuestion.questionText}
-                  </h2>
-
-                  {phase === "question" ? (
-                    <div className="mt-6 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-6 text-center text-orange-200">
-                      Prepárate... las respuestas aparecerán en un momento.
-                    </div>
-                  ) : (
-                    <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                      {currentQuestion.options.map((option) => {
-                        const isSelected = selectedOptionIndex === option.originalIndex;
-                        const isRevealPhase =
-                          phase === "reveal" || phase === "scoreboard" || phase === "finished";
-                        const isCorrect =
-                          isRevealPhase &&
-                          option.originalIndex === currentQuestion.correctOriginalIndex;
-                        const isWrongSelected =
-                          isRevealPhase && isSelected && !isCorrect;
-
-                        return (
-                          <button
-                            key={option.id}
-                            type="button"
-                            disabled={phase !== "answer" || selectedOptionIndex !== null}
-                            onClick={() => void handleSelectOption(option.originalIndex)}
-                            className={[
-                              "min-h-[92px] rounded-2xl border px-4 py-4 text-left transition disabled:cursor-not-allowed",
-                              isCorrect
-                                ? "border-emerald-400/40 bg-emerald-500/20"
-                                : isWrongSelected
-                                  ? "border-red-400/40 bg-red-500/20"
-                                  : isSelected
-                                    ? "border-orange-400/40 bg-orange-500/20"
-                                    : "border-white/10 bg-white/5 hover:border-orange-400/30 hover:bg-orange-500/10",
-                            ].join(" ")}
-                          >
-                            <span className="text-base font-medium">{option.text}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {phase === "answer" && (
-                    <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
-                      Elige una opción antes de que termine el tiempo.
-                    </div>
-                  )}
-
-                  {phase === "reveal" && (
-                    <div className="mt-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-                      Respuesta correcta revelada.
-                    </div>
-                  )}
-
-                  {phase === "scoreboard" && (
-                    <div className="mt-5 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-sm text-orange-200">
-                      Preparando siguiente ronda...
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+            <QuestionBoard
+              currentQuestion={currentQuestion}
+              phase={phase}
+              selectedOptionIndex={selectedOptionIndex}
+              onSelectOption={(originalIndex) =>
+                void handleSelectOption(originalIndex)
+              }
+            />
           </div>
 
           <div className="space-y-6">
-            <div className="rounded-[30px] border border-white/10 bg-zinc-950/90 p-5">
-              <p className="text-xs font-bold uppercase tracking-[0.25em] text-orange-200">
-                Marcador
-              </p>
-
-              <div className="mt-4 space-y-3">
-                {sortedPlayers.map((player, index) => {
-                  const isMe = player.playerId === currentPlayerSessionKey;
-
-                  return (
-                    <div
-                      key={player.playerId}
-                      className={`rounded-2xl border px-4 py-3 ${
-                        isMe
-                          ? "border-orange-400/30 bg-orange-500/10"
-                          : "border-white/10 bg-white/5"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="font-semibold">
-                            #{index + 1} {player.name} {isMe ? "· Tú" : ""}
-                          </p>
-                          <p className="text-xs text-neutral-400">
-                            {player.correctAnswers} correctas · {player.incorrectAnswers} incorrectas
-                          </p>
-                        </div>
-                        <div className="text-lg font-bold text-orange-400">
-                          {player.score}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {sortedPlayers.length === 0 && (
-                  <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white/60">
-                    Esperando jugadores...
-                  </div>
-                )}
-              </div>
-            </div>
+            <QuestionScoreboard
+              players={sortedPlayers}
+              currentPlayerSessionKey={currentPlayerSessionKey}
+            />
 
             {phase === "finished" && (
-              <div className="rounded-[30px] border border-emerald-500/20 bg-emerald-500/10 p-6">
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
-                  Resultado final
-                </p>
-
-                <h2 className="mt-2 text-3xl font-extrabold text-white">
-                  {sortedPlayers[0] ? `${sortedPlayers[0].name} ganó la partida` : "Partida terminada"}
-                </h2>
-
-                <p className="mt-3 text-white/65">
-                  Ya puedes volver a la sala o iniciar otra partida.
-                </p>
-
-                <div className="mt-5 flex flex-wrap gap-3">
-                  {isHost && (
-                    <button
-                      type="button"
-                      onClick={() => void handleTerminateMatch()}
-                      disabled={leavingToRoom}
-                      className="rounded-2xl bg-red-500/90 px-4 py-3 font-semibold text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {leavingToRoom ? "Terminando..." : "Terminar partida"}
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => void handleBackToRoom()}
-                    disabled={leavingToRoom}
-                    className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {leavingToRoom ? "Volviendo..." : "Volver a sala"}
-                  </button>
-                </div>
-              </div>
+              <QuestionFinal
+                players={sortedPlayers}
+                isHost={isHost}
+                leavingToRoom={leavingToRoom}
+                onTerminateMatch={() => void handleTerminateMatch()}
+                onBackToRoom={() => void handleBackToRoom()}
+              />
             )}
           </div>
         </div>
