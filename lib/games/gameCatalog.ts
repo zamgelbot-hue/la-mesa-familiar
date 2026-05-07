@@ -199,9 +199,39 @@ export const GAME_CATALOG: GameCatalog = {
     maxPlayersOptions: [2, 3, 4],
     variants: [
       {
-        key: "clasico",
-        label: "Clásico",
-        description: "Descubre el personaje secreto.",
+        key: "libre",
+        label: "Libre",
+        description: "Elige cualquier personaje, famoso o ficticio.",
+        available: true,
+      },
+      {
+        key: "videojuegos",
+        label: "Videojuegos",
+        description: "Personajes de juegos clásicos y modernos.",
+        available: true,
+      },
+      {
+        key: "peliculas",
+        label: "Películas",
+        description: "Personajes de películas familiares y populares.",
+        available: true,
+      },
+      {
+        key: "anime",
+        label: "Anime",
+        description: "Personajes de anime y series animadas.",
+        available: true,
+      },
+      {
+        key: "deportes",
+        label: "Deportes",
+        description: "Atletas, equipos y figuras deportivas.",
+        available: true,
+      },
+      {
+        key: "musica",
+        label: "Música",
+        description: "Cantantes, bandas y artistas conocidos.",
         available: true,
       },
     ],
