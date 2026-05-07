@@ -39,7 +39,10 @@ export default function PPTGame({
   const supabase = supabaseRef.current;
 
   const code = String(roomCode ?? "").toUpperCase();
-  const isVsBot = roomSettings?.vs_bot === true || roomVariant === "bot_bo3";
+  const isVsBot =
+  roomSettings?.vs_bot === true ||
+  roomVariant === "vs_bot" ||
+  roomVariant === "bot_bo3";
 
   const [players, setPlayers] = useState<RoomPlayer[]>([]);
   const [profilesMap, setProfilesMap] = useState<ProfileMap>({});

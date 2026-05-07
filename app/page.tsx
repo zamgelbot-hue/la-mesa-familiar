@@ -26,6 +26,11 @@ import { DEFAULT_STATS, loadHomeStats, loadTopPlayers } from "@/lib/home/homePla
 import { loadFriendRooms, loadPublicRooms } from "@/lib/home/homeRoomQueries";
 import { createHomeRoom, joinHomeRoom } from "@/lib/home/homeRoomActions";
 
+function getConfigSlug(slug: string) {
+  if (slug === "piedra-papel-o-tijera") return "ppt";
+  return slug;
+}
+
 export default function HomePage() {
   const router = useRouter();
   const supabaseRef = useRef(createClient());
@@ -62,7 +67,7 @@ export default function HomePage() {
   );
 
   const selectedGameConfig = useMemo(() => {
-    return GAME_CONFIGS[selectedGameSlug] ?? null;
+    return GAME_CONFIGS[getConfigSlug(selectedGameSlug)] ?? null;
   }, [selectedGameSlug]);
 
   const selectedVariant = useMemo(() => {
@@ -130,7 +135,7 @@ export default function HomePage() {
 
     if (firstAvailable) {
       setSelectedGameSlug(firstAvailable.slug);
-      setSelectedVariantKey(getDefaultVariantForGame(firstAvailable.slug));
+      setSelectedVariantKey(getDefaultVariantForGame(getConfigSlug(firstAvailable.slug)));
       setMaxPlayers(getDefaultMaxPlayersForGame(firstAvailable.slug));
     }
   }, [supabase]);

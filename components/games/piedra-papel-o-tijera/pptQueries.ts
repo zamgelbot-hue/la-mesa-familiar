@@ -96,11 +96,16 @@ export async function upsertPPTGameState({
   roomCode: string;
   state: GameState;
 }) {
-  const { error } = await supabase.from("game_state").upsert({
-    room_code: roomCode,
-    state,
-    updated_at: new Date().toISOString(),
-  });
+  const { error } = await supabase
+    .from("game_state")
+    .upsert(
+      {
+        room_code: roomCode,
+        state,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "room_code" },
+    );
 
   if (error) {
     console.error("Error guardando estado PPT:", error);
