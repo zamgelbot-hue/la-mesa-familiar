@@ -69,7 +69,7 @@ export interface QuestionGameSettings {
 export interface QuestionGameState {
   sessionId: string;
   roomId: string;
-  gameSlug: "pregunta";
+  gameSlug: "pregunta-pregunta";
   hostId: string;
   status: "waiting" | "playing" | "finished";
   phase: QuestionGamePhase;

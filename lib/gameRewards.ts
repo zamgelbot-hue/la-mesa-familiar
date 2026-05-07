@@ -4,7 +4,7 @@ import { applyRewardsEngine } from "@/lib/rewards/rewardEngine";
 export type RewardGameType =
   | "ppt_human"
   | "ppt_bot"
-  | "pregunta"
+  | "pregunta-pregunta"
   | "loteria"
   | "gato";
 

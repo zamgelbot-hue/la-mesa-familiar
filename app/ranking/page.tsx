@@ -15,7 +15,7 @@ type LeaderboardTab =
   | "best_win_streak"
   | "weekly_points"
   | "win_rate"
-  | "pregunta"
+  | "pregunta-pregunta"
   | "loteria"
   | "ppt";
 

@@ -340,7 +340,7 @@ export default function QuestionGame({
   const createSessionIfNeeded = useCallback(async () => {
     if (!room || !playerIdentity || !isHost) return null;
     if (session) return session;
-    if (room.game_slug !== "pregunta") return null;
+    if (room.game_slug !== "pregunta-pregunta") return null;
     if (roomPlayers.length < 2) return null;
     if (!hostSessionKey) return null;
 
@@ -462,7 +462,7 @@ export default function QuestionGame({
 
   useEffect(() => {
     if (!room || !playerIdentity) return;
-    if (room.game_slug !== "pregunta") return;
+    if (room.game_slug !== "pregunta-pregunta") return;
     if (roomPlayers.length < 2) return;
     if (!hostSessionKey) return;
     if (sessionBootstrapRef.current) return;

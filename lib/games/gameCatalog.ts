@@ -101,13 +101,6 @@ export const GAME_CATALOG: GameCatalog = {
   maxPlayersOptions: [2, 3, 4, 5, 6],
   variants: [
     {
-      key: "sabelotodo",
-      label: "Sabelotodo",
-      description:
-        "Preguntas mezcladas de todas las categorías.",
-      available: true,
-    },
-    {
       key: "espanol",
       label: "Español",
       description:
@@ -140,6 +133,13 @@ export const GAME_CATALOG: GameCatalog = {
       label: "Ciencias",
       description:
         "Naturaleza, química y física básica.",
+      available: true,
+    },
+    {
+      key: "sabelotodo",
+      label: "Sabelotodo",
+      description:
+        "Preguntas mezcladas de todas las categorías.",
       available: true,
     },
   ],

@@ -175,7 +175,7 @@ export default function JuegoPage() {
     return <LoteriaGame roomCode={code} />;
   }
 
-  if (room.game_slug === "pregunta") {
+  if (room.game_slug === "pregunta-pregunta") {
     return (
       <QuestionGame
         roomCode={code}
