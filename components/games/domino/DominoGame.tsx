@@ -416,19 +416,85 @@ export default function DominoGame({
       setMessage("");
 
       try {
-        const [roomData, playerList] = await Promise.all([
-          fetchRoom(),
-          fetchPlayers(),
-        ]);
+        const { data: roomDataRaw, error: roomError } = await supabase
+          .from("rooms")
+          .select("code, status, game_slug, game_variant, room_settings")
+          .eq("code", code)
+          .maybeSingle();
 
         if (cancelled) return;
 
-        await ensureDominoState(roomData, playerList);
-        await refreshDominoState(playerList, roomData);
+        if (roomError) {
+          console.error("Error cargando sala de Dominó:", roomError);
+          setMessage("No se pudo cargar la sala.");
+          return;
+        }
+
+        if (!roomDataRaw) {
+          setMessage("No encontramos esta sala.");
+          return;
+        }
+
+        const roomData = roomDataRaw as RoomRow;
+
+        if (roomData.status === "closed") {
+          router.replace("/");
+          return;
+        }
+
+        if (roomData.status === "waiting") {
+          router.replace(`/sala/${code}`);
+          return;
+        }
+
+        setRoom(roomData);
+
+        const { data: playersData, error: playersError } = await supabase
+          .from("room_players")
+          .select(
+            "id, room_code, user_id, player_name, is_host, is_guest, is_ready, created_at",
+          )
+          .eq("room_code", code)
+          .order("created_at", { ascending: true });
+
+        if (cancelled) return;
+
+        if (playersError) {
+          console.error("Error cargando jugadores de Dominó:", playersError);
+          setMessage("No se pudieron cargar los jugadores.");
+          return;
+        }
+
+        const playerList = (playersData ?? []) as DominoRoomPlayerRow[];
+        setPlayers(playerList);
+
+        const storedName = detectStoredPlayerName(code);
+        if (
+          storedName &&
+          playerList.some((player) => player.player_name === storedName)
+        ) {
+          setCurrentPlayerName(storedName);
+        }
+
+        const mappedPlayers = mapRoomPlayersToDominoPlayers(playerList);
+        const incoming = roomData.room_settings?.[DOMINO_STATE_KEY] as
+          | Partial<DominoState>
+          | null
+          | undefined;
+
+        const nextState = normalizeDominoState(
+          incoming,
+          mappedPlayers,
+          roomData.game_variant ?? roomVariant,
+        );
+
+        setGameState(nextState);
       } catch (error) {
         console.error("Error iniciando Dominó:", error);
         if (!cancelled) {
-          setMessage("No se pudo iniciar Dominó. Regresa a la sala e intenta iniciar otra vez.");
+          setMessage(
+            "No se pudo iniciar Dominó. Regresa a la sala e intenta iniciar otra vez.",
+          );
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -467,9 +533,7 @@ export default function DominoGame({
         },
         async () => {
           if (!cancelled) {
-            const list = await fetchPlayers();
-            const roomData = await fetchRoom();
-            await ensureDominoState(roomData, list);
+            await fetchPlayers();
           }
         },
       )
@@ -480,14 +544,10 @@ export default function DominoGame({
       supabase.removeChannel(roomChannel);
       supabase.removeChannel(playersChannel);
     };
-  }, [
-    code,
-    ensureDominoState,
-    fetchPlayers,
-    fetchRoom,
-    refreshDominoState,
-    supabase,
-  ]);
+    // IMPORTANTE: no agregues dependencias derivadas aquí.
+    // Si se agregan `players/isHost/room`, React reinicia el boot y se queda parpadeando en loading.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code, roomVariant, router, supabase]);
 
   useEffect(() => {
     if (gameState.status !== "finished") return;
@@ -498,10 +558,45 @@ export default function DominoGame({
     playDominoTone(gameState.winner_key === currentPlayerKey ? "win" : "pass");
   }, [gameState.match_id, gameState.status, gameState.winner_key, currentPlayerKey]);
 
-  const handleChooseIdentity = (playerName: string) => {
+  const handleChooseIdentity = async (playerName: string) => {
     setCurrentPlayerName(playerName);
     persistPlayerName(code, playerName);
     setMessage("");
+
+    const selectedPlayer = sortedRoomPlayers.find(
+      (player) => player.player_name === playerName,
+    );
+
+    if (!room || !selectedPlayer?.is_host || sortedRoomPlayers.length < 2) {
+      return;
+    }
+
+    const incoming = room.room_settings?.[DOMINO_STATE_KEY] as
+      | Partial<DominoState>
+      | null
+      | undefined;
+
+    const existingHasValidMatch =
+      incoming?.game_slug === "domino" &&
+      !!incoming.match_id &&
+      Array.isArray(incoming.players) &&
+      incoming.players.length >= 2;
+
+    if (existingHasValidMatch) return;
+
+    const mappedPlayers = mapRoomPlayersToDominoPlayers(sortedRoomPlayers);
+
+    const fresh = createInitialDominoState({
+      players: mappedPlayers,
+      variant:
+        room.game_variant ??
+        room.room_settings?.domino_variant ??
+        roomVariant ??
+        roomSettings?.domino_variant ??
+        "classic_1v1",
+    });
+
+    await writeDominoState(fresh);
   };
 
   const handleBackToRoom = () => {
