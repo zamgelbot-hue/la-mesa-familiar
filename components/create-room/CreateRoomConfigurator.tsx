@@ -63,11 +63,11 @@ export default function CreateRoomConfigurator({
       {selectedGame && (
         <>
           <div
-            className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-25 blur-[2px]"
-            style={{
-              backgroundImage: `url(${visual.banner})`,
-            }}
-          />
+  className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-25 blur-[2px]"
+  style={{
+    backgroundImage: `url(${visual.banner})`,
+  }}
+/>
 
           <div className="pointer-events-none absolute inset-0 bg-black/70" />
 
@@ -105,12 +105,12 @@ export default function CreateRoomConfigurator({
         ) : (
           <>
             <div className="mt-5 overflow-hidden rounded-[28px] border border-white/10 bg-black/45 shadow-2xl backdrop-blur-md">
-              <div
-                className="relative h-36 bg-cover bg-center"
-                style={{
-                  backgroundImage: `url(${visual.banner})`,
-                }}
-              >
+              <div className="relative h-36 overflow-hidden bg-black">
+  <img
+    src={visual.banner}
+    alt={selectedGame.name}
+    className="absolute inset-0 h-full w-full object-contain"
+  />
                 <div className="absolute inset-0 bg-gradient-to-t from-black via-black/35 to-transparent" />
 
                 <div className="absolute bottom-4 left-4 flex items-center gap-3">
