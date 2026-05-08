@@ -62,7 +62,7 @@ export default function DominoHand({
 
       {isMyTurn && playableTiles.length === 0 && !matchOver && (
         <p className="mt-4 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 px-4 py-3 text-sm font-bold text-yellow-200">
-          No tienes jugadas válidas. Puedes pasar turno.
+          No tienes jugadas válidas. Si hay pozo, come ficha; si el pozo está vacío, pasa turno.
         </p>
       )}
     </section>

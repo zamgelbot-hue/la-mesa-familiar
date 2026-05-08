@@ -17,7 +17,7 @@ export const DOMINO_TILES_PER_PLAYER = 7;
 export const DEFAULT_DOMINO_STATE: DominoState = {
   game_slug: "domino",
   match_id: "",
-  variant: "clasico_1v1",
+  variant: "classic_1v1",
   status: "waiting",
   players: [],
   hands: {},
@@ -40,8 +40,8 @@ export function createDominoMatchId() {
 }
 
 export function getDominoPlayerKey(player: DominoRoomPlayerRow | DominoPlayer) {
-  if ("player_name" in player) return player.user_id ?? player.player_name;
-  return player.userId ?? player.name;
+  if ("userId" in player) return player.userId ?? player.name;
+  return player.user_id ?? player.player_name;
 }
 
 export function sortDominoRoomPlayers(players: DominoRoomPlayerRow[]) {
@@ -259,6 +259,7 @@ export function passDominoTurn(params: {
   if (state.status !== "playing") return state;
   if (state.current_turn_key !== playerKey) return state;
   if (getPlayableTiles(hand, state.board).length > 0) return state;
+  if ((state.boneyard ?? []).length > 0) return state;
 
   const nextPasses: DominoPass[] = [
     ...(state.passes ?? []),
@@ -298,6 +299,39 @@ export function passDominoTurn(params: {
     current_turn_key: getNextDominoTurnKey(state, playerKey),
     passes: nextPasses,
     last_action_text: `${playerName} pasó turno`,
+  };
+}
+
+
+export function drawDominoTile(params: {
+  state: DominoState;
+  playerKey: string;
+  playerName: string;
+}) {
+  const { state, playerKey, playerName } = params;
+  const hand = state.hands[playerKey] ?? [];
+  const [drawnTile, ...nextBoneyard] = state.boneyard ?? [];
+
+  if (state.status !== "playing") return state;
+  if (state.current_turn_key !== playerKey) return state;
+  if (getPlayableTiles(hand, state.board).length > 0) return state;
+  if (!drawnTile) return state;
+
+  const nextHand = [...hand, drawnTile];
+  const nextPlayableTiles = getPlayableTiles(nextHand, state.board);
+  const canPlayAfterDraw = nextPlayableTiles.length > 0;
+
+  return {
+    ...state,
+    hands: {
+      ...state.hands,
+      [playerKey]: nextHand,
+    },
+    boneyard: nextBoneyard,
+    passes: [],
+    last_action_text: canPlayAfterDraw
+      ? `${playerName} comió una ficha y ya tiene jugada`
+      : `${playerName} comió una ficha`,
   };
 }
 
@@ -369,7 +403,7 @@ export function createInitialDominoState(params: {
   return {
     ...DEFAULT_DOMINO_STATE,
     match_id: createDominoMatchId(),
-    variant: params.variant ?? "clasico_1v1",
+    variant: params.variant ?? "classic_1v1",
     status: players.length >= 2 ? "playing" : "waiting",
     players,
     hands,
@@ -394,7 +428,7 @@ export function normalizeDominoState(
     ...DEFAULT_DOMINO_STATE,
     ...incoming,
     game_slug: "domino",
-    variant: incoming.variant ?? variant ?? "clasico_1v1",
+    variant: incoming.variant ?? variant ?? "classic_1v1",
     players: incoming.players?.length ? incoming.players : players,
     hands: incoming.hands ?? {},
     boneyard: incoming.boneyard ?? [],
@@ -407,7 +441,7 @@ export function normalizeDominoState(
 
 export function getDominoVariantLabel(variant?: string | null) {
   if (variant === "rapido") return "Rápido 1v1";
-  if (variant === "clasico_1v1") return "Clásico 1v1";
+  if (variant === "classic_1v1" || variant === "clasico_1v1") return "Clásico 1v1";
   return "Clásico 1v1";
 }
 

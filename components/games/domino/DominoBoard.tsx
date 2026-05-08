@@ -9,6 +9,7 @@ type Props = {
   selectedTileId?: string | null;
   canPlayLeft?: boolean;
   canPlayRight?: boolean;
+  boneyardCount?: number;
   onPlace?: (side: DominoSide) => void;
 };
 
@@ -17,6 +18,7 @@ export default function DominoBoard({
   selectedTileId,
   canPlayLeft = false,
   canPlayRight = false,
+  boneyardCount = 0,
   onPlace,
 }: Props) {
   const ends = getBoardEnds(board);
@@ -34,10 +36,12 @@ export default function DominoBoard({
         <div className="flex gap-2 text-xs font-black uppercase tracking-[0.14em] text-white/45">
           <span>Izq: {ends.left ?? "-"}</span>
           <span>Der: {ends.right ?? "-"}</span>
+          <span>Colocadas: {board.length}</span>
+          <span>Pozo: {boneyardCount}</span>
         </div>
       </div>
 
-      <div className="flex min-h-[180px] items-center gap-3 overflow-x-auto rounded-3xl border border-orange-500/10 bg-black/70 p-4">
+      <div className="flex min-h-[220px] items-center gap-3 overflow-x-auto rounded-3xl border border-orange-500/10 bg-black p-4">
         {board.length === 0 ? (
           <div className="flex w-full flex-col items-center justify-center py-12 text-center">
             <p className="text-5xl">🎲</p>
@@ -61,9 +65,21 @@ export default function DominoBoard({
               Izquierda
             </button>
 
-            {board.map((tile) => (
-              <DominoTile key={`${tile.id}-${tile.playedAt}`} tile={tile} compact />
-            ))}
+            <div className="flex min-w-max items-center gap-2 px-2">
+              {board.map((tile, index) => {
+                const isFirst = index === 0;
+                const isDouble = tile.a === tile.b;
+
+                return (
+                  <DominoTile
+                    key={`${tile.id}-${tile.playedAt}`}
+                    tile={tile}
+                    compact
+                    horizontal={!isDouble || !isFirst}
+                  />
+                );
+              })}
+            </div>
 
             <button
               type="button"

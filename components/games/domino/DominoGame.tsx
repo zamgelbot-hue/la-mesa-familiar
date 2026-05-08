@@ -27,6 +27,7 @@ import {
   getValidSidesForTile,
   mapRoomPlayersToDominoPlayers,
   normalizeDominoState,
+  drawDominoTile,
   passDominoTurn,
   placeDominoTile,
   sortDominoRoomPlayers,
@@ -178,7 +179,16 @@ export default function DominoGame({
   const matchOver = gameState.status === "finished";
   const myHand = currentPlayerKey ? gameState.hands[currentPlayerKey] ?? [] : [];
   const playableTiles = getPlayableTiles(myHand, gameState.board);
-  const canPass = isMyTurn && playableTiles.length === 0 && !matchOver;
+  const canDraw =
+    isMyTurn &&
+    playableTiles.length === 0 &&
+    gameState.boneyard.length > 0 &&
+    !matchOver;
+  const canPass =
+    isMyTurn &&
+    playableTiles.length === 0 &&
+    gameState.boneyard.length === 0 &&
+    !matchOver;
 
   const selectedTile = selectedTileId
     ? myHand.find((tile) => tile.id === selectedTileId) ?? null
@@ -599,8 +609,23 @@ export default function DominoGame({
     await writeDominoState(fresh);
   };
 
-  const handleBackToRoom = () => {
-    router.push(`/sala/${code}`);
+  const handleBackToRoom = async () => {
+    const { error } = await supabase
+      .from("rooms")
+      .update({
+        status: "waiting",
+        started_at: null,
+        last_activity_at: new Date().toISOString(),
+      })
+      .eq("code", code);
+
+    if (error) {
+      console.error("Error volviendo a sala desde Dominó:", error);
+      setMessage("No se pudo volver a sala. Intenta otra vez.");
+      return;
+    }
+
+    router.replace(`/sala/${code}`);
   };
 
   const handleSelectTile = async (tileId: string) => {
@@ -693,6 +718,34 @@ export default function DominoGame({
     if (saved) setSelectedTileId(null);
   };
 
+  const handleDraw = async () => {
+    setMessage("");
+
+    if (!currentDominoPlayer || !currentPlayerKey) {
+      playDominoTone("error");
+      setMessage("Selecciona tu jugador para continuar.");
+      return;
+    }
+
+    if (!canDraw) {
+      playDominoTone("error");
+      setMessage("Solo puedes comer cuando no tienes jugada válida y quedan fichas en el pozo.");
+      return;
+    }
+
+    playDominoTone("tap");
+
+    await updateDominoState((current) =>
+      drawDominoTile({
+        state: current,
+        playerKey: currentPlayerKey,
+        playerName: currentDominoPlayer.name,
+      }),
+    );
+
+    setSelectedTileId(null);
+  };
+
   const handlePass = async () => {
     setMessage("");
 
@@ -704,7 +757,7 @@ export default function DominoGame({
 
     if (!canPass) {
       playDominoTone("error");
-      setMessage("Solo puedes pasar cuando no tienes jugadas válidas.");
+      setMessage("Solo puedes pasar cuando no tienes jugadas válidas y el pozo está vacío.");
       return;
     }
 
@@ -833,9 +886,11 @@ export default function DominoGame({
         state={gameState}
         isMyTurn={isMyTurn}
         canPass={canPass}
+        canDraw={canDraw}
         saving={saving}
         message={message}
         onPass={handlePass}
+        onDraw={handleDraw}
       />
 
       <DominoBoard
@@ -865,7 +920,7 @@ export default function DominoGame({
             disabled={saving}
             className="rounded-2xl bg-orange-500 px-6 py-3 font-black text-black hover:bg-orange-400 disabled:opacity-50"
           >
-            {saving ? "Reiniciando..." : "Nueva partida"}
+            {saving ? "Reiniciando..." : "Revancha"}
           </button>
         </section>
       )}
@@ -885,7 +940,7 @@ export default function DominoGame({
         winnerName={gameState.winner_name}
         tone={resultTone}
         primaryActionLabel="Volver a sala"
-        secondaryActionLabel={isHost ? "Nueva partida" : undefined}
+        secondaryActionLabel={isHost ? "Revancha" : undefined}
         onPrimaryAction={handleBackToRoom}
         onSecondaryAction={isHost ? handleRestartMatch : undefined}
       />

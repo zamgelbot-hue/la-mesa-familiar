@@ -9,12 +9,13 @@ type Props = {
   playable?: boolean;
   disabled?: boolean;
   hidden?: boolean;
+  horizontal?: boolean;
   onClick?: () => void;
 };
 
 function PipDots({ value }: { value: number }) {
   if (value === 0) {
-    return <span className="h-1.5 w-1.5 rounded-full bg-white/15" />;
+    return <span className="h-1.5 w-1.5 rounded-full bg-black/15" />;
   }
 
   return (
@@ -22,7 +23,7 @@ function PipDots({ value }: { value: number }) {
       {Array.from({ length: value }).map((_, index) => (
         <span
           key={index}
-          className="h-1.5 w-1.5 rounded-full bg-orange-200 shadow-[0_0_8px_rgba(251,146,60,0.45)]"
+          className="h-1.5 w-1.5 rounded-full bg-black shadow-[0_0_7px_rgba(249,115,22,0.65)]"
         />
       ))}
     </div>
@@ -36,6 +37,7 @@ export default function DominoTile({
   playable = false,
   disabled = false,
   hidden = false,
+  horizontal = false,
   onClick,
 }: Props) {
   return (
@@ -43,28 +45,32 @@ export default function DominoTile({
       type="button"
       onClick={onClick}
       disabled={disabled || !onClick}
-      className={`group relative shrink-0 rounded-2xl border bg-zinc-950 transition ${
-        compact ? "h-16 w-9" : "h-24 w-14"
+      className={`group relative shrink-0 rounded-2xl border bg-white transition ${
+        horizontal ? (compact ? "h-10 w-20" : "h-14 w-28") : compact ? "h-16 w-9" : "h-24 w-14"
       } ${
         selected
-          ? "border-orange-400 shadow-[0_0_28px_rgba(249,115,22,0.35)]"
+          ? "border-orange-500 shadow-[0_0_30px_rgba(249,115,22,0.55)]"
           : playable
-            ? "border-orange-500/45 hover:-translate-y-1 hover:border-orange-300 hover:shadow-[0_0_24px_rgba(249,115,22,0.22)]"
-            : "border-white/10"
+            ? "border-orange-500/80 hover:-translate-y-1 hover:border-orange-300 hover:shadow-[0_0_24px_rgba(249,115,22,0.32)]"
+            : "border-zinc-300"
       } ${disabled ? "cursor-not-allowed opacity-45" : ""}`}
       aria-label={hidden ? "Ficha oculta" : `Ficha ${tile.a} ${tile.b}`}
     >
       {hidden ? (
-        <div className="flex h-full w-full items-center justify-center rounded-2xl bg-orange-500/10 text-lg font-black text-orange-200">
+        <div className="flex h-full w-full items-center justify-center rounded-2xl bg-zinc-900 text-lg font-black text-orange-200">
           ?
         </div>
       ) : (
-        <div className="flex h-full flex-col overflow-hidden rounded-2xl">
-          <div className="flex flex-1 items-center justify-center bg-white/[0.03]">
+        <div
+          className={`flex h-full overflow-hidden rounded-2xl ${
+            horizontal ? "flex-row" : "flex-col"
+          }`}
+        >
+          <div className="flex flex-1 items-center justify-center bg-white">
             <PipDots value={tile.a} />
           </div>
-          <div className="h-px bg-orange-500/30" />
-          <div className="flex flex-1 items-center justify-center bg-black/30">
+          <div className={horizontal ? "w-px bg-orange-500/45" : "h-px bg-orange-500/45"} />
+          <div className="flex flex-1 items-center justify-center bg-zinc-100">
             <PipDots value={tile.b} />
           </div>
         </div>

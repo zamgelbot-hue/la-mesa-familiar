@@ -7,18 +7,22 @@ type Props = {
   state: DominoState;
   isMyTurn: boolean;
   canPass: boolean;
+  canDraw?: boolean;
   saving?: boolean;
   message?: string;
   onPass?: () => void;
+  onDraw?: () => void;
 };
 
 export default function DominoStatusPanel({
   state,
   isMyTurn,
   canPass,
+  canDraw = false,
   saving = false,
   message,
   onPass,
+  onDraw,
 }: Props) {
   const turnName = getDominoPlayerName(state, state.current_turn_key);
 
@@ -41,18 +45,33 @@ export default function DominoStatusPanel({
           </p>
         </div>
 
-        <button
-          type="button"
-          disabled={!isMyTurn || !canPass || saving || state.status !== "playing"}
-          onClick={onPass}
-          className={`rounded-2xl px-5 py-3 text-sm font-black transition ${
-            isMyTurn && canPass && state.status === "playing"
-              ? "bg-orange-500 text-black hover:bg-orange-400"
-              : "border border-white/10 bg-black text-white/25"
-          }`}
-        >
-          {saving ? "Guardando..." : "Pasar turno"}
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            disabled={!isMyTurn || !canDraw || saving || state.status !== "playing"}
+            onClick={onDraw}
+            className={`rounded-2xl px-5 py-3 text-sm font-black transition ${
+              isMyTurn && canDraw && state.status === "playing"
+                ? "bg-orange-500 text-black hover:bg-orange-400"
+                : "border border-white/10 bg-black text-white/25"
+            }`}
+          >
+            {saving ? "Guardando..." : "Comer ficha"}
+          </button>
+
+          <button
+            type="button"
+            disabled={!isMyTurn || !canPass || saving || state.status !== "playing"}
+            onClick={onPass}
+            className={`rounded-2xl px-5 py-3 text-sm font-black transition ${
+              isMyTurn && canPass && state.status === "playing"
+                ? "bg-zinc-100 text-black hover:bg-white"
+                : "border border-white/10 bg-black text-white/25"
+            }`}
+          >
+            {saving ? "Guardando..." : "Pasar turno"}
+          </button>
+        </div>
       </div>
 
       {message && (
