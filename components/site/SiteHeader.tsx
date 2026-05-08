@@ -258,11 +258,13 @@ export default function SiteHeader({
                 className="hidden items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 transition hover:bg-white/[0.06] md:flex"
               >
                 <div className="relative">
-                  <img
-                    src={avatarUrl}
-                    alt={displayName}
-                    className="h-10 w-10 rounded-full border-2 border-orange-500 object-cover"
-                  />
+                  <div className="relative h-10 w-10 overflow-hidden rounded-full border-2 border-orange-500">
+  <img
+    src={avatarUrl}
+    alt={displayName}
+    className="h-full w-full object-cover"
+  />
+</div>
 
                   {rewardAvailable && (
                     <div className="absolute -right-1 -top-1 flex h-5 min-w-[20px] animate-pulse items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-black text-black shadow-[0_0_18px_rgba(249,115,22,0.7)]">
@@ -324,7 +326,7 @@ export default function SiteHeader({
                   setRewardOpen(true);
                   setMenuOpen(false);
                 }}
-                className={`group relative flex w-full items-center gap-4 overflow-hidden rounded-3xl border px-5 py-4 text-left transition ${
+                className={`group relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border px-4 py-3 text-left transition ${
                   rewardAvailable
                     ? "border-orange-500/30 bg-orange-500/10 shadow-[0_0_25px_rgba(249,115,22,0.18)]"
                     : "border-white/10 bg-white/[0.03]"
@@ -335,7 +337,7 @@ export default function SiteHeader({
                 )}
 
                 <div
-                  className={`flex h-14 w-14 items-center justify-center rounded-2xl text-3xl ${
+                  className={`flex h-11 w-11 items-center justify-center rounded-xl text-2xl ${
                     rewardAvailable
                       ? "bg-orange-500/20 shadow-[0_0_25px_rgba(249,115,22,0.35)]"
                       : "bg-white/5"
