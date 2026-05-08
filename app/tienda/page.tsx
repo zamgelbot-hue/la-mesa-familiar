@@ -201,6 +201,16 @@ export default function TiendaPage() {
     DEFAULT_OWNED_FRAMES,
   );
 
+  const [selectedAvatarKey, setSelectedAvatarKey] =
+    useState<string | null>(null);
+  const [selectedFrameKey, setSelectedFrameKey] =
+    useState<string | null>(null);
+
+  const [processingKey, setProcessingKey] =
+    useState<string | null>(null);
+  const [storeMessage, setStoreMessage] =
+    useState<string | null>(null);
+
   const avatarItems = useMemo(
     () =>
       AVATARS.filter((avatar) => avatar.tier !== "basic").map(
@@ -243,7 +253,9 @@ export default function TiendaPage() {
       if (identity?.user_id) {
         const { data, error } = await supabase
           .from("profiles")
-          .select("points, owned_avatars, owned_frames")
+          .select(
+            "points, owned_avatars, owned_frames, avatar_key, frame_key",
+          )
           .eq("id", identity.user_id)
           .single();
 
@@ -253,6 +265,9 @@ export default function TiendaPage() {
 
         if (data) {
           setPoints(data.points ?? identity.points ?? 0);
+          setSelectedAvatarKey(data.avatar_key ?? null);
+          setSelectedFrameKey(data.frame_key ?? null);
+
           setOwnedAvatars(
             Array.from(
               new Set([
@@ -261,6 +276,7 @@ export default function TiendaPage() {
               ]),
             ),
           );
+
           setOwnedFrames(
             Array.from(
               new Set([
@@ -308,6 +324,136 @@ export default function TiendaPage() {
     }
 
     return false;
+  };
+
+  const isEquipped = (item: ShopItem) => {
+    if (item.type === "avatares") {
+      return selectedAvatarKey === item.key;
+    }
+
+    if (item.type === "marcos") {
+      return selectedFrameKey === item.key;
+    }
+
+    return false;
+  };
+
+  const handleShopAction = async (item: ShopItem) => {
+    setStoreMessage(null);
+
+    if (!playerIdentity?.user_id) {
+      window.location.href = "/acceso?next=/tienda";
+      return;
+    }
+
+    if (item.status === "soon") return;
+
+    if (item.type !== "avatares" && item.type !== "marcos") {
+      setStoreMessage("Este tipo de objeto estará disponible pronto.");
+      return;
+    }
+
+    const owned = isOwned(item);
+    const equipped = isEquipped(item);
+
+    if (equipped) {
+      setStoreMessage(`${item.label} ya está equipado.`);
+      return;
+    }
+
+    try {
+      setProcessingKey(item.key);
+
+      if (owned) {
+        const updatePayload =
+          item.type === "avatares"
+            ? { avatar_key: item.key }
+            : { frame_key: item.key };
+
+        const { error } = await supabase
+          .from("profiles")
+          .update({
+            ...updatePayload,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", playerIdentity.user_id);
+
+        if (error) throw error;
+
+        if (item.type === "avatares") {
+          setSelectedAvatarKey(item.key);
+        } else {
+          setSelectedFrameKey(item.key);
+        }
+
+        setStoreMessage(`${item.label} equipado correctamente.`);
+        return;
+      }
+
+      if (points < item.price) {
+        setStoreMessage(
+          `Te faltan ${item.price - points} puntos para comprar ${item.label}.`,
+        );
+        return;
+      }
+
+      const newPoints = points - item.price;
+
+      if (item.type === "avatares") {
+        const newOwnedAvatars = Array.from(
+          new Set([...ownedAvatars, item.key]),
+        );
+
+        const { error } = await supabase
+          .from("profiles")
+          .update({
+            points: newPoints,
+            owned_avatars: newOwnedAvatars,
+            avatar_key: item.key,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", playerIdentity.user_id);
+
+        if (error) throw error;
+
+        setPoints(newPoints);
+        setOwnedAvatars(newOwnedAvatars);
+        setSelectedAvatarKey(item.key);
+      }
+
+      if (item.type === "marcos") {
+        const newOwnedFrames = Array.from(
+          new Set([...ownedFrames, item.key]),
+        );
+
+        const { error } = await supabase
+          .from("profiles")
+          .update({
+            points: newPoints,
+            owned_frames: newOwnedFrames,
+            frame_key: item.key,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", playerIdentity.user_id);
+
+        if (error) throw error;
+
+        setPoints(newPoints);
+        setOwnedFrames(newOwnedFrames);
+        setSelectedFrameKey(item.key);
+      }
+
+      setStoreMessage(
+        `${item.label} comprado y equipado correctamente.`,
+      );
+    } catch (error) {
+      console.error("Error procesando compra:", error);
+      setStoreMessage(
+        "No se pudo completar la acción. Intenta de nuevo.",
+      );
+    } finally {
+      setProcessingKey(null);
+    }
   };
 
   return (
@@ -385,6 +531,12 @@ export default function TiendaPage() {
                 </div>
               </div>
 
+              {storeMessage && (
+                <div className="mt-5 rounded-2xl border border-orange-500/25 bg-orange-500/10 px-4 py-3 text-sm font-bold text-orange-100">
+                  {storeMessage}
+                </div>
+              )}
+
               {!playerIdentity && (
                 <Link
                   href="/acceso?next=/tienda"
@@ -421,7 +573,9 @@ export default function TiendaPage() {
         <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredItems.map((item) => {
             const owned = isOwned(item);
+            const equipped = isEquipped(item);
             const comingSoon = item.status === "soon";
+            const processing = processingKey === item.key;
 
             return (
               <article
@@ -459,7 +613,13 @@ export default function TiendaPage() {
                     </div>
                   )}
 
-                  {owned && (
+                  {equipped && (
+                    <div className="absolute right-4 top-4 rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-[11px] font-black text-orange-200">
+                      Equipado
+                    </div>
+                  )}
+
+                  {!equipped && owned && (
                     <div className="absolute right-4 top-4 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-black text-emerald-200">
                       Tuyo
                     </div>
@@ -485,26 +645,34 @@ export default function TiendaPage() {
                         Precio
                       </p>
                       <p className="text-lg font-black text-orange-400">
-                        {item.price} pts
+                        {owned ? "Comprado" : `${item.price} pts`}
                       </p>
                     </div>
 
-                    <Link
-                      href="/perfil?tab=shop"
-                      className={`rounded-2xl px-4 py-3 text-sm font-black transition ${
-                        owned
-                          ? "border border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
-                          : comingSoon
-                            ? "cursor-not-allowed border border-white/10 bg-white/5 text-white/40"
-                            : "bg-orange-500 text-black hover:bg-orange-400"
+                    <button
+                      type="button"
+                      disabled={comingSoon || processing}
+                      onClick={() => handleShopAction(item)}
+                      className={`rounded-2xl px-4 py-3 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                        equipped
+                          ? "border border-orange-500/25 bg-orange-500/10 text-orange-200"
+                          : owned
+                            ? "border border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
+                            : comingSoon
+                              ? "border border-white/10 bg-white/5 text-white/40"
+                              : "bg-orange-500 text-black hover:bg-orange-400"
                       }`}
                     >
-                      {owned
-                        ? "Equipar"
-                        : comingSoon
-                          ? "Muy pronto"
-                          : "Comprar"}
-                    </Link>
+                      {processing
+                        ? "Procesando..."
+                        : equipped
+                          ? "Equipado"
+                          : owned
+                            ? "Equipar"
+                            : comingSoon
+                              ? "Muy pronto"
+                              : "Comprar"}
+                    </button>
                   </div>
                 </div>
               </article>
