@@ -61,6 +61,7 @@ export const CREATE_ROOM_GROUPS: CreateRoomGroup[] = [
       "loteria-mexicana",
       "memorama",
       "pregunta-pregunta",
+      "domino",
     ],
   },
   {
@@ -183,6 +184,24 @@ export const GAME_VISUAL_INFO: Record<string, GameVisualInfo> = {
     particles: "waves",
     previewDescription:
       "Voltea cartas, encuentra los pares y entrena tu memoria.",
+  },
+
+  domino: {
+    emoji: "🎲",
+    difficulty: "Media",
+    duration: "10 min",
+    badge: "Clásico",
+    gradient:
+      "from-orange-500/20 via-stone-500/10 to-transparent",
+
+    banner: "/games/banners/domino.png",
+    ambientGradient:
+      "from-orange-500/30 via-stone-500/10 to-transparent",
+    accentColor: "#f97316",
+    glowColor: "rgba(249,115,22,0.45)",
+    particles: "embers",
+    previewDescription:
+      "Conecta fichas, come del pozo y domina la mesa antes que tu rival.",
   },
 
   "loteria-mexicana": {
