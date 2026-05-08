@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { AVATARS, FRAMES } from "@/lib/profile/profileCosmetics";
 
 type RewardType = "points" | "avatar" | "frame";
+type AdminTab = "crear" | "codigos" | "historial";
 
 type PromoCode = {
   id: string;
@@ -21,6 +22,18 @@ type PromoCode = {
   expires_at: string | null;
   active: boolean;
   created_at: string;
+};
+
+type Redemption = {
+  id?: string;
+  user_id?: string;
+  promo_code_id?: string;
+  code?: string;
+  reward_type?: string;
+  reward_key?: string | null;
+  reward_value?: number;
+  created_at?: string;
+  redeemed_at?: string;
 };
 
 type RewardItem = {
@@ -58,60 +71,87 @@ function getItemEmoji(item: unknown) {
   return undefined;
 }
 
+function formatDate(value?: string | null) {
+  if (!value) return "Sin expiración";
+
+  return new Intl.DateTimeFormat("es-MX", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function isExpired(value?: string | null) {
+  if (!value) return false;
+  return new Date(value).getTime() < Date.now();
+}
+
 export default function AdminPage() {
   const supabase = useMemo(() => createClient(), []);
 
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [activeTab, setActiveTab] = useState<AdminTab>("crear");
+
   const [codes, setCodes] = useState<PromoCode[]>([]);
+  const [redemptions, setRedemptions] = useState<Redemption[]>([]);
+  const [historyError, setHistoryError] = useState("");
 
   const [pointsCode, setPointsCode] = useState("");
   const [pointsRewardValue, setPointsRewardValue] = useState(25);
   const [pointsMaxUses, setPointsMaxUses] = useState(1);
+  const [pointsExpiresAt, setPointsExpiresAt] = useState("");
 
   const [itemCode, setItemCode] = useState("");
   const [itemRewardType, setItemRewardType] =
     useState<"avatar" | "frame">("avatar");
   const [selectedRewardKey, setSelectedRewardKey] = useState("");
   const [itemMaxUses, setItemMaxUses] = useState(1);
+  const [itemExpiresAt, setItemExpiresAt] = useState("");
 
   const [message, setMessage] = useState("");
 
   const avatarRewards = useMemo<RewardItem[]>(
     () =>
-      AVATARS.filter((avatar) => avatar.tier !== "basic").map(
-        (avatar) => ({
-          key: avatar.key,
-          label: avatar.label,
-          group: avatar.group,
-          type: "avatar",
-          image: getItemImage(avatar),
-          emoji: getItemEmoji(avatar),
-        }),
-      ),
+      AVATARS.filter((avatar) => avatar.tier !== "basic").map((avatar) => ({
+        key: avatar.key,
+        label: avatar.label,
+        group: avatar.group,
+        type: "avatar",
+        image: getItemImage(avatar),
+        emoji: getItemEmoji(avatar),
+      })),
     [],
   );
 
   const frameRewards = useMemo<RewardItem[]>(
     () =>
-      FRAMES.filter((frame) => frame.tier !== "basic").map(
-        (frame) => ({
-          key: frame.key,
-          label: frame.label,
-          group: frame.group,
-          type: "frame",
-          image: getItemImage(frame),
-          emoji: "🖼️",
-        }),
-      ),
+      FRAMES.filter((frame) => frame.tier !== "basic").map((frame) => ({
+        key: frame.key,
+        label: frame.label,
+        group: frame.group,
+        type: "frame",
+        image: getItemImage(frame),
+        emoji: "🖼️",
+      })),
     [],
   );
 
   const rewardOptions =
     itemRewardType === "avatar" ? avatarRewards : frameRewards;
 
+  const selectedReward = rewardOptions.find(
+    (item) => item.key === selectedRewardKey,
+  );
+
+  const activeCodes = codes.filter(
+    (code) => code.active && !isExpired(code.expires_at),
+  ).length;
+
+  const usedTotal = codes.reduce((total, code) => total + code.used_count, 0);
+
   async function loadAdmin() {
     setLoading(true);
+    setHistoryError("");
 
     const { data: authData } = await supabase.auth.getUser();
     const userId = authData.user?.id;
@@ -142,6 +182,22 @@ export default function AdminPage() {
       .order("created_at", { ascending: false });
 
     setCodes((promoData ?? []) as PromoCode[]);
+
+    const { data: redemptionData, error: redemptionError } = await supabase
+      .from("promo_redemptions")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (redemptionError) {
+      setHistoryError(
+        "No se pudo cargar el historial. Revisa permisos/RLS de promo_redemptions.",
+      );
+      setRedemptions([]);
+    } else {
+      setRedemptions((redemptionData ?? []) as Redemption[]);
+    }
+
     setLoading(false);
   }
 
@@ -182,6 +238,7 @@ export default function AdminPage() {
       reward_key: null,
       description: `${pointsRewardValue} puntos`,
       max_uses: pointsMaxUses,
+      expires_at: pointsExpiresAt ? new Date(pointsExpiresAt).toISOString() : null,
       created_by: authData.user?.id,
     });
 
@@ -191,6 +248,7 @@ export default function AdminPage() {
     }
 
     setPointsCode("");
+    setPointsExpiresAt("");
     setMessage("Código de puntos creado correctamente.");
     await loadAdmin();
   }
@@ -215,10 +273,6 @@ export default function AdminPage() {
       return;
     }
 
-    const selectedItem = rewardOptions.find(
-      (item) => item.key === selectedRewardKey,
-    );
-
     const { data: authData } = await supabase.auth.getUser();
 
     const { error } = await supabase.from("promo_codes").insert({
@@ -226,10 +280,11 @@ export default function AdminPage() {
       reward_type: itemRewardType,
       reward_value: 0,
       reward_key: selectedRewardKey,
-      description: selectedItem
-        ? `${selectedItem.label} · ${selectedItem.group}`
+      description: selectedReward
+        ? `${selectedReward.label} · ${selectedReward.group}`
         : selectedRewardKey,
       max_uses: itemMaxUses,
+      expires_at: itemExpiresAt ? new Date(itemExpiresAt).toISOString() : null,
       created_by: authData.user?.id,
     });
 
@@ -239,6 +294,7 @@ export default function AdminPage() {
     }
 
     setItemCode("");
+    setItemExpiresAt("");
     setMessage("Código de cosmético creado correctamente.");
     await loadAdmin();
   }
@@ -253,18 +309,9 @@ export default function AdminPage() {
   }
 
   function getRewardText(item: PromoCode) {
-    if (item.reward_type === "points") {
-      return `${item.reward_value} pts`;
-    }
-
-    if (item.reward_type === "avatar") {
-      return `Avatar: ${item.description ?? item.reward_key}`;
-    }
-
-    if (item.reward_type === "frame") {
-      return `Marco: ${item.description ?? item.reward_key}`;
-    }
-
+    if (item.reward_type === "points") return `${item.reward_value} pts`;
+    if (item.reward_type === "avatar") return `Avatar: ${item.description ?? item.reward_key}`;
+    if (item.reward_type === "frame") return `Marco: ${item.description ?? item.reward_key}`;
     return item.description ?? "Recompensa";
   }
 
@@ -305,117 +352,63 @@ export default function AdminPage() {
           ← Volver
         </Link>
 
-        <header className="mt-8 rounded-[34px] border border-orange-500/20 bg-zinc-950 p-8 shadow-[0_0_45px_rgba(249,115,22,0.12)]">
+        <header className="mt-8 overflow-hidden rounded-[34px] border border-orange-500/20 bg-zinc-950 p-8 shadow-[0_0_45px_rgba(249,115,22,0.12)]">
           <p className="text-xs font-black uppercase tracking-[0.24em] text-orange-300">
             Zamgel Core
           </p>
-          <h1 className="mt-2 text-5xl font-black">
-            Panel Admin
-          </h1>
+          <h1 className="mt-2 text-5xl font-black">Panel Admin</h1>
           <p className="mt-3 text-white/60">
-            Control interno de La Mesa Familiar.
+            Control interno de códigos, rewards y eventos de La Mesa Familiar.
           </p>
+
+          <div className="mt-8 grid gap-4 md:grid-cols-3">
+            <div className="rounded-3xl border border-white/10 bg-black/60 p-5">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-white/35">
+                Códigos
+              </p>
+              <p className="mt-2 text-3xl font-black">{codes.length}</p>
+            </div>
+
+            <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-5">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-200/60">
+                Activos
+              </p>
+              <p className="mt-2 text-3xl font-black text-emerald-200">
+                {activeCodes}
+              </p>
+            </div>
+
+            <div className="rounded-3xl border border-orange-500/20 bg-orange-500/10 p-5">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-200/60">
+                Canjes
+              </p>
+              <p className="mt-2 text-3xl font-black text-orange-200">
+                {usedTotal}
+              </p>
+            </div>
+          </div>
         </header>
 
-        <section className="mt-8 rounded-[30px] border border-white/10 bg-zinc-950 p-6">
-          <h2 className="text-2xl font-black">
-            Crear código promocional de puntos
-          </h2>
-
-          <div className="mt-5 grid gap-4 md:grid-cols-3">
-            <input
-              value={pointsCode}
-              onChange={(e) => setPointsCode(e.target.value)}
-              placeholder="EJ: MESA50"
-              className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold uppercase outline-none focus:border-orange-500"
-            />
-
-            <input
-              value={pointsRewardValue}
-              onChange={(e) =>
-                setPointsRewardValue(Number(e.target.value))
-              }
-              type="number"
-              placeholder="Puntos"
-              className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold outline-none focus:border-orange-500"
-            />
-
-            <input
-              value={pointsMaxUses}
-              onChange={(e) => setPointsMaxUses(Number(e.target.value))}
-              type="number"
-              placeholder="Usos máximos"
-              className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold outline-none focus:border-orange-500"
-            />
-          </div>
-
-          <button
-            onClick={createPointsCode}
-            className="mt-5 rounded-2xl bg-orange-500 px-6 py-3 font-black text-black hover:bg-orange-400"
-          >
-            Crear código de puntos
-          </button>
-        </section>
-
-        <section className="mt-8 rounded-[30px] border border-white/10 bg-zinc-950 p-6">
-          <h2 className="text-2xl font-black">
-            Crear código promocional de cosmético
-          </h2>
-
-          <div className="mt-5 grid gap-4 md:grid-cols-[0.8fr_1.4fr_0.8fr]">
-            <select
-              value={itemRewardType}
-              onChange={(e) =>
-                setItemRewardType(e.target.value as "avatar" | "frame")
-              }
-              className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold outline-none focus:border-orange-500"
-            >
-              <option value="avatar">Avatar</option>
-              <option value="frame">Marco</option>
-            </select>
-
-            <select
-              value={selectedRewardKey}
-              onChange={(e) => setSelectedRewardKey(e.target.value)}
-              className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold outline-none focus:border-orange-500"
-            >
-              {rewardOptions.map((item) => (
-                <option key={item.key} value={item.key}>
-                  {item.group} · {item.label} · {item.key}
-                </option>
-              ))}
-            </select>
-
-            <input
-              value={itemMaxUses}
-              onChange={(e) => setItemMaxUses(Number(e.target.value))}
-              type="number"
-              placeholder="Usos máximos"
-              className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold outline-none focus:border-orange-500"
-            />
-          </div>
-
-          <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto]">
-            <input
-              value={itemCode}
-              onChange={(e) => setItemCode(e.target.value)}
-              placeholder="EJ: DEMONIOVIP"
-              className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold uppercase outline-none focus:border-orange-500"
-            />
-
+        <div className="mt-8 flex flex-wrap gap-3">
+          {[
+            ["crear", "Crear códigos"],
+            ["codigos", "Códigos creados"],
+            ["historial", "Historial"],
+          ].map(([key, label]) => (
             <button
-              onClick={createItemCode}
-              className="rounded-2xl bg-orange-500 px-6 py-3 font-black text-black hover:bg-orange-400"
+              key={key}
+              type="button"
+              onClick={() => setActiveTab(key as AdminTab)}
+              className={`rounded-2xl px-5 py-3 text-sm font-black transition ${
+                activeTab === key
+                  ? "bg-orange-500 text-black"
+                  : "border border-white/10 bg-zinc-950 text-white/60 hover:border-orange-500/30 hover:text-white"
+              }`}
             >
-              Crear código de cosmético
+              {label}
             </button>
-          </div>
-
-          <p className="mt-4 text-sm text-white/45">
-            Este selector se alimenta automáticamente de los avatares y marcos
-            disponibles en la tienda.
-          </p>
-        </section>
+          ))}
+        </div>
 
         {message && (
           <p className="mt-6 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-orange-200">
@@ -423,49 +416,243 @@ export default function AdminPage() {
           </p>
         )}
 
-        <section className="mt-8 rounded-[30px] border border-white/10 bg-zinc-950 p-6">
-          <h2 className="text-2xl font-black">Códigos creados</h2>
+        {activeTab === "crear" && (
+          <div className="mt-8 grid gap-8 lg:grid-cols-2">
+            <section className="rounded-[30px] border border-white/10 bg-zinc-950 p-6">
+              <h2 className="text-2xl font-black">Código de puntos</h2>
 
-          <div className="mt-5 grid gap-4">
-            {codes.length === 0 && (
-              <div className="rounded-2xl border border-white/10 bg-black p-5 text-white/50">
-                Todavía no hay códigos creados.
+              <div className="mt-5 grid gap-4">
+                <input
+                  value={pointsCode}
+                  onChange={(e) => setPointsCode(e.target.value)}
+                  placeholder="EJ: MESA50"
+                  className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold uppercase outline-none focus:border-orange-500"
+                />
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <input
+                    value={pointsRewardValue}
+                    onChange={(e) => setPointsRewardValue(Number(e.target.value))}
+                    type="number"
+                    placeholder="Puntos"
+                    className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold outline-none focus:border-orange-500"
+                  />
+
+                  <input
+                    value={pointsMaxUses}
+                    onChange={(e) => setPointsMaxUses(Number(e.target.value))}
+                    type="number"
+                    placeholder="Usos máximos"
+                    className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold outline-none focus:border-orange-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-black uppercase tracking-[0.18em] text-white/35">
+                    Expiración opcional
+                  </label>
+                  <input
+                    value={pointsExpiresAt}
+                    onChange={(e) => setPointsExpiresAt(e.target.value)}
+                    type="datetime-local"
+                    className="mt-2 w-full rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold outline-none focus:border-orange-500"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={createPointsCode}
+                className="mt-5 w-full rounded-2xl bg-orange-500 px-6 py-3 font-black text-black hover:bg-orange-400"
+              >
+                Crear código de puntos
+              </button>
+            </section>
+
+            <section className="rounded-[30px] border border-white/10 bg-zinc-950 p-6">
+              <h2 className="text-2xl font-black">Código de cosmético</h2>
+
+              <div className="mt-5 grid gap-4">
+                <input
+                  value={itemCode}
+                  onChange={(e) => setItemCode(e.target.value)}
+                  placeholder="EJ: DEMONIOVIP"
+                  className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold uppercase outline-none focus:border-orange-500"
+                />
+
+                <select
+                  value={itemRewardType}
+                  onChange={(e) =>
+                    setItemRewardType(e.target.value as "avatar" | "frame")
+                  }
+                  className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold outline-none focus:border-orange-500"
+                >
+                  <option value="avatar">Avatar</option>
+                  <option value="frame">Marco</option>
+                </select>
+
+                <select
+                  value={selectedRewardKey}
+                  onChange={(e) => setSelectedRewardKey(e.target.value)}
+                  className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold outline-none focus:border-orange-500"
+                >
+                  {rewardOptions.map((item) => (
+                    <option key={item.key} value={item.key}>
+                      {item.group} · {item.label} · {item.key}
+                    </option>
+                  ))}
+                </select>
+
+                {selectedReward && (
+                  <div className="flex items-center gap-4 rounded-3xl border border-orange-500/15 bg-orange-500/10 p-4">
+                    <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black text-3xl">
+                      {selectedReward.image ? (
+                        <img
+                          src={selectedReward.image}
+                          alt={selectedReward.label}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        selectedReward.emoji ?? "🎁"
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="font-black text-white">
+                        {selectedReward.label}
+                      </p>
+                      <p className="text-sm text-white/45">
+                        {selectedReward.group} · {selectedReward.key}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <input
+                    value={itemMaxUses}
+                    onChange={(e) => setItemMaxUses(Number(e.target.value))}
+                    type="number"
+                    placeholder="Usos máximos"
+                    className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold outline-none focus:border-orange-500"
+                  />
+
+                  <input
+                    value={itemExpiresAt}
+                    onChange={(e) => setItemExpiresAt(e.target.value)}
+                    type="datetime-local"
+                    className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold outline-none focus:border-orange-500"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={createItemCode}
+                className="mt-5 w-full rounded-2xl bg-orange-500 px-6 py-3 font-black text-black hover:bg-orange-400"
+              >
+                Crear código de cosmético
+              </button>
+            </section>
+          </div>
+        )}
+
+        {activeTab === "codigos" && (
+          <section className="mt-8 rounded-[30px] border border-white/10 bg-zinc-950 p-6">
+            <h2 className="text-2xl font-black">Códigos creados</h2>
+
+            <div className="mt-5 grid gap-4">
+              {codes.length === 0 && (
+                <div className="rounded-2xl border border-white/10 bg-black p-5 text-white/50">
+                  Todavía no hay códigos creados.
+                </div>
+              )}
+
+              {codes.map((item) => {
+                const expired = isExpired(item.expires_at);
+
+                return (
+                  <div
+                    key={item.id}
+                    className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black p-4"
+                  >
+                    <div>
+                      <p className="text-xl font-black text-orange-300">
+                        {item.code}
+                      </p>
+                      <p className="text-sm text-white/50">
+                        {getRewardText(item)} · {item.used_count}/{item.max_uses} usos
+                      </p>
+                      <p className="mt-1 text-xs text-white/30">
+                        Tipo: {item.reward_type}
+                        {item.reward_key ? ` · Key: ${item.reward_key}` : ""}
+                      </p>
+                      <p className="mt-1 text-xs text-white/30">
+                        Expira: {formatDate(item.expires_at)}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => toggleCode(item)}
+                      className={`rounded-2xl px-5 py-3 font-black ${
+                        expired
+                          ? "bg-yellow-500/15 text-yellow-300"
+                          : item.active
+                            ? "bg-emerald-500/15 text-emerald-300"
+                            : "bg-red-500/15 text-red-300"
+                      }`}
+                    >
+                      {expired ? "Expirado" : item.active ? "Activo" : "Inactivo"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {activeTab === "historial" && (
+          <section className="mt-8 rounded-[30px] border border-white/10 bg-zinc-950 p-6">
+            <h2 className="text-2xl font-black">Historial de canjes</h2>
+
+            {historyError && (
+              <div className="mt-5 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm font-bold text-yellow-200">
+                {historyError}
               </div>
             )}
 
-            {codes.map((item) => (
-              <div
-                key={item.id}
-                className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black p-4"
-              >
-                <div>
-                  <p className="text-xl font-black text-orange-300">
-                    {item.code}
+            <div className="mt-5 grid gap-4">
+              {redemptions.length === 0 && !historyError && (
+                <div className="rounded-2xl border border-white/10 bg-black p-5 text-white/50">
+                  Todavía no hay canjes registrados.
+                </div>
+              )}
+
+              {redemptions.map((item, index) => (
+                <div
+                  key={item.id ?? `${item.user_id}-${index}`}
+                  className="rounded-2xl border border-white/10 bg-black p-4"
+                >
+                  <p className="font-black text-orange-300">
+                    {item.code ?? item.promo_code_id ?? "Código canjeado"}
                   </p>
-                  <p className="text-sm text-white/50">
-                    {getRewardText(item)} · {item.used_count}/{item.max_uses}{" "}
-                    usos
+                  <p className="mt-1 text-sm text-white/50">
+                    Usuario: {item.user_id ?? "No disponible"}
+                  </p>
+                  <p className="mt-1 text-xs text-white/35">
+                    Reward: {item.reward_type ?? "N/A"}
+                    {item.reward_key ? ` · ${item.reward_key}` : ""}
+                    {item.reward_value ? ` · ${item.reward_value} pts` : ""}
                   </p>
                   <p className="mt-1 text-xs text-white/30">
-                    Tipo: {item.reward_type}
-                    {item.reward_key ? ` · Key: ${item.reward_key}` : ""}
+                    Fecha: {formatDate(item.created_at ?? item.redeemed_at)}
                   </p>
                 </div>
-
-                <button
-                  onClick={() => toggleCode(item)}
-                  className={`rounded-2xl px-5 py-3 font-black ${
-                    item.active
-                      ? "bg-emerald-500/15 text-emerald-300"
-                      : "bg-red-500/15 text-red-300"
-                  }`}
-                >
-                  {item.active ? "Activo" : "Inactivo"}
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </main>
   );
