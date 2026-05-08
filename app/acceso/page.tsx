@@ -231,10 +231,10 @@ function AccesoContent() {
     try {
       setLoading(true);
 
-      const redirectTo =
-        typeof window !== "undefined"
-          ? `${window.location.origin}/acceso?mode=recovery`
-          : undefined;
+      const appUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://lamesafamiliar.net";
+
+const redirectTo = `${appUrl}/acceso?mode=recovery`;
 
       const { error } = await supabase.auth.resetPasswordForEmail(
         normalizedEmail,
