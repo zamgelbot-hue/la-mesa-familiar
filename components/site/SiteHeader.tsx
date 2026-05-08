@@ -282,50 +282,60 @@ export default function SiteHeader({
             </button>
           </nav>
 
-          <div className="flex items-center gap-3">
-            {playerIdentity && showProfileButton ? (
-              <button
-                onClick={() => router.push("/perfil")}
-                className="hidden items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-white hover:border-orange-500/30 hover:bg-orange-500/10 md:flex"
-              >
-                <PlayerAvatar
-                  avatar={selectedAvatar}
-                  frame={selectedFrame}
-                  size="sm"
-                />
-                <span className="max-w-[130px] truncate font-semibold">
-                  {playerIdentity.name}
-                </span>
-              </button>
-            ) : (
-              showLoginButton && (
-                <button
-                  onClick={handleLoginClick}
-                  className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-5 py-2.5 font-black text-orange-200 shadow-[0_0_18px_rgba(249,115,22,0.16)] hover:bg-orange-500/20"
-                >
-                  Cuenta
-                </button>
-              )
-            )}
+          <div className="flex items-center gap-2 md:gap-3">
+  <button
+    onClick={() => router.push("/crear")}
+    className="flex h-11 w-11 items-center justify-center rounded-2xl border border-orange-500/25 bg-orange-500/10 text-xl font-black text-orange-200 shadow-[0_0_14px_rgba(249,115,22,0.16)] transition hover:bg-orange-500/20 md:hidden"
+    aria-label="Crear sala"
+  >
+    +
+  </button>
 
-            <button
-              onClick={() => setMenuOpen((value) => !value)}
-              className={`relative rounded-2xl border px-4 py-2 text-lg transition ${
-                canUseDailyReward && rewardAvailable
-                  ? "border-orange-500 bg-orange-500/10 text-orange-300 shadow-[0_0_28px_rgba(249,115,22,0.55)]"
-                  : "border-orange-500/25 bg-white/5 text-white shadow-[0_0_14px_rgba(249,115,22,0.12)] hover:bg-orange-500/10 hover:text-orange-200"
-              }`}
-              aria-label="Abrir menú"
-            >
-              ☰
+  {playerIdentity && showProfileButton ? (
+    <button
+      onClick={() => router.push("/perfil")}
+      className="flex h-11 items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-2.5 text-white shadow-[0_0_14px_rgba(249,115,22,0.10)] transition hover:border-orange-500/30 hover:bg-orange-500/10 md:px-4"
+      aria-label="Ir al perfil"
+    >
+      <PlayerAvatar
+        avatar={selectedAvatar}
+        frame={selectedFrame}
+        size="sm"
+      />
 
-              {totalNotifications > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-extrabold text-black">
-                  {totalNotifications}
-                </span>
-              )}
-            </button>
-          </div>
+      <span className="hidden max-w-[130px] truncate font-semibold md:inline">
+        {playerIdentity.name}
+      </span>
+    </button>
+  ) : (
+    showLoginButton && (
+      <button
+        onClick={handleLoginClick}
+        className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-4 py-2.5 font-black text-orange-200 shadow-[0_0_18px_rgba(249,115,22,0.16)] hover:bg-orange-500/20 md:px-5"
+      >
+        Cuenta
+      </button>
+    )
+  )}
+
+  <button
+    onClick={() => setMenuOpen((value) => !value)}
+    className={`relative flex h-11 w-11 items-center justify-center rounded-2xl border text-lg transition ${
+      canUseDailyReward && rewardAvailable
+        ? "border-orange-500 bg-orange-500/10 text-orange-300 shadow-[0_0_28px_rgba(249,115,22,0.55)]"
+        : "border-orange-500/25 bg-white/5 text-white shadow-[0_0_14px_rgba(249,115,22,0.12)] hover:bg-orange-500/10 hover:text-orange-200"
+    }`}
+    aria-label="Abrir menú"
+  >
+    ☰
+
+    {totalNotifications > 0 && (
+      <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-extrabold text-black">
+        {totalNotifications}
+      </span>
+    )}
+  </button>
+</div>
 
           {menuOpen && (
             <div className="absolute right-6 top-20 z-50 w-80 rounded-3xl border border-orange-500/20 bg-zinc-950/95 p-4 shadow-[0_0_45px_rgba(249,115,22,0.14)] backdrop-blur-xl">
