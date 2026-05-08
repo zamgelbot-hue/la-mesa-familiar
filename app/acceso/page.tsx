@@ -2,12 +2,12 @@
 
 "use client";
 
-import { FormEvent, Suspense, useMemo, useState } from "react";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-type AccessMode = "login" | "register" | "guest";
+type AccessMode = "login" | "register" | "guest" | "recovery" | "reset";
 
 const GUEST_STORAGE_KEY = "lmf:guest-profile";
 
@@ -23,11 +23,17 @@ function AccesoContent() {
   const supabase = createClient();
 
   const nextPath = getSafeNextPath(searchParams.get("next"));
+  const urlMode = searchParams.get("mode");
 
-  const [mode, setMode] = useState<AccessMode>("login");
+  const [mode, setMode] = useState<AccessMode>(
+    urlMode === "recovery" ? "reset" : "login",
+  );
 
   const [email, setEmail] = useState("");
+  const [recoveryEmail, setRecoveryEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [guestName, setGuestName] = useState("");
 
@@ -35,10 +41,18 @@ function AccesoContent() {
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
+  useEffect(() => {
+    if (urlMode === "recovery") {
+      setMode("reset");
+    }
+  }, [urlMode]);
+
   const title = useMemo(() => {
     if (mode === "login") return "Inicia sesión";
     if (mode === "register") return "Crea tu cuenta";
-    return "Continúa como invitado";
+    if (mode === "guest") return "Continúa como invitado";
+    if (mode === "recovery") return "Recupera tu contraseña";
+    return "Crea una nueva contraseña";
   }, [mode]);
 
   const subtitle = useMemo(() => {
@@ -48,7 +62,13 @@ function AccesoContent() {
     if (mode === "register") {
       return "Crea tu cuenta con un nombre visible para tener identidad fija dentro de La Mesa Familiar.";
     }
-    return "Entra rápido con un nombre temporal. Los invitados podrán jugar, pero no acumularán puntos permanentes.";
+    if (mode === "guest") {
+      return "Entra rápido con un nombre temporal. Los invitados podrán jugar, pero no acumularán puntos permanentes.";
+    }
+    if (mode === "recovery") {
+      return "Escribe tu correo y te enviaremos un enlace para cambiar tu contraseña.";
+    }
+    return "Escribe una contraseña nueva para recuperar el acceso a tu cuenta.";
   }, [mode]);
 
   const resetFeedback = () => {
@@ -59,6 +79,11 @@ function AccesoContent() {
   const finishAccess = () => {
     router.push(nextPath);
     router.refresh();
+  };
+
+  const switchMode = (nextMode: AccessMode) => {
+    resetFeedback();
+    setMode(nextMode);
   };
 
   const handleLogin = async (e: FormEvent) => {
@@ -153,7 +178,7 @@ function AccesoContent() {
       }
 
       setMessage(
-        "Cuenta creada correctamente. Revisa tu correo para verificarla si es necesario."
+        "Cuenta creada correctamente. Revisa tu correo para verificarla si es necesario.",
       );
       finishAccess();
     } finally {
@@ -192,6 +217,83 @@ function AccesoContent() {
     finishAccess();
   };
 
+  const handleSendRecovery = async (e: FormEvent) => {
+    e.preventDefault();
+    resetFeedback();
+
+    const normalizedEmail = recoveryEmail.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      setErrorMessage("Escribe el correo de tu cuenta.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const redirectTo =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/acceso?mode=recovery`
+          : undefined;
+
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        normalizedEmail,
+        {
+          redirectTo,
+        },
+      );
+
+      if (error) {
+        setErrorMessage(error.message);
+        return;
+      }
+
+      setMessage(
+        "Te enviamos un correo para recuperar tu contraseña. Revisa tu inbox.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdatePassword = async (e: FormEvent) => {
+    e.preventDefault();
+    resetFeedback();
+
+    if (newPassword.length < 6) {
+      setErrorMessage("La contraseña debe tener al menos 6 caracteres.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setErrorMessage("Las contraseñas no coinciden.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (error) {
+        setErrorMessage(error.message);
+        return;
+      }
+
+      setMessage("Contraseña actualizada correctamente. Ya puedes entrar.");
+      setNewPassword("");
+      setConfirmPassword("");
+
+      setTimeout(() => {
+        router.push("/acceso");
+      }, 1200);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-black px-6 py-10 text-white">
       <div className="mx-auto max-w-6xl">
@@ -213,84 +315,77 @@ function AccesoContent() {
               {subtitle}
             </p>
 
-            {nextPath !== "/" && (
+            {nextPath !== "/" && mode !== "reset" && (
               <div className="mt-6 rounded-2xl border border-cyan-400/20 bg-cyan-500/10 px-4 py-3 text-cyan-200">
                 Después de entrar te enviaremos directo a la sala de la invitación.
               </div>
             )}
 
-            <div className="mt-8 flex flex-wrap gap-3">
-              <button
-                onClick={() => {
-                  resetFeedback();
-                  setMode("login");
-                }}
-                className={`rounded-2xl px-5 py-3 font-bold transition ${
-                  mode === "login"
-                    ? "bg-orange-500 text-black"
-                    : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
-                }`}
-              >
-                Iniciar sesión
-              </button>
+            {mode !== "reset" && (
+              <div className="mt-8 flex flex-wrap gap-3">
+                <button
+                  onClick={() => switchMode("login")}
+                  className={`rounded-2xl px-5 py-3 font-bold transition ${
+                    mode === "login"
+                      ? "bg-orange-500 text-black"
+                      : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
+                  }`}
+                >
+                  Iniciar sesión
+                </button>
 
-              <button
-                onClick={() => {
-                  resetFeedback();
-                  setMode("register");
-                }}
-                className={`rounded-2xl px-5 py-3 font-bold transition ${
-                  mode === "register"
-                    ? "bg-orange-500 text-black"
-                    : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
-                }`}
-              >
-                Crear cuenta
-              </button>
+                <button
+                  onClick={() => switchMode("register")}
+                  className={`rounded-2xl px-5 py-3 font-bold transition ${
+                    mode === "register"
+                      ? "bg-orange-500 text-black"
+                      : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
+                  }`}
+                >
+                  Crear cuenta
+                </button>
 
-              <button
-                onClick={() => {
-                  resetFeedback();
-                  setMode("guest");
-                }}
-                className={`rounded-2xl px-5 py-3 font-bold transition ${
-                  mode === "guest"
-                    ? "bg-orange-500 text-black"
-                    : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
-                }`}
-              >
-                Entrar como invitado
-              </button>
-            </div>
+                <button
+                  onClick={() => switchMode("guest")}
+                  className={`rounded-2xl px-5 py-3 font-bold transition ${
+                    mode === "guest"
+                      ? "bg-orange-500 text-black"
+                      : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
+                  }`}
+                >
+                  Entrar como invitado
+                </button>
+              </div>
+            )}
 
             <div className="mt-8 rounded-[28px] border border-white/10 bg-black/40 p-6">
               {mode === "login" && (
                 <form onSubmit={handleLogin} className="space-y-4">
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
-                      Correo
-                    </label>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="correo@ejemplo.com"
-                      className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
-                    />
-                  </div>
+                  <FieldLabel label="Correo" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="correo@ejemplo.com"
+                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
+                  />
 
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
-                      Contraseña
-                    </label>
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Tu contraseña"
-                      className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
-                    />
-                  </div>
+                  <FieldLabel label="Contraseña" />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Tu contraseña"
+                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => switchMode("recovery")}
+                    className="text-sm font-bold text-orange-300 hover:text-orange-200"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
 
                   <button
                     type="submit"
@@ -304,45 +399,33 @@ function AccesoContent() {
 
               {mode === "register" && (
                 <form onSubmit={handleRegister} className="space-y-4">
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
-                      Nombre visible
-                    </label>
-                    <input
-                      type="text"
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      placeholder="Ejemplo: Angel"
-                      maxLength={20}
-                      className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
-                    />
-                  </div>
+                  <FieldLabel label="Nombre visible" />
+                  <input
+                    type="text"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="Ejemplo: Angel"
+                    maxLength={20}
+                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
+                  />
 
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
-                      Correo
-                    </label>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="correo@ejemplo.com"
-                      className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
-                    />
-                  </div>
+                  <FieldLabel label="Correo" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="correo@ejemplo.com"
+                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
+                  />
 
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
-                      Contraseña
-                    </label>
-                    <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Mínimo 6 caracteres"
-                      className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
-                    />
-                  </div>
+                  <FieldLabel label="Contraseña" />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Mínimo 6 caracteres"
+                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
+                  />
 
                   <button
                     type="submit"
@@ -356,19 +439,15 @@ function AccesoContent() {
 
               {mode === "guest" && (
                 <form onSubmit={handleGuest} className="space-y-4">
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
-                      Nombre de invitado
-                    </label>
-                    <input
-                      type="text"
-                      value={guestName}
-                      onChange={(e) => setGuestName(e.target.value)}
-                      placeholder="Ejemplo: Angel"
-                      maxLength={20}
-                      className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
-                    />
-                  </div>
+                  <FieldLabel label="Nombre de invitado" />
+                  <input
+                    type="text"
+                    value={guestName}
+                    onChange={(e) => setGuestName(e.target.value)}
+                    placeholder="Ejemplo: Angel"
+                    maxLength={20}
+                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
+                  />
 
                   <button
                     type="submit"
@@ -376,6 +455,69 @@ function AccesoContent() {
                     className="w-full rounded-2xl bg-orange-500 px-5 py-3.5 text-lg font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     Continuar como invitado
+                  </button>
+                </form>
+              )}
+
+              {mode === "recovery" && (
+                <form onSubmit={handleSendRecovery} className="space-y-4">
+                  <FieldLabel label="Correo de tu cuenta" />
+                  <input
+                    type="email"
+                    value={recoveryEmail}
+                    onChange={(e) => setRecoveryEmail(e.target.value)}
+                    placeholder="correo@ejemplo.com"
+                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
+                  />
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full rounded-2xl bg-orange-500 px-5 py-3.5 text-lg font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {loading ? "Enviando..." : "Enviar correo de recuperación"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => switchMode("login")}
+                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-bold text-white hover:bg-white/10"
+                  >
+                    Volver a iniciar sesión
+                  </button>
+                </form>
+              )}
+
+              {mode === "reset" && (
+                <form onSubmit={handleUpdatePassword} className="space-y-4">
+                  <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-orange-200">
+                    Estás actualizando la contraseña de tu cuenta.
+                  </div>
+
+                  <FieldLabel label="Nueva contraseña" />
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Mínimo 6 caracteres"
+                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
+                  />
+
+                  <FieldLabel label="Confirmar contraseña" />
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Repite tu contraseña"
+                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
+                  />
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full rounded-2xl bg-orange-500 px-5 py-3.5 text-lg font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {loading ? "Guardando..." : "Guardar nueva contraseña"}
                   </button>
                 </form>
               )}
@@ -398,26 +540,17 @@ function AccesoContent() {
             <h2 className="text-3xl font-extrabold">¿Qué ganas con cuenta?</h2>
 
             <div className="mt-6 space-y-4">
-              <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                <p className="text-xl font-bold">Identidad fija</p>
-                <p className="mt-2 text-white/65">
-                  Evita confusiones entre anfitrión e invitado al entrar a sala y juego.
-                </p>
-              </div>
+              <InfoCard title="Identidad fija">
+                Evita confusiones entre anfitrión e invitado al entrar a sala y juego.
+              </InfoCard>
 
-              <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                <p className="text-xl font-bold">Sistema de puntos</p>
-                <p className="mt-2 text-white/65">
-                  Guarda tus victorias, partidas jugadas y progreso real.
-                </p>
-              </div>
+              <InfoCard title="Sistema de puntos">
+                Guarda tus victorias, partidas jugadas y progreso real.
+              </InfoCard>
 
-              <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                <p className="text-xl font-bold">Avatar y marco</p>
-                <p className="mt-2 text-white/65">
-                  Desde el perfil podrás elegir avatares y marcos predeterminados para personalizarte.
-                </p>
-              </div>
+              <InfoCard title="Avatar y marco">
+                Desde el perfil podrás elegir avatares y marcos predeterminados para personalizarte.
+              </InfoCard>
             </div>
 
             <div className="mt-8 rounded-3xl border border-orange-500/15 bg-orange-500/5 p-5">
@@ -425,14 +558,37 @@ function AccesoContent() {
                 Estado actual
               </p>
               <p className="mt-3 text-white/75">
-                Puedes entrar con cuenta o como invitado. Si vienes desde una invitación,
-                después te enviaremos directo a esa sala.
+                Puedes entrar con cuenta o como invitado. Si vienes desde una
+                invitación, después te enviaremos directo a esa sala.
               </p>
             </div>
           </aside>
         </div>
       </div>
     </main>
+  );
+}
+
+function FieldLabel({ label }: { label: string }) {
+  return (
+    <label className="mb-2 block text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
+      {label}
+    </label>
+  );
+}
+
+function InfoCard({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+      <p className="text-xl font-bold">{title}</p>
+      <p className="mt-2 text-white/65">{children}</p>
+    </div>
   );
 }
 
