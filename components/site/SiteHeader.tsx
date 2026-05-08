@@ -131,7 +131,7 @@ export default function SiteHeader({
             </button>
 
             <button
-              onClick={() => router.push("/perfil?tab=shop")}
+              onClick={() => router.push("/tienda")}
               className="rounded-2xl border border-orange-500/25 bg-orange-500/10 px-5 py-2.5 font-bold text-orange-200 hover:bg-orange-500/20"
             >
               Tienda ✨
@@ -202,7 +202,7 @@ export default function SiteHeader({
               )}
 
               <MenuButton label="🏆 Ranking" onClick={() => goTo("/ranking")} />
-              <MenuButton label="🛒 Tienda" onClick={() => goTo("/perfil?tab=shop")} />
+              <MenuButton label="🛒 Tienda" onClick={() => goTo("/tienda")} />
 
               <button
                 onClick={() => {
