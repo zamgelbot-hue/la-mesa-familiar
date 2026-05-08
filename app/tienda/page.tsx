@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import SiteHeader from "@/components/site/SiteHeader";
+import RedeemCodeModal from "@/components/shop/RedeemCodeModal";
 import { createClient } from "@/lib/supabase/client";
 import {
   getPlayerIdentity,
@@ -187,6 +188,8 @@ export default function TiendaPage() {
 
   const [playerIdentity, setPlayerIdentity] =
     useState<PlayerIdentity | null>(null);
+
+  const [redeemOpen, setRedeemOpen] = useState(false);
 
   const [signingOut, setSigningOut] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -523,12 +526,27 @@ export default function TiendaPage() {
                   </p>
                 </div>
 
-                <div className="rounded-3xl border border-white/10 bg-white/5 px-5 py-4 text-right">
-                  <p className="text-2xl">🎁</p>
-                  <p className="mt-1 text-xs font-bold text-white/50">
-                    Códigos próximamente
-                  </p>
-                </div>
+                <button
+  type="button"
+  onClick={() => setRedeemOpen(true)}
+  className="group rounded-3xl border border-white/10 bg-white/5 px-5 py-4 text-right transition hover:border-orange-500/40 hover:bg-orange-500/10"
+>
+  <div className="flex items-center gap-4">
+    <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-orange-500/20 bg-orange-500/10 text-3xl shadow-[0_0_20px_rgba(249,115,22,0.18)] transition duration-300 group-hover:scale-110 group-hover:shadow-[0_0_35px_rgba(249,115,22,0.35)]">
+      🎁
+    </div>
+
+    <div className="text-left">
+      <p className="text-sm font-black text-white">
+        Canjear código
+      </p>
+
+      <p className="mt-1 text-xs font-bold text-white/50">
+        Recompensas especiales
+      </p>
+    </div>
+  </div>
+</button>
               </div>
 
               {storeMessage && (
@@ -680,6 +698,15 @@ export default function TiendaPage() {
           })}
         </div>
       </section>
+      <RedeemCodeModal
+  open={redeemOpen}
+  onClose={() => setRedeemOpen(false)}
+  onRedeemed={(newPoints) => {
+    if (typeof newPoints === "number") {
+      setPoints(newPoints);
+    }
+  }}
+/>
     </main>
   );
 }
