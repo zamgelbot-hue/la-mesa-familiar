@@ -356,6 +356,24 @@ export const GAME_CATALOG: GameCatalog = {
       "Gana quien complete toda la secuencia",
     ],
   },
+    "domino": {
+    maxPlayersOptions: [2],
+    variants: [
+      {
+        key: "classic_1v1",
+        label: "Clásico 1v1",
+        description: "Dominó doble 6 para dos jugadores.",
+        available: true,
+      },
+    ],
+    tutorial: [
+      "Cada jugador recibe 7 fichas",
+      "Juega una ficha que conecte con los extremos de la mesa",
+      "Si no tienes jugada, puedes pasar turno",
+      "Gana quien se quede sin fichas",
+      "Si la partida se bloquea, gana quien tenga menor suma",
+    ],
+  },
 };
 
 export function buildRoomSettings(
@@ -414,6 +432,17 @@ export function buildRoomSettings(
       max_number: boardSize * boardSize,
       max_players: maxPlayers,
       min_players: 2,
+    };
+  }
+
+    if (gameSlug === "domino") {
+    return {
+      mode: "domino",
+      variant: variantKey || "classic_1v1",
+      max_players: 2,
+      min_players: 2,
+      tile_set: "double_6",
+      hand_size: 7,
     };
   }
 
@@ -479,6 +508,7 @@ export function getGameIcon(
     "guerra-total": "💥",
     memorama: "🧠",
     "secuencia-oculta": "🔢",
+    "domino": "🎲",
   };
 
   return icons[gameSlug] ?? "🎲";

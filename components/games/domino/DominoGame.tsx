@@ -312,8 +312,8 @@ export default function DominoGame({
   );
 
   const refreshDominoState = useCallback(
-    async (playerList = sortedRoomPlayers) => {
-      const latestRoom = await fetchRoom();
+    async (playerList = sortedRoomPlayers, roomData?: RoomRow | null) => {
+      const latestRoom = roomData === undefined ? await fetchRoom() : roomData;
       const currentPlayers = mapRoomPlayersToDominoPlayers(playerList);
       const incoming = latestRoom?.room_settings?.[DOMINO_STATE_KEY] as
         | Partial<DominoState>
@@ -413,18 +413,26 @@ export default function DominoGame({
 
     async function boot() {
       setLoading(true);
+      setMessage("");
 
-      const [roomData, playerList] = await Promise.all([
-        fetchRoom(),
-        fetchPlayers(),
-      ]);
+      try {
+        const [roomData, playerList] = await Promise.all([
+          fetchRoom(),
+          fetchPlayers(),
+        ]);
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      await ensureDominoState(roomData, playerList);
-      await refreshDominoState(playerList);
-
-      if (!cancelled) setLoading(false);
+        await ensureDominoState(roomData, playerList);
+        await refreshDominoState(playerList, roomData);
+      } catch (error) {
+        console.error("Error iniciando Dominó:", error);
+        if (!cancelled) {
+          setMessage("No se pudo iniciar Dominó. Regresa a la sala e intenta iniciar otra vez.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
 
     void boot();
