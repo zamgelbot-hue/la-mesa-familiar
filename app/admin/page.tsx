@@ -5,18 +5,58 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { AVATARS, FRAMES } from "@/lib/profile/profileCosmetics";
+
+type RewardType = "points" | "avatar" | "frame";
 
 type PromoCode = {
   id: string;
   code: string;
-  reward_type: string;
+  reward_type: RewardType;
   reward_value: number;
+  reward_key: string | null;
+  description: string | null;
   max_uses: number;
   used_count: number;
   expires_at: string | null;
   active: boolean;
   created_at: string;
 };
+
+type RewardItem = {
+  key: string;
+  label: string;
+  group: string;
+  type: "avatar" | "frame";
+  image?: string;
+  emoji?: string;
+};
+
+function getItemImage(item: unknown) {
+  if (
+    typeof item === "object" &&
+    item !== null &&
+    "image" in item &&
+    typeof item.image === "string"
+  ) {
+    return item.image;
+  }
+
+  return undefined;
+}
+
+function getItemEmoji(item: unknown) {
+  if (
+    typeof item === "object" &&
+    item !== null &&
+    "emoji" in item &&
+    typeof item.emoji === "string"
+  ) {
+    return item.emoji;
+  }
+
+  return undefined;
+}
 
 export default function AdminPage() {
   const supabase = useMemo(() => createClient(), []);
@@ -25,10 +65,50 @@ export default function AdminPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [codes, setCodes] = useState<PromoCode[]>([]);
 
-  const [code, setCode] = useState("");
-  const [rewardValue, setRewardValue] = useState(25);
-  const [maxUses, setMaxUses] = useState(1);
+  const [pointsCode, setPointsCode] = useState("");
+  const [pointsRewardValue, setPointsRewardValue] = useState(25);
+  const [pointsMaxUses, setPointsMaxUses] = useState(1);
+
+  const [itemCode, setItemCode] = useState("");
+  const [itemRewardType, setItemRewardType] =
+    useState<"avatar" | "frame">("avatar");
+  const [selectedRewardKey, setSelectedRewardKey] = useState("");
+  const [itemMaxUses, setItemMaxUses] = useState(1);
+
   const [message, setMessage] = useState("");
+
+  const avatarRewards = useMemo<RewardItem[]>(
+    () =>
+      AVATARS.filter((avatar) => avatar.tier !== "basic").map(
+        (avatar) => ({
+          key: avatar.key,
+          label: avatar.label,
+          group: avatar.group,
+          type: "avatar",
+          image: getItemImage(avatar),
+          emoji: getItemEmoji(avatar),
+        }),
+      ),
+    [],
+  );
+
+  const frameRewards = useMemo<RewardItem[]>(
+    () =>
+      FRAMES.filter((frame) => frame.tier !== "basic").map(
+        (frame) => ({
+          key: frame.key,
+          label: frame.label,
+          group: frame.group,
+          type: "frame",
+          image: getItemImage(frame),
+          emoji: "🖼️",
+        }),
+      ),
+    [],
+  );
+
+  const rewardOptions =
+    itemRewardType === "avatar" ? avatarRewards : frameRewards;
 
   async function loadAdmin() {
     setLoading(true);
@@ -69,13 +149,27 @@ export default function AdminPage() {
     void loadAdmin();
   }, []);
 
-  async function createCode() {
+  useEffect(() => {
+    setSelectedRewardKey(rewardOptions[0]?.key ?? "");
+  }, [itemRewardType, rewardOptions]);
+
+  async function createPointsCode() {
     setMessage("");
 
-    const cleanCode = code.trim().toUpperCase();
+    const cleanCode = pointsCode.trim().toUpperCase();
 
     if (!cleanCode) {
-      setMessage("Escribe un código.");
+      setMessage("Escribe un código de puntos.");
+      return;
+    }
+
+    if (pointsRewardValue <= 0) {
+      setMessage("La recompensa debe ser mayor a 0 puntos.");
+      return;
+    }
+
+    if (pointsMaxUses <= 0) {
+      setMessage("Los usos máximos deben ser mayores a 0.");
       return;
     }
 
@@ -84,8 +178,10 @@ export default function AdminPage() {
     const { error } = await supabase.from("promo_codes").insert({
       code: cleanCode,
       reward_type: "points",
-      reward_value: rewardValue,
-      max_uses: maxUses,
+      reward_value: pointsRewardValue,
+      reward_key: null,
+      description: `${pointsRewardValue} puntos`,
+      max_uses: pointsMaxUses,
       created_by: authData.user?.id,
     });
 
@@ -94,8 +190,56 @@ export default function AdminPage() {
       return;
     }
 
-    setCode("");
-    setMessage("Código creado correctamente.");
+    setPointsCode("");
+    setMessage("Código de puntos creado correctamente.");
+    await loadAdmin();
+  }
+
+  async function createItemCode() {
+    setMessage("");
+
+    const cleanCode = itemCode.trim().toUpperCase();
+
+    if (!cleanCode) {
+      setMessage("Escribe un código para cosmético.");
+      return;
+    }
+
+    if (!selectedRewardKey) {
+      setMessage("Selecciona un avatar o marco.");
+      return;
+    }
+
+    if (itemMaxUses <= 0) {
+      setMessage("Los usos máximos deben ser mayores a 0.");
+      return;
+    }
+
+    const selectedItem = rewardOptions.find(
+      (item) => item.key === selectedRewardKey,
+    );
+
+    const { data: authData } = await supabase.auth.getUser();
+
+    const { error } = await supabase.from("promo_codes").insert({
+      code: cleanCode,
+      reward_type: itemRewardType,
+      reward_value: 0,
+      reward_key: selectedRewardKey,
+      description: selectedItem
+        ? `${selectedItem.label} · ${selectedItem.group}`
+        : selectedRewardKey,
+      max_uses: itemMaxUses,
+      created_by: authData.user?.id,
+    });
+
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+
+    setItemCode("");
+    setMessage("Código de cosmético creado correctamente.");
     await loadAdmin();
   }
 
@@ -106,6 +250,22 @@ export default function AdminPage() {
       .eq("id", item.id);
 
     await loadAdmin();
+  }
+
+  function getRewardText(item: PromoCode) {
+    if (item.reward_type === "points") {
+      return `${item.reward_value} pts`;
+    }
+
+    if (item.reward_type === "avatar") {
+      return `Avatar: ${item.description ?? item.reward_key}`;
+    }
+
+    if (item.reward_type === "frame") {
+      return `Marco: ${item.description ?? item.reward_key}`;
+    }
+
+    return item.description ?? "Recompensa";
   }
 
   if (loading) {
@@ -140,7 +300,7 @@ export default function AdminPage() {
       <div className="mx-auto max-w-6xl">
         <Link
           href="/"
-          className="inline-flex rounded-2xl bg-orange-500 px-5 py-3 font-black text-black"
+          className="inline-flex rounded-2xl bg-orange-500 px-5 py-3 font-black text-black hover:bg-orange-400"
         >
           ← Volver
         </Link>
@@ -158,27 +318,31 @@ export default function AdminPage() {
         </header>
 
         <section className="mt-8 rounded-[30px] border border-white/10 bg-zinc-950 p-6">
-          <h2 className="text-2xl font-black">Crear código promocional</h2>
+          <h2 className="text-2xl font-black">
+            Crear código promocional de puntos
+          </h2>
 
           <div className="mt-5 grid gap-4 md:grid-cols-3">
             <input
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
+              value={pointsCode}
+              onChange={(e) => setPointsCode(e.target.value)}
               placeholder="EJ: MESA50"
               className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold uppercase outline-none focus:border-orange-500"
             />
 
             <input
-              value={rewardValue}
-              onChange={(e) => setRewardValue(Number(e.target.value))}
+              value={pointsRewardValue}
+              onChange={(e) =>
+                setPointsRewardValue(Number(e.target.value))
+              }
               type="number"
               placeholder="Puntos"
               className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold outline-none focus:border-orange-500"
             />
 
             <input
-              value={maxUses}
-              onChange={(e) => setMaxUses(Number(e.target.value))}
+              value={pointsMaxUses}
+              onChange={(e) => setPointsMaxUses(Number(e.target.value))}
               type="number"
               placeholder="Usos máximos"
               className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold outline-none focus:border-orange-500"
@@ -186,23 +350,89 @@ export default function AdminPage() {
           </div>
 
           <button
-            onClick={createCode}
+            onClick={createPointsCode}
             className="mt-5 rounded-2xl bg-orange-500 px-6 py-3 font-black text-black hover:bg-orange-400"
           >
-            Crear código
+            Crear código de puntos
           </button>
-
-          {message && (
-            <p className="mt-4 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-orange-200">
-              {message}
-            </p>
-          )}
         </section>
+
+        <section className="mt-8 rounded-[30px] border border-white/10 bg-zinc-950 p-6">
+          <h2 className="text-2xl font-black">
+            Crear código promocional de cosmético
+          </h2>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-[0.8fr_1.4fr_0.8fr]">
+            <select
+              value={itemRewardType}
+              onChange={(e) =>
+                setItemRewardType(e.target.value as "avatar" | "frame")
+              }
+              className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold outline-none focus:border-orange-500"
+            >
+              <option value="avatar">Avatar</option>
+              <option value="frame">Marco</option>
+            </select>
+
+            <select
+              value={selectedRewardKey}
+              onChange={(e) => setSelectedRewardKey(e.target.value)}
+              className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold outline-none focus:border-orange-500"
+            >
+              {rewardOptions.map((item) => (
+                <option key={item.key} value={item.key}>
+                  {item.group} · {item.label} · {item.key}
+                </option>
+              ))}
+            </select>
+
+            <input
+              value={itemMaxUses}
+              onChange={(e) => setItemMaxUses(Number(e.target.value))}
+              type="number"
+              placeholder="Usos máximos"
+              className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold outline-none focus:border-orange-500"
+            />
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto]">
+            <input
+              value={itemCode}
+              onChange={(e) => setItemCode(e.target.value)}
+              placeholder="EJ: DEMONIOVIP"
+              className="rounded-2xl border border-white/10 bg-black px-4 py-3 font-bold uppercase outline-none focus:border-orange-500"
+            />
+
+            <button
+              onClick={createItemCode}
+              className="rounded-2xl bg-orange-500 px-6 py-3 font-black text-black hover:bg-orange-400"
+            >
+              Crear código de cosmético
+            </button>
+          </div>
+
+          <p className="mt-4 text-sm text-white/45">
+            Este selector se alimenta automáticamente de los avatares y marcos
+            disponibles en la tienda.
+          </p>
+        </section>
+
+        {message && (
+          <p className="mt-6 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-orange-200">
+            {message}
+          </p>
+        )}
 
         <section className="mt-8 rounded-[30px] border border-white/10 bg-zinc-950 p-6">
           <h2 className="text-2xl font-black">Códigos creados</h2>
 
           <div className="mt-5 grid gap-4">
+            {codes.length === 0 && (
+              <div className="rounded-2xl border border-white/10 bg-black p-5 text-white/50">
+                Todavía no hay códigos creados.
+              </div>
+            )}
+
             {codes.map((item) => (
               <div
                 key={item.id}
@@ -213,7 +443,12 @@ export default function AdminPage() {
                     {item.code}
                   </p>
                   <p className="text-sm text-white/50">
-                    {item.reward_value} pts · {item.used_count}/{item.max_uses} usos
+                    {getRewardText(item)} · {item.used_count}/{item.max_uses}{" "}
+                    usos
+                  </p>
+                  <p className="mt-1 text-xs text-white/30">
+                    Tipo: {item.reward_type}
+                    {item.reward_key ? ` · Key: ${item.reward_key}` : ""}
                   </p>
                 </div>
 
