@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import PlayerAvatar from "@/components/PlayerAvatar";
@@ -51,7 +51,7 @@ export default function SiteHeader({
 }: SiteHeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const [pendingRoomInvites, setPendingRoomInvites] = useState(0);
   const [pendingFriendRequests, setPendingFriendRequests] = useState(0);
@@ -155,10 +155,19 @@ export default function SiteHeader({
       setClaimingReward(true);
       setRewardMessage(null);
 
+      const { data: authData, error: authError } =
+        await supabase.auth.getUser();
+
+      if (authError || !authData.user?.id) {
+        throw authError ?? new Error("No hay sesión activa.");
+      }
+
+      const userId = authData.user.id;
+
       const { data, error } = await supabase
         .from("profiles")
         .select("points, daily_streak, last_daily_claim")
-        .eq("id", playerIdentity.user_id)
+        .eq("id", userId)
         .single();
 
       if (error || !data) throw error;
@@ -180,10 +189,12 @@ export default function SiteHeader({
           ? currentStreak + 1
           : 1;
 
-      const rewardPoints = DAILY_REWARDS[(nextStreak - 1) % DAILY_REWARDS.length];
+      const rewardPoints =
+        DAILY_REWARDS[(nextStreak - 1) % DAILY_REWARDS.length];
+
       const newPoints = (data.points ?? 0) + rewardPoints;
 
-      const { error: updateError } = await supabase
+      const { data: updatedProfile, error: updateError } = await supabase
         .from("profiles")
         .update({
           points: newPoints,
@@ -191,16 +202,25 @@ export default function SiteHeader({
           last_daily_claim: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq("id", playerIdentity.user_id);
+        .eq("id", userId)
+        .select("points, daily_streak, last_daily_claim")
+        .single();
 
-      if (updateError) throw updateError;
+      if (updateError || !updatedProfile) throw updateError;
 
-      setDailyStreak(nextStreak);
+      setDailyStreak(updatedProfile.daily_streak ?? nextStreak);
       setRewardAvailable(false);
-      setRewardMessage(`🔥 Reclamaste ${rewardPoints} puntos.`);
+      setRewardMessage(
+        `🔥 Reclamaste ${rewardPoints} puntos. Ahora tienes ${updatedProfile.points ?? newPoints} pts.`,
+      );
+
+      router.refresh();
     } catch (error) {
       console.error("Error reclamando recompensa diaria:", error);
-      setRewardMessage("No se pudo reclamar la recompensa. Intenta de nuevo.");
+      setRewardAvailable(true);
+      setRewardMessage(
+        "No se pudo reclamar la recompensa. Revisa permisos o intenta de nuevo.",
+      );
     } finally {
       setClaimingReward(false);
     }
