@@ -27,13 +27,15 @@ type PromoCode = {
 type Redemption = {
   id?: string;
   user_id?: string;
-  promo_code_id?: string;
-  code?: string;
-  reward_type?: string;
-  reward_key?: string | null;
-  reward_value?: number;
-  created_at?: string;
   redeemed_at?: string;
+
+  promo_codes?: {
+    code?: string;
+    reward_type?: string;
+    reward_key?: string | null;
+    reward_value?: number;
+    description?: string | null;
+  } | null;
 };
 
 type RewardItem = {
@@ -184,10 +186,21 @@ export default function AdminPage() {
     setCodes((promoData ?? []) as PromoCode[]);
 
     const { data: redemptionData, error: redemptionError } = await supabase
-      .from("promo_redemptions")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(50);
+  .from("promo_redemptions")
+  .select(`
+    id,
+    user_id,
+    redeemed_at,
+    promo_codes (
+      code,
+      reward_type,
+      reward_key,
+      reward_value,
+      description
+    )
+  `)
+  .order("redeemed_at", { ascending: false })
+  .limit(50);
 
     if (redemptionError) {
       setHistoryError(
@@ -635,19 +648,34 @@ export default function AdminPage() {
                   className="rounded-2xl border border-white/10 bg-black p-4"
                 >
                   <p className="font-black text-orange-300">
-                    {item.code ?? item.promo_code_id ?? "Código canjeado"}
-                  </p>
-                  <p className="mt-1 text-sm text-white/50">
-                    Usuario: {item.user_id ?? "No disponible"}
-                  </p>
-                  <p className="mt-1 text-xs text-white/35">
-                    Reward: {item.reward_type ?? "N/A"}
-                    {item.reward_key ? ` · ${item.reward_key}` : ""}
-                    {item.reward_value ? ` · ${item.reward_value} pts` : ""}
-                  </p>
-                  <p className="mt-1 text-xs text-white/30">
-                    Fecha: {formatDate(item.created_at ?? item.redeemed_at)}
-                  </p>
+  {item.promo_codes?.code ?? "Código canjeado"}
+</p>
+
+<p className="mt-1 text-sm text-white/50">
+  Usuario: {item.user_id ?? "No disponible"}
+</p>
+
+<p className="mt-1 text-xs text-white/35">
+  Reward:
+  {" "}
+  {item.promo_codes?.reward_type ?? "N/A"}
+
+  {item.promo_codes?.reward_key
+    ? ` · ${item.promo_codes.reward_key}`
+    : ""}
+
+  {item.promo_codes?.reward_value
+    ? ` · ${item.promo_codes.reward_value} pts`
+    : ""}
+
+  {item.promo_codes?.description
+    ? ` · ${item.promo_codes.description}`
+    : ""}
+</p>
+
+<p className="mt-1 text-xs text-white/30">
+  Fecha: {formatDate(item.redeemed_at)}
+</p>
                 </div>
               ))}
             </div>
