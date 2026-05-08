@@ -2,24 +2,30 @@
 
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, Gift } from "lucide-react";
-
+import PlayerAvatar from "@/components/PlayerAvatar";
+import SettingsModal from "@/components/settings/SettingsModal";
+import DailyRewardModal from "@/components/rewards/DailyRewardModal";
+import { getAvatarByKey, getFrameByKey } from "@/lib/profile/profileCosmetics";
 import { createClient } from "@/lib/supabase/client";
 import type { PlayerIdentity } from "@/lib/profile/getPlayerIdentity";
 
-import DailyRewardModal from "@/components/rewards/DailyRewardModal";
-
-type Props = {
+type SiteHeaderProps = {
   playerIdentity?: PlayerIdentity | null;
-  onSignOut?: () => Promise<void> | void;
+  onSignOut?: () => void;
   signingOut?: boolean;
+  showMainNav?: boolean;
   showHomeButton?: boolean;
+  showRankingButton?: boolean;
+  showFriendsButton?: boolean;
   showProfileButton?: boolean;
+  showStartButton?: boolean;
   showLoginButton?: boolean;
 };
+
+const DAILY_REWARDS = [10, 15, 20, 25, 30, 35, 50];
 
 function isSameDay(dateA: Date, dateB: Date) {
   return (
@@ -31,85 +37,119 @@ function isSameDay(dateA: Date, dateB: Date) {
 
 function isYesterday(date: Date) {
   const yesterday = new Date();
-
   yesterday.setDate(yesterday.getDate() - 1);
-
   return isSameDay(date, yesterday);
 }
 
-const DAILY_REWARDS = [10, 15, 20, 25, 30, 35, 50];
-
 export default function SiteHeader({
-  playerIdentity,
+  playerIdentity = null,
   onSignOut,
-  signingOut,
-}: Props) {
-  const pathname = usePathname();
+  signingOut = false,
+  showHomeButton = false,
+  showProfileButton = false,
+  showLoginButton = false,
+}: SiteHeaderProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const supabase = createClient();
 
-  const supabaseRef = useRef(createClient());
-  const supabase = supabaseRef.current;
-
+  const [pendingRoomInvites, setPendingRoomInvites] = useState(0);
+  const [pendingFriendRequests, setPendingFriendRequests] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [rewardOpen, setRewardOpen] = useState(false);
-  const [rewardAvailable, setRewardAvailable] =
-    useState(false);
-
+  const [rewardAvailable, setRewardAvailable] = useState(false);
   const [dailyStreak, setDailyStreak] = useState(0);
+  const [claimingReward, setClaimingReward] = useState(false);
+  const [rewardMessage, setRewardMessage] = useState<string | null>(null);
 
-  const [claimingReward, setClaimingReward] =
-    useState(false);
+  const selectedAvatar = getAvatarByKey(playerIdentity?.avatar_key);
+  const selectedFrame = getFrameByKey(playerIdentity?.frame_key);
 
-  const [rewardMessage, setRewardMessage] =
-    useState<string | null>(null);
+  const canUseDailyReward =
+    !!playerIdentity?.user_id && !playerIdentity?.is_guest;
 
-  const displayName =
-    playerIdentity?.display_name ??
-    playerIdentity?.username ??
-    "Invitado";
+  const totalNotifications =
+    pendingRoomInvites +
+    pendingFriendRequests +
+    (canUseDailyReward && rewardAvailable ? 1 : 0);
 
-  const avatarUrl =
-    playerIdentity?.avatar_url ??
-    "/avatars/demonio.png";
+  const getAccessPath = () => {
+    const nextPath = pathname && pathname !== "/acceso" ? pathname : "/";
+    return `/acceso?next=${encodeURIComponent(nextPath)}`;
+  };
 
-  useEffect(() => {
-    async function loadDailyReward() {
-      if (!playerIdentity?.user_id) return;
+  const handleLoginClick = () => {
+    router.push(getAccessPath());
+    setMenuOpen(false);
+  };
 
-      const { data } = await supabase
-        .from("profiles")
-        .select("last_daily_claim, daily_streak")
-        .eq("id", playerIdentity.user_id)
-        .single();
-
-      if (!data) return;
-
-      const streak = data.daily_streak ?? 0;
-
-      setDailyStreak(streak);
-
-      if (!data.last_daily_claim) {
-        setRewardAvailable(true);
-        return;
-      }
-
-      const claimDate = new Date(data.last_daily_claim);
-
-      if (!isSameDay(claimDate, new Date())) {
-        setRewardAvailable(true);
-      }
+  const loadSocialNotifications = useCallback(async () => {
+    if (!playerIdentity?.user_id || playerIdentity.is_guest) {
+      setPendingRoomInvites(0);
+      setPendingFriendRequests(0);
+      return;
     }
 
+    const [roomInvitesRes, friendRequestsRes] = await Promise.all([
+      supabase
+        .from("room_invitations")
+        .select("id", { count: "exact", head: true })
+        .eq("receiver_id", playerIdentity.user_id)
+        .eq("status", "pending"),
+      supabase
+        .from("friendships")
+        .select("id", { count: "exact", head: true })
+        .eq("addressee_id", playerIdentity.user_id)
+        .eq("status", "pending"),
+    ]);
+
+    if (!roomInvitesRes.error) {
+      setPendingRoomInvites(roomInvitesRes.count ?? 0);
+    }
+
+    if (!friendRequestsRes.error) {
+      setPendingFriendRequests(friendRequestsRes.count ?? 0);
+    }
+  }, [supabase, playerIdentity?.user_id, playerIdentity?.is_guest]);
+
+  const loadDailyReward = useCallback(async () => {
+    setRewardAvailable(false);
+    setDailyStreak(0);
+    setRewardMessage(null);
+
+    if (!canUseDailyReward || !playerIdentity?.user_id) return;
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("last_daily_claim, daily_streak")
+      .eq("id", playerIdentity.user_id)
+      .single();
+
+    if (error || !data) return;
+
+    setDailyStreak(data.daily_streak ?? 0);
+
+    if (!data.last_daily_claim) {
+      setRewardAvailable(true);
+      return;
+    }
+
+    const lastClaim = new Date(data.last_daily_claim);
+    setRewardAvailable(!isSameDay(lastClaim, new Date()));
+  }, [supabase, canUseDailyReward, playerIdentity?.user_id]);
+
+  useEffect(() => {
+    void loadSocialNotifications();
     void loadDailyReward();
-  }, [playerIdentity, supabase]);
+  }, [loadSocialNotifications, loadDailyReward]);
 
-  const rewardDayIndex = useMemo(() => {
-    return dailyStreak % 7;
-  }, [dailyStreak]);
-
-  async function handleClaimReward() {
-    if (!playerIdentity?.user_id) return;
+  const handleClaimReward = async () => {
+    if (!canUseDailyReward || !playerIdentity?.user_id) {
+      handleLoginClick();
+      return;
+    }
 
     try {
       setClaimingReward(true);
@@ -117,339 +157,265 @@ export default function SiteHeader({
 
       const { data, error } = await supabase
         .from("profiles")
-        .select(
-          "points, daily_streak, last_daily_claim",
-        )
+        .select("points, daily_streak, last_daily_claim")
         .eq("id", playerIdentity.user_id)
         .single();
 
-      if (error || !data) {
-        throw error;
+      if (error || !data) throw error;
+
+      if (data.last_daily_claim) {
+        const lastClaim = new Date(data.last_daily_claim);
+
+        if (isSameDay(lastClaim, new Date())) {
+          setRewardAvailable(false);
+          setRewardMessage("Ya reclamaste tu recompensa de hoy.");
+          return;
+        }
       }
 
       const currentStreak = data.daily_streak ?? 0;
 
-      let nextStreak = currentStreak + 1;
+      const nextStreak =
+        data.last_daily_claim && isYesterday(new Date(data.last_daily_claim))
+          ? currentStreak + 1
+          : 1;
 
-      if (data.last_daily_claim) {
-        const lastClaim = new Date(
-          data.last_daily_claim,
-        );
+      const rewardPoints = DAILY_REWARDS[(nextStreak - 1) % DAILY_REWARDS.length];
+      const newPoints = (data.points ?? 0) + rewardPoints;
 
-        if (!isYesterday(lastClaim)) {
-          nextStreak = 1;
-        }
-      }
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({
+          points: newPoints,
+          daily_streak: nextStreak,
+          last_daily_claim: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", playerIdentity.user_id);
 
-      const rewardIndex = (nextStreak - 1) % 7;
-
-      const rewardPoints =
-        DAILY_REWARDS[rewardIndex];
-
-      const newPoints =
-        (data.points ?? 0) + rewardPoints;
-
-      const { error: updateError } =
-        await supabase
-          .from("profiles")
-          .update({
-            points: newPoints,
-            daily_streak: nextStreak,
-            last_daily_claim:
-              new Date().toISOString(),
-            updated_at:
-              new Date().toISOString(),
-          })
-          .eq("id", playerIdentity.user_id);
-
-      if (updateError) {
-        throw updateError;
-      }
+      if (updateError) throw updateError;
 
       setDailyStreak(nextStreak);
       setRewardAvailable(false);
-
-      setRewardMessage(
-        `🔥 Reclamaste ${rewardPoints} puntos.`
-      );
+      setRewardMessage(`🔥 Reclamaste ${rewardPoints} puntos.`);
     } catch (error) {
-      console.error(
-        "Error reclamando recompensa:",
-        error,
-      );
-
-      setRewardMessage(
-        "No se pudo reclamar la recompensa.",
-      );
+      console.error("Error reclamando recompensa diaria:", error);
+      setRewardMessage("No se pudo reclamar la recompensa. Intenta de nuevo.");
     } finally {
       setClaimingReward(false);
     }
-  }
+  };
 
-  const goTo = (path: string) => {
-    router.push(path);
+  const goTo = (href: string) => {
+    router.push(href);
     setMenuOpen(false);
   };
 
   return (
     <>
       <header className="sticky top-0 z-50 border-b border-orange-500/10 bg-black/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="flex items-center gap-3"
-            >
-              <img
-                src="/branding/logo-horizontal.png"
-                alt="La Mesa Familiar"
-                className="h-11 object-contain"
-              />
-            </Link>
-          </div>
+        <div className="relative mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
+          <Link href="/" className="shrink-0 transition hover:opacity-90">
+            <img
+              src="/branding/logo-horizontal.png?v=8"
+              alt="La Mesa Familiar"
+              className="h-14 w-auto object-contain"
+            />
+          </Link>
 
-          <div className="hidden items-center gap-3 md:flex">
-            <Link
-              href="/"
-              className={`rounded-2xl px-4 py-2 text-sm font-black transition ${
-                pathname === "/"
-                  ? "bg-white/10 text-white"
-                  : "text-white/70 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              Inicio
-            </Link>
-
-            <Link
-              href="/tutoriales"
-              className={`rounded-2xl px-4 py-2 text-sm font-black transition ${
-                pathname === "/tutoriales"
-                  ? "bg-white/10 text-white"
-                  : "text-white/70 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              Tutoriales
-            </Link>
-
-            <Link
-              href="/tienda"
-              className={`rounded-2xl px-4 py-2 text-sm font-black transition ${
-                pathname === "/tienda"
-                  ? "bg-orange-500 text-black"
-                  : "text-orange-300 hover:bg-orange-500/10"
-              }`}
-            >
-              Tienda ✨
-            </Link>
-
-            <Link
-              href="/crear"
-              className="rounded-2xl bg-orange-500 px-5 py-2 text-sm font-black text-black transition hover:bg-orange-400"
-            >
-              + Crear sala
-            </Link>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {playerIdentity && (
+          <nav className="hidden items-center gap-3 lg:flex">
+            {showHomeButton && (
               <button
-                type="button"
-                onClick={() => goTo("/perfil")}
-                className="hidden items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2 transition hover:bg-white/[0.06] md:flex"
+                onClick={() => router.push("/")}
+                className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white hover:bg-white/10"
               >
-                <div className="relative">
-                  <div className="relative h-10 w-10 overflow-hidden rounded-full border-2 border-orange-500">
-  <img
-    src={avatarUrl}
-    alt={displayName}
-    className="h-full w-full object-cover"
-  />
-</div>
-
-                  {rewardAvailable && (
-                    <div className="absolute -right-1 -top-1 flex h-5 min-w-[20px] animate-pulse items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-black text-black shadow-[0_0_18px_rgba(249,115,22,0.7)]">
-                      1
-                    </div>
-                  )}
-                </div>
-
-                <div className="text-left">
-                  <p className="text-sm font-black text-white">
-                    {displayName}
-                  </p>
-
-                  <p className="text-[11px] text-white/45">
-                    La Mesa Familiar
-                  </p>
-                </div>
+                Inicio
               </button>
             )}
 
             <button
-              type="button"
-              onClick={() =>
-                setMenuOpen((prev) => !prev)
-              }
-              className={`relative flex h-12 w-12 items-center justify-center rounded-2xl border transition ${
-                rewardAvailable
-                  ? "border-orange-500 bg-orange-500/10 text-orange-300 shadow-[0_0_22px_rgba(249,115,22,0.35)]"
-                  : "border-white/10 bg-white/[0.03] text-white hover:bg-white/[0.08]"
-              }`}
+              onClick={() => router.push("/#juegos")}
+              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white hover:bg-white/10"
             >
-              {rewardAvailable && (
-                <>
-                  <div className="absolute inset-0 animate-pulse rounded-2xl bg-orange-500/10" />
+              Juegos
+            </button>
 
-                  <div className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-black text-black">
-                    !
-                  </div>
-                </>
-              )}
+            <button
+              onClick={() => router.push("/tutoriales")}
+              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white hover:bg-white/10"
+            >
+              Tutoriales
+            </button>
 
-              {menuOpen ? (
-                <X className="relative z-10 h-5 w-5" />
-              ) : (
-                <Menu className="relative z-10 h-5 w-5" />
+            <button
+              onClick={() => router.push("/tienda")}
+              className="rounded-2xl border border-orange-500/25 bg-orange-500/10 px-5 py-2.5 font-bold text-orange-200 hover:bg-orange-500/20"
+            >
+              Tienda ✨
+            </button>
+
+            <button
+              onClick={() => router.push("/crear")}
+              className="rounded-2xl bg-orange-500 px-5 py-2.5 font-bold text-black hover:bg-orange-400"
+            >
+              + Crear sala
+            </button>
+          </nav>
+
+          <div className="flex items-center gap-3">
+            {playerIdentity && showProfileButton ? (
+              <button
+                onClick={() => router.push("/perfil")}
+                className="hidden items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-white hover:border-orange-500/30 hover:bg-orange-500/10 md:flex"
+              >
+                <PlayerAvatar
+                  avatar={selectedAvatar}
+                  frame={selectedFrame}
+                  size="sm"
+                />
+                <span className="max-w-[130px] truncate font-semibold">
+                  {playerIdentity.name}
+                </span>
+              </button>
+            ) : (
+              showLoginButton && (
+                <button
+                  onClick={handleLoginClick}
+                  className="rounded-2xl border border-orange-500/30 bg-orange-500/10 px-5 py-2.5 font-black text-orange-200 shadow-[0_0_18px_rgba(249,115,22,0.16)] hover:bg-orange-500/20"
+                >
+                  Cuenta
+                </button>
+              )
+            )}
+
+            <button
+              onClick={() => setMenuOpen((value) => !value)}
+              className={`relative rounded-2xl border px-4 py-2 text-lg transition ${
+                canUseDailyReward && rewardAvailable
+                  ? "border-orange-500 bg-orange-500/10 text-orange-300 shadow-[0_0_28px_rgba(249,115,22,0.55)]"
+                  : "border-orange-500/25 bg-white/5 text-white shadow-[0_0_14px_rgba(249,115,22,0.12)] hover:bg-orange-500/10 hover:text-orange-200"
+              }`}
+              aria-label="Abrir menú"
+            >
+              ☰
+
+              {totalNotifications > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-extrabold text-black">
+                  {totalNotifications}
+                </span>
               )}
             </button>
           </div>
-        </div>
 
-        {menuOpen && (
-          <div className="absolute right-4 top-[88px] z-50 w-[320px] overflow-hidden rounded-[32px] border border-orange-500/20 bg-zinc-950/98 shadow-[0_0_50px_rgba(0,0,0,0.6)] backdrop-blur-2xl">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(249,115,22,0.16),transparent_35%)]" />
-
-            <div className="relative p-5">
+          {menuOpen && (
+            <div className="absolute right-6 top-20 z-50 w-80 rounded-3xl border border-orange-500/20 bg-zinc-950/95 p-4 shadow-[0_0_45px_rgba(249,115,22,0.14)] backdrop-blur-xl">
               <button
                 type="button"
                 onClick={() => {
+                  if (!canUseDailyReward) {
+                    handleLoginClick();
+                    return;
+                  }
+
                   setRewardOpen(true);
                   setMenuOpen(false);
                 }}
                 className={`group relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border px-4 py-3 text-left transition ${
-                  rewardAvailable
-                    ? "border-orange-500/30 bg-orange-500/10 shadow-[0_0_25px_rgba(249,115,22,0.18)]"
-                    : "border-white/10 bg-white/[0.03]"
+                  canUseDailyReward && rewardAvailable
+                    ? "border-orange-500/40 bg-orange-500/10 shadow-[0_0_24px_rgba(249,115,22,0.22)]"
+                    : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
                 }`}
               >
-                {rewardAvailable && (
-                  <div className="absolute inset-0 bg-[linear-gradient(120deg,transparent,rgba(255,255,255,0.12),transparent)] animate-[shine_2.8s_linear_infinite]" />
+                {canUseDailyReward && rewardAvailable && (
+                  <span className="absolute inset-0 bg-[linear-gradient(120deg,transparent,rgba(255,255,255,0.13),transparent)] animate-[shine_2.8s_linear_infinite]" />
                 )}
 
-                <div
-                  className={`flex h-11 w-11 items-center justify-center rounded-xl text-2xl ${
-                    rewardAvailable
-                      ? "bg-orange-500/20 shadow-[0_0_25px_rgba(249,115,22,0.35)]"
+                <span
+                  className={`relative flex h-11 w-11 items-center justify-center rounded-xl text-2xl ${
+                    canUseDailyReward && rewardAvailable
+                      ? "animate-bounce bg-orange-500/15 shadow-[0_0_20px_rgba(249,115,22,0.35)]"
                       : "bg-white/5"
                   }`}
                 >
-                  <Gift
-                    className={`h-7 w-7 ${
-                      rewardAvailable
-                        ? "animate-bounce text-orange-300"
-                        : "text-white"
-                    }`}
-                  />
-                </div>
+                  🎁
+                </span>
 
-                <div className="flex-1">
-                  <p className="text-lg font-black text-white">
+                <span className="relative flex-1">
+                  <span className="block font-black text-white">
                     Recompensa diaria
-                  </p>
-
-                  <p
-                    className={`mt-1 text-sm ${
-                      rewardAvailable
-                        ? "text-orange-200"
-                        : "text-white/45"
+                  </span>
+                  <span
+                    className={`mt-0.5 block text-xs font-bold ${
+                      !canUseDailyReward
+                        ? "text-white/45"
+                        : rewardAvailable
+                          ? "text-orange-200"
+                          : "text-white/45"
                     }`}
                   >
-                    {rewardAvailable
-                      ? "🔥 Disponible ahora"
-                      : "Ya reclamada hoy"}
-                  </p>
-                </div>
+                    {!canUseDailyReward
+                      ? "Inicia sesión para reclamar"
+                      : rewardAvailable
+                        ? "Disponible ahora"
+                        : "Ya reclamada hoy"}
+                  </span>
+                </span>
 
-                {rewardAvailable && (
-                  <div className="rounded-full border border-orange-500/25 bg-orange-500 px-3 py-1 text-xs font-black text-black">
+                {canUseDailyReward && rewardAvailable && (
+                  <span className="relative rounded-full bg-orange-500 px-3 py-1 text-xs font-black text-black">
                     GRATIS
-                  </div>
+                  </span>
                 )}
               </button>
 
-              <div className="my-5 h-px bg-white/10" />
+              <div className="my-3 border-t border-white/10" />
 
-              <div className="space-y-2">
-                <button
-                  onClick={() => goTo("/tutoriales")}
-                  className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left font-bold text-white/80 transition hover:bg-white/[0.06] hover:text-white"
-                >
-                  📘 Tutoriales
-                </button>
+              <MenuButton label="📘 Tutoriales" onClick={() => goTo("/tutoriales")} />
+              <MenuButton label="+ Crear sala" onClick={() => goTo("/crear")} />
 
-                <button
-                  onClick={() => goTo("/crear")}
-                  className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left font-bold text-white/80 transition hover:bg-white/[0.06] hover:text-white"
-                >
-                  ➕ Crear sala
-                </button>
-              </div>
+              <div className="my-3 border-t border-white/10" />
 
-              <div className="my-5 h-px bg-white/10" />
-
-              <div className="space-y-2">
-                <button
-                  onClick={() => goTo("/perfil")}
-                  className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left font-bold text-white/80 transition hover:bg-white/[0.06] hover:text-white"
-                >
-                  👤 Perfil
-                </button>
-
-                <button
-                  onClick={() => goTo("/ranking")}
-                  className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left font-bold text-white/80 transition hover:bg-white/[0.06] hover:text-white"
-                >
-                  🏆 Ranking
-                </button>
-
-                <button
-                  onClick={() => goTo("/tienda")}
-                  className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left font-bold text-white/80 transition hover:bg-white/[0.06] hover:text-white"
-                >
-                  🛒 Tienda
-                </button>
-
-                <button
-                  onClick={() => goTo("/ajustes")}
-                  className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left font-bold text-white/80 transition hover:bg-white/[0.06] hover:text-white"
-                >
-                  ⚙️ Ajustes
-                </button>
-              </div>
-
-              {playerIdentity && onSignOut && (
+              {playerIdentity ? (
                 <>
-                  <div className="my-5 h-px bg-white/10" />
+                  <MenuButton label="👤 Perfil" onClick={() => goTo("/perfil")} />
+                  <MenuButton label="👥 Amigos" onClick={() => goTo("/amigos")} />
+                </>
+              ) : (
+                <MenuButton label="🔐 Cuenta" onClick={handleLoginClick} />
+              )}
+
+              <MenuButton label="🏆 Ranking" onClick={() => goTo("/ranking")} />
+              <MenuButton label="🛒 Tienda" onClick={() => goTo("/tienda")} />
+
+              <button
+                onClick={() => {
+                  setSettingsOpen(true);
+                  setMenuOpen(false);
+                }}
+                className="flex w-full items-center justify-between rounded-xl px-4 py-3 text-left text-white hover:bg-white/10"
+              >
+                <span>⚙️ Ajustes</span>
+              </button>
+
+              {onSignOut && (
+                <>
+                  <div className="my-3 border-t border-white/10" />
 
                   <button
-                    type="button"
-                    disabled={signingOut}
                     onClick={() => {
                       setMenuOpen(false);
-                      void onSignOut();
+                      onSignOut();
                     }}
-                    className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left font-black text-orange-300 transition hover:bg-orange-500/10"
+                    disabled={signingOut}
+                    className="w-full rounded-xl px-4 py-3 text-left font-bold text-orange-300 hover:bg-orange-500/10 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    🚪{" "}
-                    {signingOut
-                      ? "Cerrando..."
-                      : "Cerrar sesión"}
+                    {signingOut ? "Saliendo..." : "🚪 Cerrar sesión"}
                   </button>
                 </>
               )}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </header>
 
       <DailyRewardModal
@@ -461,6 +427,8 @@ export default function SiteHeader({
         claimedMessage={rewardMessage}
         onClaim={handleClaimReward}
       />
+
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       <style jsx global>{`
         @keyframes shine {
@@ -474,5 +442,22 @@ export default function SiteHeader({
         }
       `}</style>
     </>
+  );
+}
+
+function MenuButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full rounded-xl px-4 py-3 text-left text-white hover:bg-white/10"
+    >
+      {label}
+    </button>
   );
 }
