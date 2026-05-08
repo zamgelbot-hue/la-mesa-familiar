@@ -8,7 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { AVATARS, FRAMES } from "@/lib/profile/profileCosmetics";
 
 type RewardType = "points" | "avatar" | "frame";
-type AdminTab = "crear" | "codigos" | "historial";
+type AdminTab = "dashboard" | "crear" | "codigos" | "historial";
 
 type PromoCode = {
   id: string;
@@ -24,11 +24,25 @@ type PromoCode = {
   created_at: string;
 };
 
+type ProfileRow = {
+  id: string;
+  display_name?: string | null;
+  username?: string | null;
+  points?: number | null;
+  games_played?: number | null;
+  games_won?: number | null;
+  games_lost?: number | null;
+  total_points_earned?: number | null;
+  best_win_streak?: number | null;
+  avatar_key?: string | null;
+  frame_key?: string | null;
+  created_at?: string | null;
+};
+
 type Redemption = {
   id?: string;
   user_id?: string;
   redeemed_at?: string;
-
   promo_codes?: {
     code?: string;
     reward_type?: string;
@@ -82,9 +96,30 @@ function formatDate(value?: string | null) {
   }).format(new Date(value));
 }
 
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("es-MX").format(value);
+}
+
 function isExpired(value?: string | null) {
   if (!value) return false;
   return new Date(value).getTime() < Date.now();
+}
+
+function getNumericValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function getProfileName(profile?: ProfileRow) {
+  return profile?.display_name || profile?.username || "Jugador sin nombre";
+}
+
+function getAvatarPreview(avatarKey?: string | null) {
+  const avatar = AVATARS.find((item) => item.key === avatarKey);
+  return {
+    image: getItemImage(avatar),
+    emoji: getItemEmoji(avatar) ?? "🎲",
+    label: avatar?.label ?? "Avatar",
+  };
 }
 
 export default function AdminPage() {
@@ -92,10 +127,13 @@ export default function AdminPage() {
 
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [activeTab, setActiveTab] = useState<AdminTab>("crear");
+  const [activeTab, setActiveTab] = useState<AdminTab>("dashboard");
 
   const [codes, setCodes] = useState<PromoCode[]>([]);
+  const [profiles, setProfiles] = useState<ProfileRow[]>([]);
   const [redemptions, setRedemptions] = useState<Redemption[]>([]);
+
+  const [profileStatsError, setProfileStatsError] = useState("");
   const [historyError, setHistoryError] = useState("");
 
   const [pointsCode, setPointsCode] = useState("");
@@ -145,15 +183,74 @@ export default function AdminPage() {
     (item) => item.key === selectedRewardKey,
   );
 
+  const profilesById = useMemo(() => {
+    const map = new Map<string, ProfileRow>();
+
+    profiles.forEach((profile) => {
+      if (profile.id) map.set(profile.id, profile);
+    });
+
+    return map;
+  }, [profiles]);
+
   const activeCodes = codes.filter(
     (code) => code.active && !isExpired(code.expires_at),
   ).length;
 
+  const expiredCodes = codes.filter((code) => isExpired(code.expires_at)).length;
+
   const usedTotal = codes.reduce((total, code) => total + code.used_count, 0);
+
+  const totalPoints = profiles.reduce(
+    (total, profile) => total + getNumericValue(profile.points),
+    0,
+  );
+
+  const historicalPoints = profiles.reduce(
+    (total, profile) =>
+      total +
+      Math.max(
+        getNumericValue(profile.total_points_earned),
+        getNumericValue(profile.points),
+      ),
+    0,
+  );
+
+  const totalGames = profiles.reduce(
+    (total, profile) => total + getNumericValue(profile.games_played),
+    0,
+  );
+
+  const totalWins = profiles.reduce(
+    (total, profile) => total + getNumericValue(profile.games_won),
+    0,
+  );
+
+  const topProfiles = useMemo(
+    () =>
+      [...profiles]
+        .sort(
+          (a, b) =>
+            getNumericValue(b.points) - getNumericValue(a.points) ||
+            getNumericValue(b.total_points_earned) -
+              getNumericValue(a.total_points_earned),
+        )
+        .slice(0, 8),
+    [profiles],
+  );
+
+  const topCodes = useMemo(
+    () =>
+      [...codes]
+        .sort((a, b) => b.used_count - a.used_count)
+        .slice(0, 6),
+    [codes],
+  );
 
   async function loadAdmin() {
     setLoading(true);
     setHistoryError("");
+    setProfileStatsError("");
 
     const { data: authData } = await supabase.auth.getUser();
     const userId = authData.user?.id;
@@ -185,22 +282,35 @@ export default function AdminPage() {
 
     setCodes((promoData ?? []) as PromoCode[]);
 
+    const { data: profileData, error: profileError } = await supabase
+      .from("profiles")
+      .select("*");
+
+    if (profileError) {
+      setProfileStatsError(
+        "No se pudieron cargar estadísticas de usuarios. Revisa permisos/RLS de profiles.",
+      );
+      setProfiles([]);
+    } else {
+      setProfiles((profileData ?? []) as ProfileRow[]);
+    }
+
     const { data: redemptionData, error: redemptionError } = await supabase
-  .from("promo_redemptions")
-  .select(`
-    id,
-    user_id,
-    redeemed_at,
-    promo_codes (
-      code,
-      reward_type,
-      reward_key,
-      reward_value,
-      description
-    )
-  `)
-  .order("redeemed_at", { ascending: false })
-  .limit(50);
+      .from("promo_redemptions")
+      .select(`
+        id,
+        user_id,
+        redeemed_at,
+        promo_codes (
+          code,
+          reward_type,
+          reward_key,
+          reward_value,
+          description
+        )
+      `)
+      .order("redeemed_at", { ascending: false })
+      .limit(50);
 
     if (redemptionError) {
       setHistoryError(
@@ -323,8 +433,13 @@ export default function AdminPage() {
 
   function getRewardText(item: PromoCode) {
     if (item.reward_type === "points") return `${item.reward_value} pts`;
-    if (item.reward_type === "avatar") return `Avatar: ${item.description ?? item.reward_key}`;
-    if (item.reward_type === "frame") return `Marco: ${item.description ?? item.reward_key}`;
+    if (item.reward_type === "avatar") {
+      return `Avatar: ${item.description ?? item.reward_key}`;
+    }
+    if (item.reward_type === "frame") {
+      return `Marco: ${item.description ?? item.reward_key}`;
+    }
+
     return item.description ?? "Recompensa";
   }
 
@@ -371,15 +486,26 @@ export default function AdminPage() {
           </p>
           <h1 className="mt-2 text-5xl font-black">Panel Admin</h1>
           <p className="mt-3 text-white/60">
-            Control interno de códigos, rewards y eventos de La Mesa Familiar.
+            Control interno de códigos, rewards, usuarios y eventos de La Mesa Familiar.
           </p>
 
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
+          <div className="mt-8 grid gap-4 md:grid-cols-4">
+            <div className="rounded-3xl border border-white/10 bg-black/60 p-5">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-white/35">
+                Usuarios
+              </p>
+              <p className="mt-2 text-3xl font-black">
+                {formatNumber(profiles.length)}
+              </p>
+            </div>
+
             <div className="rounded-3xl border border-white/10 bg-black/60 p-5">
               <p className="text-xs font-black uppercase tracking-[0.2em] text-white/35">
                 Códigos
               </p>
-              <p className="mt-2 text-3xl font-black">{codes.length}</p>
+              <p className="mt-2 text-3xl font-black">
+                {formatNumber(codes.length)}
+              </p>
             </div>
 
             <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-5">
@@ -387,7 +513,7 @@ export default function AdminPage() {
                 Activos
               </p>
               <p className="mt-2 text-3xl font-black text-emerald-200">
-                {activeCodes}
+                {formatNumber(activeCodes)}
               </p>
             </div>
 
@@ -396,7 +522,7 @@ export default function AdminPage() {
                 Canjes
               </p>
               <p className="mt-2 text-3xl font-black text-orange-200">
-                {usedTotal}
+                {formatNumber(usedTotal)}
               </p>
             </div>
           </div>
@@ -404,6 +530,7 @@ export default function AdminPage() {
 
         <div className="mt-8 flex flex-wrap gap-3">
           {[
+            ["dashboard", "Dashboard"],
             ["crear", "Crear códigos"],
             ["codigos", "Códigos creados"],
             ["historial", "Historial"],
@@ -427,6 +554,149 @@ export default function AdminPage() {
           <p className="mt-6 rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-3 text-orange-200">
             {message}
           </p>
+        )}
+
+        {activeTab === "dashboard" && (
+          <section className="mt-8 grid gap-8">
+            {profileStatsError && (
+              <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4 text-sm font-bold text-yellow-200">
+                {profileStatsError}
+              </div>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-[28px] border border-white/10 bg-zinc-950 p-6">
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-white/35">
+                  Puntos actuales
+                </p>
+                <p className="mt-3 text-4xl font-black text-orange-200">
+                  {formatNumber(totalPoints)}
+                </p>
+              </div>
+
+              <div className="rounded-[28px] border border-white/10 bg-zinc-950 p-6">
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-white/35">
+                  Puntos históricos
+                </p>
+                <p className="mt-3 text-4xl font-black text-orange-200">
+                  {formatNumber(historicalPoints)}
+                </p>
+              </div>
+
+              <div className="rounded-[28px] border border-white/10 bg-zinc-950 p-6">
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-white/35">
+                  Partidas jugadas
+                </p>
+                <p className="mt-3 text-4xl font-black text-white">
+                  {formatNumber(totalGames)}
+                </p>
+              </div>
+
+              <div className="rounded-[28px] border border-white/10 bg-zinc-950 p-6">
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-white/35">
+                  Victorias totales
+                </p>
+                <p className="mt-3 text-4xl font-black text-white">
+                  {formatNumber(totalWins)}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
+              <section className="rounded-[30px] border border-white/10 bg-zinc-950 p-6">
+                <h2 className="text-2xl font-black">Top usuarios por puntos</h2>
+
+                <div className="mt-5 grid gap-3">
+                  {topProfiles.length === 0 && (
+                    <div className="rounded-2xl border border-white/10 bg-black p-5 text-white/50">
+                      Todavía no hay usuarios para mostrar.
+                    </div>
+                  )}
+
+                  {topProfiles.map((profile, index) => {
+                    const avatar = getAvatarPreview(profile.avatar_key);
+
+                    return (
+                      <div
+                        key={profile.id}
+                        className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black p-4"
+                      >
+                        <div className="flex min-w-0 items-center gap-4">
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-orange-500/20 bg-orange-500/10 text-2xl">
+                            {avatar.image ? (
+                              <img
+                                src={avatar.image}
+                                alt={avatar.label}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              avatar.emoji
+                            )}
+                          </div>
+
+                          <div className="min-w-0">
+                            <p className="truncate font-black text-white">
+                              #{index + 1} · {getProfileName(profile)}
+                            </p>
+                            <p className="text-xs text-white/40">
+                              {formatNumber(getNumericValue(profile.games_played))} partidas · {formatNumber(getNumericValue(profile.games_won))} victorias
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <p className="font-black text-orange-300">
+                            {formatNumber(getNumericValue(profile.points))} pts
+                          </p>
+                          <p className="text-xs text-white/35">
+                            Total: {formatNumber(getNumericValue(profile.total_points_earned))}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="rounded-[30px] border border-white/10 bg-zinc-950 p-6">
+                <h2 className="text-2xl font-black">Top códigos</h2>
+
+                <div className="mt-5 grid gap-3">
+                  {topCodes.length === 0 && (
+                    <div className="rounded-2xl border border-white/10 bg-black p-5 text-white/50">
+                      Todavía no hay códigos.
+                    </div>
+                  )}
+
+                  {topCodes.map((code) => (
+                    <div
+                      key={code.id}
+                      className="rounded-2xl border border-white/10 bg-black p-4"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-black text-orange-300">{code.code}</p>
+                        <p className="rounded-xl bg-orange-500/10 px-3 py-1 text-xs font-black text-orange-200">
+                          {formatNumber(code.used_count)}/{formatNumber(code.max_uses)}
+                        </p>
+                      </div>
+                      <p className="mt-1 text-xs text-white/40">
+                        {getRewardText(code)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-white/10 bg-black p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-white/35">
+                    Códigos expirados
+                  </p>
+                  <p className="mt-2 text-2xl font-black text-yellow-200">
+                    {formatNumber(expiredCodes)}
+                  </p>
+                </div>
+              </section>
+            </div>
+          </section>
         )}
 
         {activeTab === "crear" && (
@@ -642,42 +912,60 @@ export default function AdminPage() {
                 </div>
               )}
 
-              {redemptions.map((item, index) => (
-                <div
-                  key={item.id ?? `${item.user_id}-${index}`}
-                  className="rounded-2xl border border-white/10 bg-black p-4"
-                >
-                  <p className="font-black text-orange-300">
-  {item.promo_codes?.code ?? "Código canjeado"}
-</p>
+              {redemptions.map((item, index) => {
+                const profile = item.user_id
+                  ? profilesById.get(item.user_id)
+                  : undefined;
+                const avatar = getAvatarPreview(profile?.avatar_key);
 
-<p className="mt-1 text-sm text-white/50">
-  Usuario: {item.user_id ?? "No disponible"}
-</p>
+                return (
+                  <div
+                    key={item.id ?? `${item.user_id}-${index}`}
+                    className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black p-4"
+                  >
+                    <div className="flex min-w-0 items-center gap-4">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-orange-500/20 bg-orange-500/10 text-2xl">
+                        {avatar.image ? (
+                          <img
+                            src={avatar.image}
+                            alt={avatar.label}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          avatar.emoji
+                        )}
+                      </div>
 
-<p className="mt-1 text-xs text-white/35">
-  Reward:
-  {" "}
-  {item.promo_codes?.reward_type ?? "N/A"}
+                      <div className="min-w-0">
+                        <p className="font-black text-orange-300">
+                          {item.promo_codes?.code ?? "Código canjeado"}
+                        </p>
 
-  {item.promo_codes?.reward_key
-    ? ` · ${item.promo_codes.reward_key}`
-    : ""}
+                        <p className="mt-1 text-sm text-white/50">
+                          Usuario: {profile ? getProfileName(profile) : item.user_id ?? "No disponible"}
+                        </p>
 
-  {item.promo_codes?.reward_value
-    ? ` · ${item.promo_codes.reward_value} pts`
-    : ""}
+                        <p className="mt-1 text-xs text-white/35">
+                          Reward: {item.promo_codes?.reward_type ?? "N/A"}
+                          {item.promo_codes?.reward_key
+                            ? ` · ${item.promo_codes.reward_key}`
+                            : ""}
+                          {item.promo_codes?.reward_value
+                            ? ` · ${item.promo_codes.reward_value} pts`
+                            : ""}
+                          {item.promo_codes?.description
+                            ? ` · ${item.promo_codes.description}`
+                            : ""}
+                        </p>
+                      </div>
+                    </div>
 
-  {item.promo_codes?.description
-    ? ` · ${item.promo_codes.description}`
-    : ""}
-</p>
-
-<p className="mt-1 text-xs text-white/30">
-  Fecha: {formatDate(item.redeemed_at)}
-</p>
-                </div>
-              ))}
+                    <p className="text-xs text-white/30">
+                      {formatDate(item.redeemed_at)}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}
