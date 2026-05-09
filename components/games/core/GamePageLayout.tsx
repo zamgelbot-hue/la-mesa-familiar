@@ -25,8 +25,40 @@ function getRoomCodeFromPath(pathname: string) {
   return roomCode.toUpperCase();
 }
 
-function getPresenceLabel() {
-  return "En partida";
+function getPresenceLabel(pathname: string) {
+  if (pathname.includes("/juego/")) {
+    if (pathname.includes("loteria")) {
+      return "Lotería Mexicana";
+    }
+
+    if (pathname.includes("ppt")) {
+      return "Piedra Papel o Tijera";
+    }
+
+    if (pathname.includes("gato")) {
+      return "El Gato";
+    }
+
+    if (pathname.includes("pregunta")) {
+      return "Pregunta Pregunta";
+    }
+
+    if (pathname.includes("guerra")) {
+      return "Guerra Total";
+    }
+
+    if (pathname.includes("personaje")) {
+      return "Personaje Secreto";
+    }
+
+    if (pathname.includes("domino")) {
+      return "Dominó";
+    }
+
+    return "En partida";
+  }
+
+  return "Jugando";
 }
 
 export default function GamePageLayout({
@@ -54,14 +86,14 @@ export default function GamePageLayout({
         .update({
           last_seen_at: new Date().toISOString(),
           current_room_code: roomCode,
-          current_game_slug: getPresenceLabel(),
+          current_game_slug: getPresenceLabel(pathname),
         })
         .eq("id", identity.user_id);
     }
 
     setCurrentGamePresence({
       roomCode,
-      gameName: getPresenceLabel(),
+      gameName: getPresenceLabel(pathname),
     });
 
     void updateGamePresence();
