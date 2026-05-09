@@ -1,4 +1,4 @@
-// 📍 Ruta del archivo: app/perfil/page.tsx
+// 📍 Ruta: app/perfil/page.tsx
 
 "use client";
 
@@ -93,6 +93,31 @@ function getWinRateMessage(winRate: number) {
   return "Sin historial todavía";
 }
 
+function getPerformanceGrade(winRate: number, gamesPlayed: number) {
+  if (gamesPlayed <= 0) return { grade: "N/A", label: "Sin historial", helper: "Juega tus primeras partidas para activar tu rango." };
+  if (winRate >= 75) return { grade: "S+", label: "Dominante", helper: "Rendimiento elite en la mesa." };
+  if (winRate >= 65) return { grade: "S", label: "Muy fuerte", helper: "Tu perfil ya impone respeto." };
+  if (winRate >= 55) return { grade: "A", label: "Competitivo", helper: "Buen balance entre constancia y victorias." };
+  if (winRate >= 45) return { grade: "B", label: "Parejo", helper: "Estás cerca de romper la línea positiva." };
+  return { grade: "C", label: "En progreso", helper: "Cada partida suma experiencia para subir." };
+}
+
+function getNextMilestone(gamesPlayed: number) {
+  if (gamesPlayed < 10) return { target: 10, label: "Primeras 10 partidas", icon: "🎯" };
+  if (gamesPlayed < 25) return { target: 25, label: "Jugador activo", icon: "🔥" };
+  if (gamesPlayed < 50) return { target: 50, label: "Veterano de la mesa", icon: "🥇" };
+  if (gamesPlayed < 100) return { target: 100, label: "Leyenda familiar", icon: "🏆" };
+  return { target: gamesPlayed, label: "Meta legendaria alcanzada", icon: "👑" };
+}
+
+function getCollectionRank(percent: number) {
+  if (percent >= 100) return "Coleccionista legendario";
+  if (percent >= 75) return "Colección premium fuerte";
+  if (percent >= 50) return "Muy buen avance";
+  if (percent > 0) return "Colección en crecimiento";
+  return "Empieza en la tienda";
+}
+
 function getComboTip(avatarKey: string, frameKey: string) {
   if (avatarKey === "avatar_demonio" && frameKey !== "marco_infernal") {
     return "Tip: Demonio combina brutal con Marco Infernal 🔥";
@@ -121,10 +146,12 @@ function ProfileAvatarPreview({
   avatar,
   frame,
   size = "lg",
+  level,
 }: {
   avatar: (typeof AVATARS)[number];
   frame: (typeof FRAMES)[number];
   size?: "sm" | "md" | "lg";
+  level?: number;
 }) {
   const sizeClass =
     size === "sm" ? "h-16 w-16" : size === "md" ? "h-24 w-24" : "h-36 w-36 sm:h-44 sm:w-44";
@@ -143,6 +170,13 @@ function ProfileAvatarPreview({
         <img src={avatar.image} alt={avatar.label} className={`relative z-10 ${avatarSizeClass} object-contain`} />
       ) : (
         <span className={`relative z-10 ${avatarSizeClass} flex items-center justify-center`}>{avatar.emoji ?? "🙂"}</span>
+      )}
+
+      {level !== undefined && size === "lg" && (
+        <div className="absolute -bottom-2 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full border border-yellow-400/40 bg-black px-3 py-1.5 text-xs font-black text-yellow-200 shadow-[0_0_25px_rgba(250,204,21,0.24)]">
+          <span>LVL</span>
+          <span>{level}</span>
+        </div>
       )}
     </div>
   );
@@ -170,6 +204,60 @@ function ProgressBar({ value, className = "bg-orange-500" }: { value: number; cl
   return (
     <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
       <div className={`h-full rounded-full transition-all ${className}`} style={{ width: `${clampPercent(value)}%` }} />
+    </div>
+  );
+}
+
+function InsightCard({ icon, label, value, helper }: { icon: string; label: string; value: string | number; helper: string }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-4">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-500/10 text-xl shadow-[0_0_24px_rgba(249,115,22,0.12)]">
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-white/40">{label}</p>
+          <p className="mt-1 truncate text-lg font-black text-white">{value}</p>
+          <p className="mt-1 text-xs leading-relaxed text-white/45">{helper}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VisualMeter({ label, value, helper, tone = "orange" }: { label: string; value: number; helper: string; tone?: "orange" | "emerald" | "cyan" | "violet" | "yellow" }) {
+  const barClass = {
+    orange: "bg-orange-400",
+    emerald: "bg-emerald-400",
+    cyan: "bg-cyan-400",
+    violet: "bg-violet-400",
+    yellow: "bg-yellow-400",
+  }[tone];
+
+  return (
+    <div className="rounded-3xl border border-white/10 bg-black/25 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-black text-white/80">{label}</p>
+        <p className="text-sm font-black text-white/55">{clampPercent(value)}%</p>
+      </div>
+      <div className="mt-3">
+        <ProgressBar value={value} className={barClass} />
+      </div>
+      <p className="mt-2 text-xs font-medium text-white/40">{helper}</p>
+    </div>
+  );
+}
+
+function EmptyFutureCard({ title, description, icon = "✨" }: { title: string; description: string; icon?: string }) {
+  return (
+    <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.025] p-5">
+      <div className="flex items-start gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/[0.04] text-xl">{icon}</div>
+        <div>
+          <p className="font-black text-white/75">{title}</p>
+          <p className="mt-1 text-sm leading-relaxed text-white/45">{description}</p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -283,6 +371,10 @@ export default function PerfilPage() {
   const playerRankLabel = getPlayerRankLabel(stats.games_played);
   const winRateMessage = getWinRateMessage(winRateNumber);
   const comboTip = getComboTip(selectedAvatar.key, selectedFrame.key);
+  const performanceGrade = getPerformanceGrade(winRateNumber, stats.games_played);
+  const nextMilestone = getNextMilestone(stats.games_played);
+  const milestonePercent = nextMilestone.target > 0 ? clampPercent((stats.games_played / nextMilestone.target) * 100) : 100;
+  const collectionRank = getCollectionRank(collectionPercent);
 
   const handleSaveProfile = async () => {
     setMessage("");
@@ -364,7 +456,7 @@ export default function PerfilPage() {
 
           <div className="relative grid gap-6 lg:grid-cols-[auto_1fr_auto] lg:items-center">
             <div className="flex justify-center lg:justify-start">
-              <ProfileAvatarPreview avatar={selectedAvatar} frame={selectedFrame} />
+              <ProfileAvatarPreview avatar={selectedAvatar} frame={selectedFrame} level={levelInfo.level} />
             </div>
 
             <div className="min-w-0 text-center lg:text-left">
@@ -384,6 +476,12 @@ export default function PerfilPage() {
                 <StatCard label="Nivel" value={levelInfo.level} helper={levelInfo.title} tone="yellow" />
                 <StatCard label="Puntos" value={points} helper="Disponibles" tone="orange" />
                 <StatCard label="WR" value={`${winRate}%`} helper={winRateMessage} tone="emerald" />
+              </div>
+
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <InsightCard icon="⚡" label="Rango" value={performanceGrade.grade} helper={performanceGrade.label} />
+                <InsightCard icon={nextMilestone.icon} label="Siguiente meta" value={nextMilestone.label} helper={`${stats.games_played}/${nextMilestone.target} partidas`} />
+                <InsightCard icon="💎" label="Colección" value={`${collectionPercent}%`} helper={collectionRank} />
               </div>
             </div>
 
@@ -409,14 +507,14 @@ export default function PerfilPage() {
           </div>
         </section>
 
-        <nav className="sticky top-0 z-20 -mx-4 mt-5 border-y border-white/10 bg-black/80 px-4 py-3 backdrop-blur-xl sm:static sm:mx-0 sm:rounded-[1.7rem] sm:border sm:bg-zinc-950/80">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <nav className="sticky top-0 z-20 -mx-4 mt-5 border-y border-white/10 bg-black/85 px-4 py-3 backdrop-blur-xl sm:static sm:mx-0 sm:rounded-[1.7rem] sm:border sm:bg-zinc-950/80">
+          <div className="flex snap-x gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-4 sm:overflow-visible sm:pb-0">
             {tabs.map((tab) => (
               <button
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className={`min-w-0 rounded-2xl border px-3 py-3 text-sm font-black transition sm:text-base ${
+                className={`min-w-[9.5rem] snap-start rounded-2xl border px-3 py-3 text-sm font-black transition sm:min-w-0 sm:text-base ${
                   activeTab === tab.key
                     ? "border-orange-500/40 bg-orange-500/15 text-orange-100 shadow-[0_0_25px_rgba(249,115,22,0.12)]"
                     : "border-white/10 bg-white/[0.03] text-white/60 hover:bg-white/[0.06] hover:text-white"
@@ -494,6 +592,14 @@ export default function PerfilPage() {
                     Ver colección
                   </button>
                 </div>
+
+                <div className="rounded-[2rem] border border-white/10 bg-zinc-950/90 p-5 sm:p-7">
+                  <p className="text-xs font-black uppercase tracking-[0.24em] text-white/45">Actividad social</p>
+                  <div className="mt-4 space-y-3">
+                    <EmptyFutureCard icon="🕹️" title="Última actividad" description="Espacio listo para mostrar última partida, juego reciente o estado social cuando conectemos historial." />
+                    <EmptyFutureCard icon="👥" title="Conexión con amigos" description="Preparado para invitaciones directas, historial VS amigos y presencia social sin rediseñar el perfil después." />
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -528,6 +634,12 @@ export default function PerfilPage() {
 
               <div className="space-y-5">
                 <div className="rounded-[2rem] border border-white/10 bg-zinc-950/90 p-5 sm:p-7">
+                  <div className="mb-5 grid gap-3 sm:grid-cols-3">
+                    <InsightCard icon="🎨" label="Estilo" value={selectedAvatar.label} helper="Avatar equipado" />
+                    <InsightCard icon="🛡️" label="Marco" value={selectedFrame.label} helper="Marco activo" />
+                    <InsightCard icon="💾" label="Guardado" value={playerIdentity?.is_guest ? "Invitado" : "Perfil"} helper={playerIdentity?.is_guest ? "Regístrate para guardar cambios" : "Cambios con Supabase"} />
+                  </div>
+
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                     <div>
                       <p className="text-xs font-black uppercase tracking-[0.24em] text-orange-300">Avatares</p>
@@ -654,11 +766,30 @@ export default function PerfilPage() {
                 </div>
               </div>
 
+              <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+                <div className="rounded-[2rem] border border-white/10 bg-zinc-950/90 p-5 sm:p-7">
+                  <p className="text-xs font-black uppercase tracking-[0.24em] text-white/45">Calificación</p>
+                  <div className="mt-5 rounded-[2rem] border border-orange-500/20 bg-orange-500/10 p-6 text-center">
+                    <p className="text-6xl font-black text-orange-100">{performanceGrade.grade}</p>
+                    <p className="mt-2 text-xl font-black text-white">{performanceGrade.label}</p>
+                    <p className="mt-2 text-sm leading-relaxed text-white/50">{performanceGrade.helper}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-[2rem] border border-white/10 bg-zinc-950/90 p-5 sm:p-7">
+                  <p className="text-xs font-black uppercase tracking-[0.24em] text-white/45">Lectura visual</p>
+                  <div className="mt-5 space-y-3">
+                    <VisualMeter label="Win rate" value={winRateNumber} helper="Porcentaje de partidas ganadas." tone="emerald" />
+                    <VisualMeter label="Meta de partidas" value={milestonePercent} helper={`${stats.games_played}/${nextMilestone.target} para ${nextMilestone.label}.`} tone="yellow" />
+                    <VisualMeter label="Colección premium" value={collectionPercent} helper={`${ownedPremiumTotal}/${premiumTotal} cosméticos premium desbloqueados.`} tone="cyan" />
+                  </div>
+                </div>
+              </div>
+
               <div className="rounded-[2rem] border border-white/10 bg-zinc-950/90 p-5 sm:p-7">
                 <p className="text-xs font-black uppercase tracking-[0.24em] text-white/45">Mejores juegos</p>
-                <div className="mt-4 rounded-3xl border border-dashed border-white/10 bg-white/[0.025] p-6 text-center text-white/50">
-                  <p className="text-lg font-black text-white/70">Próximamente</p>
-                  <p className="mt-2 text-sm">Aquí podemos conectar estadísticas por juego cuando dejemos lista esa tabla/resumen.</p>
+                <div className="mt-4">
+                  <EmptyFutureCard icon="🏅" title="Ranking por juego" description="Aquí podemos conectar estadísticas por juego cuando dejemos lista esa tabla/resumen: más jugado, más ganado y mejor porcentaje." />
                 </div>
               </div>
             </div>
@@ -672,6 +803,7 @@ export default function PerfilPage() {
                     <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan-300">Colección</p>
                     <h2 className="mt-3 text-3xl font-black sm:text-4xl">Cosméticos desbloqueados</h2>
                     <p className="mt-2 text-sm text-white/55">Tu progreso visual sin mezclar compras dentro del perfil.</p>
+                    <p className="mt-2 inline-flex rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs font-black text-cyan-200">{collectionRank}</p>
                   </div>
 
                   <div className="rounded-[2rem] border border-cyan-500/25 bg-cyan-500/10 p-5 text-center lg:min-w-56">
@@ -730,6 +862,12 @@ export default function PerfilPage() {
                 </div>
               )}
 
+              <div className="grid gap-4 sm:grid-cols-3">
+                <EmptyFutureCard icon="⭐" title="Especiales" description="Espacio listo para eventos, temporadas y recompensas limitadas." />
+                <EmptyFutureCard icon="🎁" title="Códigos" description="Los códigos siguen viviendo mejor en la tienda completa." />
+                <EmptyFutureCard icon="🎮" title="Variantes" description="Preparado para futuras skins o temas premium de juegos." />
+              </div>
+
               <Link href="/tienda" className="flex w-full items-center justify-center rounded-3xl bg-orange-500 px-5 py-4 text-base font-black text-black transition hover:bg-orange-400">
                 Abrir tienda completa ✨
               </Link>
@@ -773,7 +911,7 @@ function CollectionPanel({
               <h4 className="mb-3 text-xs font-black uppercase tracking-[0.2em] text-white/45">{group}</h4>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {items.map((item) => (
-                  <div key={item.key} className={`rounded-3xl border border-white/10 bg-white/[0.03] p-4 text-center ${locked ? "opacity-55 grayscale" : ""}`}>
+                  <div key={item.key} className={`relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] p-4 text-center ${locked ? "grayscale" : ""}`}>
                     {type === "avatar" ? (
                       "image" in item && item.image ? (
                         <img src={item.image} alt={item.label} className="mx-auto h-16 w-16 object-contain" />
@@ -788,6 +926,12 @@ function CollectionPanel({
 
                     <p className="mt-3 truncate text-sm font-black">{item.label}</p>
                     <span className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[0.65rem] font-black ${getTierBadgeClass(item.tier)}`}>{locked ? `${item.price} pts` : getTierLabel(item.tier)}</span>
+
+                    {locked && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/45 backdrop-blur-[1px]">
+                        <span className="rounded-full border border-white/15 bg-black/70 px-3 py-1 text-xs font-black text-white/70">🔒 Bloqueado</span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
