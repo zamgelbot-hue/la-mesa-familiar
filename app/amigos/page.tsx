@@ -543,7 +543,7 @@ export default function AmigosPage() {
       type="button"
       disabled
       title="Muy pronto podrás invitar directo a una sala."
-      className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-2 text-sm font-black text-orange-200 opacity-80"
+      className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-3 py-2 text-xs font-black text-orange-200 opacity-80 sm:px-4 sm:text-sm"
     >
       Invitar · Pronto
     </button>
@@ -553,7 +553,7 @@ export default function AmigosPage() {
     <button
       type="button"
       onClick={() => setSelectedStatsPlayer(player)}
-      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-black text-white/80 transition hover:border-orange-500/30 hover:bg-orange-500/10 hover:text-orange-100"
+      className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-black text-white/80 transition hover:border-orange-500/30 hover:bg-orange-500/10 hover:text-orange-100 sm:px-4 sm:text-sm"
     >
       Ver perfil
     </button>
@@ -577,16 +577,16 @@ export default function AmigosPage() {
         onClick={() => setSelectedStatsPlayer(player)}
         className={`group cursor-pointer rounded-[28px] border p-5 transition hover:-translate-y-0.5 hover:border-orange-500/35 hover:bg-white/[0.055] ${getCardToneClass(player)}`}
       >
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex min-w-0 items-center gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
             <PlayerAvatar avatar={avatar} frame={frame} size="md" />
 
             <div className="min-w-0">
-              <p className="truncate text-xl font-bold">
+              <p className="truncate text-lg font-bold sm:text-xl">
                 {player.display_name || player.username || "Jugador"}
               </p>
 
-              <p className="mt-1 text-sm text-white/60">
+              <p className="mt-1 text-xs leading-relaxed text-white/60 sm:text-sm">
                 {subtitle ??
                   `${player.points ?? 0} pts · ${gamesPlayed} jugadas · ${gamesWon} ganadas`}
               </p>
@@ -609,7 +609,7 @@ export default function AmigosPage() {
           {action && (
             <div
               onClick={(event) => event.stopPropagation()}
-              className="flex flex-wrap gap-2"
+              className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex sm:flex-wrap sm:justify-end"
             >
               {action}
             </div>
@@ -637,7 +637,7 @@ export default function AmigosPage() {
         onClick={() => setSelectedStatsPlayer(null)}
       >
         <div
-          className="w-full max-w-lg rounded-[34px] border border-orange-500/20 bg-zinc-950 p-6 shadow-[0_0_60px_rgba(249,115,22,0.18)]"
+          className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-[34px] border border-orange-500/20 bg-zinc-950 p-5 shadow-[0_0_60px_rgba(249,115,22,0.18)] sm:p-6"
           onClick={(event) => event.stopPropagation()}
         >
           <div className="flex items-start justify-between gap-4">
@@ -818,7 +818,7 @@ export default function AmigosPage() {
 
       {renderStatsModal()}
 
-      <section className="relative overflow-hidden px-6 pb-14 pt-16">
+      <section className="relative overflow-x-hidden px-4 pb-14 pt-10 sm:px-6 sm:pt-16">
         <div className="absolute inset-0 opacity-30">
           <div className="absolute left-1/2 top-0 h-[500px] w-[500px] -translate-x-1/2 rounded-full bg-orange-500/10 blur-3xl" />
         </div>
@@ -829,13 +829,13 @@ export default function AmigosPage() {
           </div>
 
           <div className="mx-auto max-w-4xl text-center">
-            <h1 className="text-5xl font-extrabold leading-tight md:text-7xl">
+            <h1 className="text-4xl font-extrabold leading-tight sm:text-5xl md:text-7xl">
               Amigos de
               <br />
               <span className="text-orange-500">La Mesa Familiar</span>
             </h1>
 
-            <p className="mx-auto mt-8 max-w-3xl text-xl leading-relaxed text-white/70">
+            <p className="mx-auto mt-5 max-w-3xl text-base leading-relaxed text-white/70 sm:mt-8 sm:text-xl">
               Busca jugadores, envía solicitudes y administra tu círculo de
               amigos.
             </p>
@@ -857,8 +857,8 @@ export default function AmigosPage() {
             </div>
           )}
 
-          <div className="mx-auto mt-10 grid max-w-6xl gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-            <section className="rounded-[34px] border border-orange-500/15 bg-zinc-950/90 p-6">
+          <div className="mx-auto mt-8 grid max-w-6xl gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+            <section className="rounded-[34px] border border-orange-500/15 bg-zinc-950/90 p-5 sm:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.22em] text-orange-300/70">
@@ -874,7 +874,7 @@ export default function AmigosPage() {
                 </div>
               </div>
 
-              <div className="mt-5 flex gap-3">
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row">
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -889,7 +889,7 @@ export default function AmigosPage() {
                   type="button"
                   onClick={() => void handleSearch()}
                   disabled={searching || query.trim().length < 2}
-                  className="rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                 >
                   {searching ? "Buscando..." : "Buscar"}
                 </button>
@@ -918,7 +918,7 @@ export default function AmigosPage() {
             </section>
 
             <section className="space-y-6">
-              <div className="rounded-[34px] border border-emerald-500/15 bg-zinc-950/90 p-6">
+              <div className="rounded-[34px] border border-emerald-500/15 bg-zinc-950/90 p-5 sm:p-6">
                 <h2 className="text-2xl font-bold">Solicitudes recibidas</h2>
 
                 <div className="mt-5 space-y-4">
@@ -959,7 +959,7 @@ export default function AmigosPage() {
                 </div>
               </div>
 
-              <div className="rounded-[34px] border border-orange-500/15 bg-zinc-950/90 p-6">
+              <div className="rounded-[34px] border border-orange-500/15 bg-zinc-950/90 p-5 sm:p-6">
                 <h2 className="text-2xl font-bold">Mis amigos</h2>
 
                 <div className="mt-5 space-y-4">
@@ -991,7 +991,7 @@ export default function AmigosPage() {
                 </div>
               </div>
 
-              <div className="rounded-[34px] border border-white/10 bg-zinc-950/90 p-6">
+              <div className="rounded-[34px] border border-white/10 bg-zinc-950/90 p-5 sm:p-6">
                 <h2 className="text-2xl font-bold">Solicitudes enviadas</h2>
 
                 <div className="mt-5 space-y-4">
@@ -1022,7 +1022,7 @@ export default function AmigosPage() {
             </section>
           </div>
 
-          <section className="mx-auto mt-8 max-w-6xl rounded-[34px] border border-orange-500/15 bg-gradient-to-br from-orange-500/10 via-zinc-950 to-black p-6 shadow-[0_0_45px_rgba(249,115,22,0.08)]">
+          <section className="mx-auto mt-8 max-w-6xl rounded-[34px] border border-orange-500/15 bg-gradient-to-br from-orange-500/10 via-zinc-950 to-black p-5 shadow-[0_0_45px_rgba(249,115,22,0.08)] sm:p-6">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.24em] text-orange-300/75">

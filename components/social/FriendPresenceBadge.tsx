@@ -36,23 +36,19 @@ export default function FriendPresenceBadge({ profile, compact = false }: Props)
 
   return (
     <div
-      className={`inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-black ${toneStyles[presence.tone]}`}
+      className={`inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-black sm:text-xs ${toneStyles[presence.tone]}`}
       title={`${presence.label} · ${presence.detail}`}
     >
-      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${dotStyles[presence.tone]}`} />
+      <span
+        className={`h-2.5 w-2.5 shrink-0 rounded-full ${dotStyles[presence.tone]}`}
+      />
 
-      {!compact && (
-        <span className="shrink-0 text-[11px] leading-none">
-          {presence.icon}
-        </span>
-      )}
-
-      <span className="truncate">
+      <span className="min-w-0 truncate">
         {presence.label}
       </span>
 
       {!compact && presence.detail && (
-        <span className="hidden max-w-[130px] truncate text-[10px] font-black opacity-65 sm:inline">
+        <span className="hidden max-w-[120px] truncate text-[10px] font-black opacity-65 sm:inline">
           {presence.detail}
         </span>
       )}
