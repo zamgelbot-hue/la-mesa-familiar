@@ -10,17 +10,31 @@ import { AVATARS, FRAMES } from "@/lib/profile/profileCosmetics";
 import { getProfileLevelInfo } from "@/lib/profile/profileLevel";
 
 const BASIC_AVATARS = AVATARS.filter((avatar) => avatar.tier === "basic");
-const STORE_AVATARS = AVATARS.filter((avatar) => avatar.tier !== "basic");
-
+const PREMIUM_AVATARS = AVATARS.filter((avatar) => avatar.tier !== "basic");
 const BASIC_FRAMES = FRAMES.filter((frame) => frame.tier === "basic");
-const STORE_FRAMES = FRAMES.filter((frame) => frame.tier !== "basic");
+const PREMIUM_FRAMES = FRAMES.filter((frame) => frame.tier !== "basic");
 
-type StoreAvatar = (typeof STORE_AVATARS)[number];
-type StoreFrame = (typeof STORE_FRAMES)[number];
+const DEFAULT_OWNED_AVATARS = [
+  "avatar_sun",
+  "avatar_moon",
+  "avatar_star",
+  "avatar_rocket",
+  "avatar_game",
+  "avatar_guest",
+];
 
-type LeftTab = "preview" | "stats";
-type RightTab = "customization" | "shop";
-type StatsTab = "performance" | "progress" | "collection";
+const DEFAULT_OWNED_FRAMES = [
+  "frame_orange",
+  "frame_emerald",
+  "frame_blue",
+  "frame_purple",
+  "frame_gold",
+  "frame_guest",
+];
+
+type ProfileTab = "summary" | "customization" | "stats" | "collection";
+type CosmeticFilter = "unlocked" | "locked" | "all";
+type CosmeticItem = (typeof AVATARS)[number] | (typeof FRAMES)[number];
 
 type ProfileStats = {
   games_played: number;
@@ -40,23 +54,6 @@ const DEFAULT_STATS: ProfileStats = {
   best_win_streak: 0,
 };
 
-const DEFAULT_OWNED_AVATARS = [
-  "avatar_sun",
-  "avatar_moon",
-  "avatar_star",
-  "avatar_rocket",
-  "avatar_game",
-];
-
-const DEFAULT_OWNED_FRAMES = [
-  "frame_orange",
-  "frame_emerald",
-  "frame_blue",
-  "frame_purple",
-  "frame_gold",
-  "frame_guest",
-];
-
 function groupByGroup<T extends { group: string }>(items: T[]) {
   return items.reduce(
     (acc, item) => {
@@ -75,39 +72,9 @@ function getTierLabel(tier: string) {
 }
 
 function getTierBadgeClass(tier: string) {
-  if (tier === "legendary") {
-    return "border-yellow-400/30 bg-yellow-500/10 text-yellow-200";
-  }
-
-  if (tier === "collection") {
-    return "border-cyan-400/25 bg-cyan-500/10 text-cyan-200";
-  }
-
+  if (tier === "legendary") return "border-yellow-400/30 bg-yellow-500/10 text-yellow-200";
+  if (tier === "collection") return "border-cyan-400/25 bg-cyan-500/10 text-cyan-200";
   return "border-white/10 bg-white/[0.04] text-white/60";
-}
-
-function getComboTip(avatarKey: string, frameKey: string) {
-  if (avatarKey === "avatar_demonio" && frameKey !== "marco_infernal") {
-    return "Tip: combina Demonio con Marco Infernal para un estilo legendario 🔥";
-  }
-
-  if (avatarKey === "avatar_angel" && frameKey !== "marco_divino") {
-    return "Tip: combina Ángel con Marco Divino para completar el look celestial ✨";
-  }
-
-  if (avatarKey === "avatar_gato_naranja" && frameKey !== "marco_gato") {
-    return "Tip: Chopper combina perfecto con Marco Felino 🐾";
-  }
-
-  if (avatarKey === "avatar_pug" && frameKey !== "marco_perro") {
-    return "Tip: Nala combina perfecto con Marco Canino 🐶";
-  }
-
-  if ((avatarKey === "avatar_taco" || avatarKey === "avatar_hamburguesa") && frameKey !== "marco_comida") {
-    return "Tip: los avatares de comida lucen mejor con Marco Comida 🌮";
-  }
-
-  return "Tu combinación actual se ve lista para la mesa.";
 }
 
 function getPlayerRankLabel(gamesPlayed: number) {
@@ -126,16 +93,94 @@ function getWinRateMessage(winRate: number) {
   return "Sin historial todavía";
 }
 
+function getComboTip(avatarKey: string, frameKey: string) {
+  if (avatarKey === "avatar_demonio" && frameKey !== "marco_infernal") {
+    return "Tip: Demonio combina brutal con Marco Infernal 🔥";
+  }
+
+  if (avatarKey === "avatar_angel" && frameKey !== "marco_divino") {
+    return "Tip: Ángel se ve premium con Marco Divino ✨";
+  }
+
+  if (avatarKey === "avatar_gato_naranja" && frameKey !== "marco_gato") {
+    return "Tip: Chopper combina perfecto con Marco Felino 🐾";
+  }
+
+  if (avatarKey === "avatar_pug" && frameKey !== "marco_perro") {
+    return "Tip: Nala combina perfecto con Marco Canino 🐶";
+  }
+
+  return "Tu estilo actual ya está listo para presumirse en la mesa.";
+}
+
+function clampPercent(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function ProfileAvatarPreview({
+  avatar,
+  frame,
+  size = "lg",
+}: {
+  avatar: (typeof AVATARS)[number];
+  frame: (typeof FRAMES)[number];
+  size?: "sm" | "md" | "lg";
+}) {
+  const sizeClass =
+    size === "sm" ? "h-16 w-16" : size === "md" ? "h-24 w-24" : "h-36 w-36 sm:h-44 sm:w-44";
+  const avatarSizeClass =
+    size === "sm" ? "h-10 w-10 text-3xl" : size === "md" ? "h-16 w-16 text-5xl" : "h-24 w-24 text-7xl sm:h-32 sm:w-32";
+
+  return (
+    <div className={`relative flex ${sizeClass} shrink-0 items-center justify-center rounded-full bg-black shadow-[0_0_55px_rgba(249,115,22,0.18)]`}>
+      {frame.image ? (
+        <img src={frame.image} alt={frame.label} className="absolute inset-0 h-full w-full object-contain" />
+      ) : (
+        <div className={`absolute inset-0 rounded-full border-4 ${frame.className ?? ""}`} />
+      )}
+
+      {avatar.image ? (
+        <img src={avatar.image} alt={avatar.label} className={`relative z-10 ${avatarSizeClass} object-contain`} />
+      ) : (
+        <span className={`relative z-10 ${avatarSizeClass} flex items-center justify-center`}>{avatar.emoji ?? "🙂"}</span>
+      )}
+    </div>
+  );
+}
+
+function StatCard({ label, value, helper, tone = "neutral" }: { label: string; value: string | number; helper?: string; tone?: "neutral" | "orange" | "yellow" | "emerald" | "cyan" }) {
+  const toneClass = {
+    neutral: "border-white/10 bg-white/[0.035] text-white",
+    orange: "border-orange-500/20 bg-orange-500/5 text-orange-100",
+    yellow: "border-yellow-500/20 bg-yellow-500/5 text-yellow-100",
+    emerald: "border-emerald-500/20 bg-emerald-500/5 text-emerald-100",
+    cyan: "border-cyan-500/20 bg-cyan-500/5 text-cyan-100",
+  }[tone];
+
+  return (
+    <div className={`rounded-3xl border p-4 sm:p-5 ${toneClass}`}>
+      <p className="text-[0.68rem] font-black uppercase tracking-[0.2em] text-white/45">{label}</p>
+      <p className="mt-2 text-2xl font-black sm:text-3xl">{value}</p>
+      {helper && <p className="mt-1 text-xs font-medium text-white/50 sm:text-sm">{helper}</p>}
+    </div>
+  );
+}
+
+function ProgressBar({ value, className = "bg-orange-500" }: { value: number; className?: string }) {
+  return (
+    <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
+      <div className={`h-full rounded-full transition-all ${className}`} style={{ width: `${clampPercent(value)}%` }} />
+    </div>
+  );
+}
+
 export default function PerfilPage() {
   const supabase = createClient();
 
   const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(null);
-  const [email, setEmail] = useState<string>("");
+  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
-  const [buyingAvatarKey, setBuyingAvatarKey] = useState<string | null>(null);
-  const [buyingFrameKey, setBuyingFrameKey] = useState<string | null>(null);
 
   const [displayName, setDisplayName] = useState("");
   const [avatarKey, setAvatarKey] = useState("avatar_sun");
@@ -143,16 +188,11 @@ export default function PerfilPage() {
 
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
-
-  const [leftTab, setLeftTab] = useState<LeftTab>("preview");
-  const [rightTab, setRightTab] = useState<RightTab>("customization");
-  const [statsTab, setStatsTab] = useState<StatsTab>("performance");
-
-  const [ownedAvatarGroupTab, setOwnedAvatarGroupTab] = useState<string>("Mascotas");
-  const [ownedFrameGroupTab, setOwnedFrameGroupTab] = useState<string>("Mascotas");
+  const [activeTab, setActiveTab] = useState<ProfileTab>("summary");
+  const [collectionFilter, setCollectionFilter] = useState<CosmeticFilter>("unlocked");
 
   const [stats, setStats] = useState<ProfileStats>(DEFAULT_STATS);
-  const [points, setPoints] = useState<number>(0);
+  const [points, setPoints] = useState(0);
   const [ownedAvatars, setOwnedAvatars] = useState<string[]>(DEFAULT_OWNED_AVATARS);
   const [ownedFrames, setOwnedFrames] = useState<string[]>(DEFAULT_OWNED_FRAMES);
 
@@ -166,45 +206,42 @@ export default function PerfilPage() {
 
     setEmail(user?.email ?? "");
 
-    if (identity) {
-      setDisplayName(identity.name);
-      setAvatarKey(identity.avatar_key ?? "avatar_sun");
-      setFrameKey(identity.frame_key ?? "frame_orange");
-      setPoints(identity.points ?? 0);
+    if (!identity) return;
 
-      if (identity.user_id) {
-        const { data: profileData, error: profileError } = await supabase
-          .from("profiles")
-          .select(
-            "games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak, points, owned_avatars, owned_frames"
-          )
-          .eq("id", identity.user_id)
-          .single();
+    setDisplayName(identity.name);
+    setAvatarKey(identity.avatar_key ?? "avatar_sun");
+    setFrameKey(identity.frame_key ?? "frame_orange");
+    setPoints(identity.points ?? 0);
 
-        if (profileError) {
-          console.error("Error cargando datos del perfil:", profileError);
-        } else if (profileData) {
-          setStats({
-            games_played: profileData.games_played ?? 0,
-            games_won: profileData.games_won ?? 0,
-            games_lost: profileData.games_lost ?? 0,
-            total_points_earned: profileData.total_points_earned ?? 0,
-            current_win_streak: profileData.current_win_streak ?? 0,
-            best_win_streak: profileData.best_win_streak ?? 0,
-          });
+    if (!identity.user_id) return;
 
-          setPoints(profileData.points ?? 0);
+    const { data: profileData, error: profileError } = await supabase
+      .from("profiles")
+      .select(
+        "games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak, points, owned_avatars, owned_frames"
+      )
+      .eq("id", identity.user_id)
+      .single();
 
-          setOwnedAvatars(
-            Array.from(new Set([...DEFAULT_OWNED_AVATARS, ...(profileData.owned_avatars ?? [])]))
-          );
-
-          setOwnedFrames(
-            Array.from(new Set([...DEFAULT_OWNED_FRAMES, ...(profileData.owned_frames ?? [])]))
-          );
-        }
-      }
+    if (profileError) {
+      console.error("Error cargando datos del perfil:", profileError);
+      return;
     }
+
+    if (!profileData) return;
+
+    setStats({
+      games_played: profileData.games_played ?? 0,
+      games_won: profileData.games_won ?? 0,
+      games_lost: profileData.games_lost ?? 0,
+      total_points_earned: profileData.total_points_earned ?? 0,
+      current_win_streak: profileData.current_win_streak ?? 0,
+      best_win_streak: profileData.best_win_streak ?? 0,
+    });
+
+    setPoints(profileData.points ?? 0);
+    setOwnedAvatars(Array.from(new Set([...DEFAULT_OWNED_AVATARS, ...(profileData.owned_avatars ?? [])])));
+    setOwnedFrames(Array.from(new Set([...DEFAULT_OWNED_FRAMES, ...(profileData.owned_frames ?? [])])));
   };
 
   useEffect(() => {
@@ -213,81 +250,37 @@ export default function PerfilPage() {
       setLoading(false);
     };
 
-    load();
+    void load();
   }, []);
 
-  const selectedAvatar = useMemo(
-    () => AVATARS.find((avatar) => avatar.key === avatarKey) ?? AVATARS[0],
-    [avatarKey]
-  );
+  const selectedAvatar = useMemo(() => AVATARS.find((avatar) => avatar.key === avatarKey) ?? AVATARS[0], [avatarKey]);
+  const selectedFrame = useMemo(() => FRAMES.find((frame) => frame.key === frameKey) ?? FRAMES[0], [frameKey]);
 
-  const selectedFrame = useMemo(
-    () => FRAMES.find((frame) => frame.key === frameKey) ?? FRAMES[0],
-    [frameKey]
-  );
+  const ownedAvatarItems = useMemo(() => AVATARS.filter((avatar) => ownedAvatars.includes(avatar.key)), [ownedAvatars]);
+  const ownedFrameItems = useMemo(() => FRAMES.filter((frame) => ownedFrames.includes(frame.key)), [ownedFrames]);
 
-  const ownedStoreAvatars = useMemo(
-    () => STORE_AVATARS.filter((avatar) => ownedAvatars.includes(avatar.key)),
-    [ownedAvatars]
-  );
+  const lockedAvatarItems = useMemo(() => PREMIUM_AVATARS.filter((avatar) => !ownedAvatars.includes(avatar.key)), [ownedAvatars]);
+  const lockedFrameItems = useMemo(() => PREMIUM_FRAMES.filter((frame) => !ownedFrames.includes(frame.key)), [ownedFrames]);
 
-  const ownedStoreFrames = useMemo(
-    () => STORE_FRAMES.filter((frame) => ownedFrames.includes(frame.key)),
-    [ownedFrames]
-  );
-
-  const groupedStoreAvatars = useMemo(() => groupByGroup(STORE_AVATARS), []);
-  const groupedStoreFrames = useMemo(() => groupByGroup(STORE_FRAMES), []);
-
-  const groupedOwnedAvatars = useMemo(
-    () => groupByGroup(ownedStoreAvatars),
-    [ownedStoreAvatars]
-  );
-
-  const groupedOwnedFrames = useMemo(
-    () => groupByGroup(ownedStoreFrames),
-    [ownedStoreFrames]
-  );
-
-  const ownedAvatarGroups = Object.keys(groupedOwnedAvatars);
-  const ownedFrameGroups = Object.keys(groupedOwnedFrames);
-
-  const activeOwnedAvatarGroup = ownedAvatarGroups.includes(ownedAvatarGroupTab)
-    ? ownedAvatarGroupTab
-    : ownedAvatarGroups[0];
-
-  const activeOwnedFrameGroup = ownedFrameGroups.includes(ownedFrameGroupTab)
-    ? ownedFrameGroupTab
-    : ownedFrameGroups[0];
+  const groupedOwnedAvatars = useMemo(() => groupByGroup(ownedAvatarItems), [ownedAvatarItems]);
+  const groupedOwnedFrames = useMemo(() => groupByGroup(ownedFrameItems), [ownedFrameItems]);
+  const groupedLockedAvatars = useMemo(() => groupByGroup(lockedAvatarItems), [lockedAvatarItems]);
+  const groupedLockedFrames = useMemo(() => groupByGroup(lockedFrameItems), [lockedFrameItems]);
 
   const winRateNumber = stats.games_played > 0 ? (stats.games_won / stats.games_played) * 100 : 0;
   const winRate = winRateNumber.toFixed(1);
   const winDifference = stats.games_won - stats.games_lost;
 
-  const purchasedAvatarsCount = ownedStoreAvatars.length;
-  const purchasedFramesCount = ownedStoreFrames.length;
-  const totalCosmeticsCount = purchasedAvatarsCount + purchasedFramesCount;
+  const ownedPremiumAvatarsCount = PREMIUM_AVATARS.filter((avatar) => ownedAvatars.includes(avatar.key)).length;
+  const ownedPremiumFramesCount = PREMIUM_FRAMES.filter((frame) => ownedFrames.includes(frame.key)).length;
+  const ownedPremiumTotal = ownedPremiumAvatarsCount + ownedPremiumFramesCount;
+  const premiumTotal = PREMIUM_AVATARS.length + PREMIUM_FRAMES.length;
+  const collectionPercent = premiumTotal > 0 ? clampPercent((ownedPremiumTotal / premiumTotal) * 100) : 0;
+  const avatarCollectionPercent = PREMIUM_AVATARS.length > 0 ? clampPercent((ownedPremiumAvatarsCount / PREMIUM_AVATARS.length) * 100) : 0;
+  const frameCollectionPercent = PREMIUM_FRAMES.length > 0 ? clampPercent((ownedPremiumFramesCount / PREMIUM_FRAMES.length) * 100) : 0;
 
-  const totalStoreCosmetics = STORE_AVATARS.length + STORE_FRAMES.length;
-  const collectionPercent =
-    totalStoreCosmetics > 0 ? Math.round((totalCosmeticsCount / totalStoreCosmetics) * 100) : 0;
-
-  const avatarCollectionPercent =
-    STORE_AVATARS.length > 0 ? Math.round((purchasedAvatarsCount / STORE_AVATARS.length) * 100) : 0;
-
-  const frameCollectionPercent =
-    STORE_FRAMES.length > 0 ? Math.round((purchasedFramesCount / STORE_FRAMES.length) * 100) : 0;
-
-  const nextPointsGoal = Math.max(500, Math.ceil((stats.total_points_earned + 1) / 500) * 500);
-  const pointsToNextGoal = Math.max(nextPointsGoal - stats.total_points_earned, 0);
-  const previousGoal = Math.max(0, nextPointsGoal - 500);
-  const goalProgress =
-    nextPointsGoal > previousGoal
-      ? Math.round(((stats.total_points_earned - previousGoal) / (nextPointsGoal - previousGoal)) * 100)
-      : 0;
-
-  const playerRankLabel = getPlayerRankLabel(stats.games_played);
   const levelInfo = getProfileLevelInfo(stats.total_points_earned);
+  const playerRankLabel = getPlayerRankLabel(stats.games_played);
   const winRateMessage = getWinRateMessage(winRateNumber);
   const comboTip = getComboTip(selectedAvatar.key, selectedFrame.key);
 
@@ -317,11 +310,7 @@ export default function PerfilPage() {
 
       const { error: profileError } = await supabase
         .from("profiles")
-        .update({
-          display_name: normalizedName,
-          avatar_key: avatarKey,
-          frame_key: frameKey,
-        })
+        .update({ display_name: normalizedName, avatar_key: avatarKey, frame_key: frameKey })
         .eq("id", playerIdentity.user_id);
 
       if (profileError) {
@@ -329,1048 +318,483 @@ export default function PerfilPage() {
         return;
       }
 
-      await supabase.auth.updateUser({
-        data: { display_name: normalizedName },
-      });
+      await supabase.auth.updateUser({ data: { display_name: normalizedName } });
 
       setMessage("Perfil actualizado correctamente.");
       await loadProfileData();
-      window.location.href = "/";
     } finally {
       setSaving(false);
     }
   };
 
-  const handleBuyAvatar = async (avatar: StoreAvatar) => {
-    setMessage("");
-    setErrorMessage("");
-
-    if (!playerIdentity?.user_id) {
-      setErrorMessage("Necesitas una cuenta registrada para comprar cosméticos.");
-      return;
-    }
-
-    if (ownedAvatars.includes(avatar.key)) {
-      setErrorMessage("Ya tienes este avatar.");
-      return;
-    }
-
-    if (points < avatar.price) {
-      setErrorMessage("No tienes puntos suficientes.");
-      return;
-    }
-
-    try {
-      setBuyingAvatarKey(avatar.key);
-
-      const { data: profile, error: fetchError } = await supabase
-        .from("profiles")
-        .select("points, owned_avatars")
-        .eq("id", playerIdentity.user_id)
-        .single();
-
-      if (fetchError || !profile) {
-        setErrorMessage("No se pudo cargar tu perfil.");
-        return;
-      }
-
-      const currentPoints = profile.points ?? 0;
-      const currentOwned = profile.owned_avatars ?? [];
-
-      if (currentOwned.includes(avatar.key)) {
-        setErrorMessage("Ya tienes este avatar.");
-        return;
-      }
-
-      if (currentPoints < avatar.price) {
-        setErrorMessage("No tienes puntos suficientes.");
-        return;
-      }
-
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({
-          points: currentPoints - avatar.price,
-          owned_avatars: [...currentOwned, avatar.key],
-        })
-        .eq("id", playerIdentity.user_id);
-
-      if (updateError) {
-        setErrorMessage(updateError.message);
-        return;
-      }
-
-      setMessage(`Compraste ${avatar.label} correctamente.`);
-      await loadProfileData();
-    } finally {
-      setBuyingAvatarKey(null);
-    }
-  };
-
-  const handleBuyFrame = async (frame: StoreFrame) => {
-    setMessage("");
-    setErrorMessage("");
-
-    if (!playerIdentity?.user_id) {
-      setErrorMessage("Necesitas una cuenta registrada para comprar cosméticos.");
-      return;
-    }
-
-    if (ownedFrames.includes(frame.key)) {
-      setErrorMessage("Ya tienes este marco.");
-      return;
-    }
-
-    if (points < frame.price) {
-      setErrorMessage("No tienes puntos suficientes.");
-      return;
-    }
-
-    try {
-      setBuyingFrameKey(frame.key);
-
-      const { data: profile, error: fetchError } = await supabase
-        .from("profiles")
-        .select("points, owned_frames")
-        .eq("id", playerIdentity.user_id)
-        .single();
-
-      if (fetchError || !profile) {
-        setErrorMessage("No se pudo cargar tu perfil.");
-        return;
-      }
-
-      const currentPoints = profile.points ?? 0;
-      const currentOwned = profile.owned_frames ?? [];
-
-      if (currentOwned.includes(frame.key)) {
-        setErrorMessage("Ya tienes este marco.");
-        return;
-      }
-
-      if (currentPoints < frame.price) {
-        setErrorMessage("No tienes puntos suficientes.");
-        return;
-      }
-
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({
-          points: currentPoints - frame.price,
-          owned_frames: [...currentOwned, frame.key],
-        })
-        .eq("id", playerIdentity.user_id);
-
-      if (updateError) {
-        setErrorMessage(updateError.message);
-        return;
-      }
-
-      setMessage(`Compraste ${frame.label} correctamente.`);
-      await loadProfileData();
-    } finally {
-      setBuyingFrameKey(null);
-    }
-  };
-
   if (loading) {
     return (
-      <main className="min-h-screen bg-black px-6 py-10 text-white">
-        <div className="mx-auto max-w-6xl rounded-[34px] border border-white/10 bg-zinc-950/90 p-10 text-center">
-          <p className="text-3xl font-bold">Cargando perfil...</p>
+      <main className="min-h-screen bg-black px-4 py-8 text-white sm:px-6">
+        <div className="mx-auto max-w-6xl rounded-[2rem] border border-white/10 bg-zinc-950/90 p-8 text-center shadow-[0_0_60px_rgba(249,115,22,0.08)]">
+          <p className="text-2xl font-black sm:text-3xl">Cargando perfil...</p>
+          <p className="mt-2 text-sm text-white/50">Preparando tu identidad gamer.</p>
         </div>
       </main>
     );
   }
 
+  const tabs: { key: ProfileTab; label: string; icon: string }[] = [
+    { key: "summary", label: "Resumen", icon: "🏠" },
+    { key: "customization", label: "Personalización", icon: "🎨" },
+    { key: "stats", label: "Estadísticas", icon: "📊" },
+    { key: "collection", label: "Colección", icon: "💎" },
+  ];
+
   return (
-    <main className="min-h-screen bg-black px-6 py-10 text-white">
+    <main className="min-h-screen overflow-x-hidden bg-black px-4 py-6 text-white sm:px-6 sm:py-10">
       <div className="mx-auto max-w-6xl">
-        <Link
-          href="/"
-          className="mb-6 inline-flex rounded-2xl bg-orange-500 px-5 py-3 font-bold text-black transition hover:bg-orange-400"
-        >
-          ← Volver
-        </Link>
+        <div className="mb-5 flex flex-col gap-3 sm:mb-7 sm:flex-row sm:items-center sm:justify-between">
+          <Link href="/" className="inline-flex w-fit rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-black text-white/80 transition hover:border-orange-500/30 hover:bg-orange-500/10 hover:text-orange-100">
+            ← Volver
+          </Link>
 
-        <div className="grid gap-8 lg:grid-cols-[0.95fr_1.05fr]">
-          <section className="rounded-[34px] border border-orange-500/15 bg-zinc-950/90 p-8 shadow-[0_0_40px_rgba(249,115,22,0.05)] md:p-10">
-            <div className="mb-6 flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => setLeftTab("preview")}
-                className={`rounded-2xl border px-6 py-3 text-base font-black transition ${
-                  leftTab === "preview"
-                    ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
-                    : "border-white/10 bg-white/[0.03] text-white/65 hover:bg-white/[0.06]"
-                }`}
-              >
-                Vista previa
-              </button>
+          <Link href="/tienda" className="inline-flex w-full items-center justify-center rounded-2xl bg-orange-500 px-4 py-3 text-sm font-black text-black shadow-[0_0_35px_rgba(249,115,22,0.22)] transition hover:bg-orange-400 sm:w-fit">
+            Ir a tienda ✨
+          </Link>
+        </div>
 
-              <button
-                type="button"
-                onClick={() => setLeftTab("stats")}
-                className={`rounded-2xl border px-6 py-3 text-base font-black transition ${
-                  leftTab === "stats"
-                    ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
-                    : "border-white/10 bg-white/[0.03] text-white/65 hover:bg-white/[0.06]"
-                }`}
-              >
-                Estadísticas
-              </button>
+        <section className="relative overflow-hidden rounded-[2rem] border border-orange-500/20 bg-[radial-gradient(circle_at_top,rgba(249,115,22,0.18),transparent_34%),linear-gradient(135deg,rgba(24,24,27,0.98),rgba(0,0,0,0.96))] p-5 shadow-[0_0_70px_rgba(249,115,22,0.10)] sm:p-7 lg:p-8">
+          <div className="absolute right-[-80px] top-[-80px] h-56 w-56 rounded-full bg-orange-500/10 blur-3xl" />
+          <div className="absolute bottom-[-100px] left-[-100px] h-64 w-64 rounded-full bg-yellow-500/5 blur-3xl" />
+
+          <div className="relative grid gap-6 lg:grid-cols-[auto_1fr_auto] lg:items-center">
+            <div className="flex justify-center lg:justify-start">
+              <ProfileAvatarPreview avatar={selectedAvatar} frame={selectedFrame} />
             </div>
 
-            {leftTab === "preview" && (
-              <div className="flex flex-col items-center text-center">
-                <div className="relative flex h-48 w-48 items-center justify-center rounded-full bg-black shadow-[0_0_45px_rgba(249,115,22,0.12)]">
-                  {selectedFrame.image ? (
-                    <img
-                      src={selectedFrame.image}
-                      alt={selectedFrame.label}
-                      className="absolute inset-0 h-full w-full object-contain"
-                    />
-                  ) : (
-                    <div
-                      className={`absolute inset-0 rounded-full border-4 ${
-                        selectedFrame.className ?? ""
-                      }`}
-                    />
-                  )}
+            <div className="min-w-0 text-center lg:text-left">
+              <div className="flex flex-wrap items-center justify-center gap-2 lg:justify-start">
+                <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-orange-200">
+                  {playerIdentity?.is_guest ? "Invitado" : "Usuario registrado"}
+                </span>
+                <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1 text-xs font-black text-emerald-200">
+                  En línea
+                </span>
+              </div>
 
-                  {selectedAvatar.image ? (
-                    <img
-                      src={selectedAvatar.image}
-                      alt={selectedAvatar.label}
-                      className="relative z-10 h-32 w-32 object-contain"
-                    />
-                  ) : (
-                    <span className="relative z-10 text-7xl">
-                      {selectedAvatar.emoji ?? "🙂"}
-                    </span>
-                  )}
+              <h1 className="mt-4 truncate text-3xl font-black tracking-tight sm:text-5xl">{displayName || "Jugador"}</h1>
+              <p className="mt-2 break-all text-sm font-medium text-white/50 sm:text-base">{email || "Perfil local / invitado"}</p>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <StatCard label="Nivel" value={levelInfo.level} helper={levelInfo.title} tone="yellow" />
+                <StatCard label="Puntos" value={points} helper="Disponibles" tone="orange" />
+                <StatCard label="WR" value={`${winRate}%`} helper={winRateMessage} tone="emerald" />
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-yellow-500/20 bg-black/35 p-4 lg:min-w-64">
+              <div className="flex items-center gap-3">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-yellow-500/10 text-3xl shadow-[0_0_25px_rgba(250,204,21,0.18)]">
+                  {levelInfo.emblem}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-yellow-300">Progreso XP</p>
+                  <p className="mt-1 text-lg font-black text-yellow-50">{levelInfo.progressPercent}%</p>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <ProgressBar value={levelInfo.progressPercent} className="bg-gradient-to-r from-yellow-400 to-orange-400" />
+                <div className="mt-2 flex justify-between text-[0.7rem] font-bold text-white/40">
+                  <span>{levelInfo.currentLevelXp} XP</span>
+                  <span>{levelInfo.isMaxLevel ? `${levelInfo.currentXp} XP` : `${levelInfo.nextLevelXp} XP`}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <nav className="sticky top-0 z-20 -mx-4 mt-5 border-y border-white/10 bg-black/80 px-4 py-3 backdrop-blur-xl sm:static sm:mx-0 sm:rounded-[1.7rem] sm:border sm:bg-zinc-950/80">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={`min-w-0 rounded-2xl border px-3 py-3 text-sm font-black transition sm:text-base ${
+                  activeTab === tab.key
+                    ? "border-orange-500/40 bg-orange-500/15 text-orange-100 shadow-[0_0_25px_rgba(249,115,22,0.12)]"
+                    : "border-white/10 bg-white/[0.03] text-white/60 hover:bg-white/[0.06] hover:text-white"
+                }`}
+              >
+                <span className="mr-1.5">{tab.icon}</span>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </nav>
+
+        <section className="mt-5">
+          {activeTab === "summary" && (
+            <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+              <div className="rounded-[2rem] border border-white/10 bg-zinc-950/90 p-5 shadow-[0_0_45px_rgba(249,115,22,0.04)] sm:p-7">
+                <p className="text-xs font-black uppercase tracking-[0.24em] text-orange-300">Resumen del jugador</p>
+                <h2 className="mt-3 text-3xl font-black">Identidad de la mesa</h2>
+                <p className="mt-2 text-sm leading-relaxed text-white/55 sm:text-base">
+                  Tu carta principal: nivel, rendimiento, puntos y estilo equipado en una vista más limpia.
+                </p>
+
+                <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                  <StatCard label="Partidas" value={stats.games_played} helper="Jugadas en total" />
+                  <StatCard label="Victorias" value={stats.games_won} helper={`${stats.games_lost} derrotas`} tone="emerald" />
+                  <StatCard label="Mejor racha" value={stats.best_win_streak} helper={`Actual: ${stats.current_win_streak}`} tone="yellow" />
+                  <StatCard label="Puntos ganados" value={stats.total_points_earned} helper="XP histórico" tone="orange" />
                 </div>
 
-                <h1 className="mt-6 text-4xl font-extrabold">{displayName || "Jugador"}</h1>
-<p className="mt-2 text-white/60">
-  {playerIdentity?.is_guest ? "Invitado" : "Usuario registrado"}
-</p>
-
-<div className="mt-5 w-full rounded-3xl border border-yellow-500/30 bg-gradient-to-br from-yellow-500/10 via-black to-black p-6 text-left shadow-[0_0_60px_rgba(250,204,21,0.12)]">
-
-  <div className="flex items-center justify-between gap-4">
-    
-    {/* IZQUIERDA */}
-    <div className="flex items-center gap-4">
-      
-      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-yellow-500/10 text-4xl shadow-[0_0_25px_rgba(250,204,21,0.25)]">
-        {levelInfo.emblem}
-      </div>
-
-      <div>
-        <p className="text-xs uppercase tracking-[0.25em] text-yellow-300">
-          Nivel {levelInfo.level}
-        </p>
-
-        <p className="mt-1 text-3xl font-extrabold text-yellow-100">
-          {levelInfo.title}
-        </p>
-
-        <p className="mt-1 text-sm text-white/60">
-          {levelInfo.isMaxLevel
-            ? "Nivel máximo alcanzado"
-            : `Faltan ${levelInfo.xpNeededForNextLevel} XP`}
-        </p>
-      </div>
-    </div>
-
-    {/* DERECHA */}
-    <div className="rounded-full border border-yellow-400/40 bg-yellow-500/10 px-4 py-2 text-sm font-bold text-yellow-200 shadow-[0_0_15px_rgba(250,204,21,0.25)]">
-      {levelInfo.progressPercent}%
-    </div>
-  </div>
-
-  {/* BARRA */}
-  <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/10">
-    <div
-      className="h-full rounded-full bg-gradient-to-r from-yellow-400 to-orange-400 transition-all"
-      style={{ width: `${levelInfo.progressPercent}%` }}
-    />
-  </div>
-
-  {/* XP LABELS */}
-  <div className="mt-3 flex justify-between text-xs text-white/45">
-    <span>{levelInfo.currentLevelXp} XP</span>
-    <span>
-      {levelInfo.isMaxLevel
-        ? `${levelInfo.currentXp} XP`
-        : `${levelInfo.nextLevelXp} XP`}
-    </span>
-  </div>
-</div>
-
-<div className="mt-6 grid w-full gap-4 sm:grid-cols-2">
-                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                    <p className="text-sm uppercase tracking-[0.18em] text-white/50">Puntos</p>
-                    <p className="mt-2 text-3xl font-extrabold">{points}</p>
-                  </div>
-
-                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                    <p className="text-sm uppercase tracking-[0.18em] text-white/50">Correo</p>
-                    <p className="mt-2 break-all text-lg font-bold">
-                      {email || "No disponible"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-6 w-full rounded-3xl border border-orange-500/15 bg-orange-500/5 p-5 text-left">
-                  <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
-                    Combo actual
-                  </p>
-                  <p className="mt-2 text-xl font-extrabold">
-                    {selectedAvatar.label} + {selectedFrame.label}
-                  </p>
-                  <p className="mt-2 text-sm text-white/65">{comboTip}</p>
-                </div>
-
-                <div className="mt-4 w-full rounded-3xl border border-white/10 bg-white/[0.03] p-5 text-left">
+                <div className="mt-5 rounded-3xl border border-orange-500/15 bg-orange-500/5 p-5">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                        Colección
-                      </p>
-                      <p className="mt-2 text-2xl font-extrabold">
-                        {totalCosmeticsCount}/{totalStoreCosmetics}
-                      </p>
+                      <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-300">Win Rate</p>
+                      <p className="mt-2 text-4xl font-black text-orange-100">{winRate}%</p>
                     </div>
-
-                    <div className="rounded-full border border-orange-500/20 bg-orange-500/10 px-4 py-2 text-sm font-bold text-orange-200">
-                      {collectionPercent}%
-                    </div>
+                    <span className="rounded-full border border-orange-500/25 bg-black/30 px-4 py-2 text-sm font-black text-orange-200">
+                      {winDifference >= 0 ? `+${winDifference}` : winDifference} saldo
+                    </span>
                   </div>
-
-                  <div className="mt-4 h-3 overflow-hidden rounded-full bg-white/10">
-                    <div
-                      className="h-full rounded-full bg-orange-500 transition-all"
-                      style={{ width: `${collectionPercent}%` }}
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-4 grid w-full gap-3 sm:grid-cols-3">
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                    <p className="text-2xl">🎭</p>
-                    <p className="mt-2 text-sm font-bold">Avatar</p>
-                    <p className="text-xs text-white/55">{getTierLabel(selectedAvatar.tier)}</p>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                    <p className="text-2xl">🖼️</p>
-                    <p className="mt-2 text-sm font-bold">Marco</p>
-                    <p className="text-xs text-white/55">{getTierLabel(selectedFrame.tier)}</p>
-                  </div>
-
-                  <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-4">
-                    <p className="text-2xl">{levelInfo.emblem}</p>
-                    <p className="mt-2 text-sm font-bold">Nivel {levelInfo.level}</p>
-                    <p className="text-xs text-white/55">{levelInfo.title}</p>
+                  <div className="mt-4">
+                    <ProgressBar value={winRateNumber} />
                   </div>
                 </div>
               </div>
-            )}
 
-            {leftTab === "stats" && (
-              <div>
-                <div className="mb-6">
-                  <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
-                    Estadísticas del jugador
-                  </p>
-                  <h2 className="mt-3 text-3xl font-extrabold">Tu rendimiento</h2>
+              <div className="space-y-5">
+                <div className="rounded-[2rem] border border-white/10 bg-zinc-950/90 p-5 sm:p-7">
+                  <p className="text-xs font-black uppercase tracking-[0.24em] text-white/45">Cosméticos equipados</p>
+                  <div className="mt-5 flex items-center gap-4 rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+                    <ProfileAvatarPreview avatar={selectedAvatar} frame={selectedFrame} size="md" />
+                    <div className="min-w-0">
+                      <p className="truncate text-xl font-black">{selectedAvatar.label}</p>
+                      <p className="truncate text-sm font-bold text-white/55">{selectedFrame.label}</p>
+                      <p className="mt-2 text-xs leading-relaxed text-white/45">{comboTip}</p>
+                    </div>
+                  </div>
+
+                  <button type="button" onClick={() => setActiveTab("customization")} className="mt-4 w-full rounded-2xl border border-orange-500/25 bg-orange-500/10 px-4 py-3 font-black text-orange-100 transition hover:bg-orange-500/20">
+                    Editar estilo
+                  </button>
                 </div>
 
-                <div className="mb-6 flex flex-wrap gap-3">
-                  {(["performance", "progress", "collection"] as StatsTab[]).map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => setStatsTab(item)}
-                      className={`rounded-2xl border px-6 py-3 text-base font-black transition ${
-                        statsTab === item
-                          ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
-                          : "border-white/10 bg-white/[0.03] text-white/65 hover:bg-white/[0.06]"
-                      }`}
-                    >
-                      {item === "performance"
-                        ? "Rendimiento"
-                        : item === "progress"
-                          ? "Progreso"
-                          : "Colección"}
-                    </button>
-                  ))}
+                <div className="rounded-[2rem] border border-cyan-500/15 bg-cyan-500/5 p-5 sm:p-7">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan-300">Colección premium</p>
+                      <p className="mt-2 text-3xl font-black">{ownedPremiumTotal}/{premiumTotal}</p>
+                    </div>
+                    <span className="rounded-full border border-cyan-500/25 bg-black/30 px-4 py-2 text-sm font-black text-cyan-200">{collectionPercent}%</span>
+                  </div>
+                  <div className="mt-4">
+                    <ProgressBar value={collectionPercent} className="bg-cyan-400" />
+                  </div>
+                  <button type="button" onClick={() => setActiveTab("collection")} className="mt-4 w-full rounded-2xl border border-cyan-500/20 bg-black/25 px-4 py-3 font-black text-cyan-100 transition hover:bg-cyan-500/10">
+                    Ver colección
+                  </button>
                 </div>
-
-                {statsTab === "performance" && (
-                  <div className="space-y-4">
-                    <div className="rounded-[28px] border border-orange-500/20 bg-orange-500/5 p-5">
-                      <div className="flex items-center justify-between gap-4">
-                        <div>
-                          <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
-                            {playerRankLabel}
-                          </p>
-                          <p className="mt-2 text-4xl font-extrabold text-orange-100">
-                            {winRate}% WR
-                          </p>
-                          <p className="mt-2 text-sm text-white/60">{winRateMessage}</p>
-                        </div>
-
-                        <div className="rounded-full border border-orange-500/25 bg-black/30 px-4 py-2 text-sm font-bold text-orange-200">
-                          {winDifference >= 0 ? `+${winDifference}` : winDifference} saldo
-                        </div>
-                      </div>
-
-                      <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/10">
-                        <div
-                          className="h-full rounded-full bg-orange-500 transition-all"
-                          style={{ width: `${Math.min(winRateNumber, 100)}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                          Partidas jugadas
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold">{stats.games_played}</p>
-                      </div>
-
-                      <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/5 p-5">
-                        <p className="text-sm uppercase tracking-[0.18em] text-emerald-300">
-                          Ganadas
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold text-emerald-400">
-                          {stats.games_won}
-                        </p>
-                      </div>
-
-                      <div className="rounded-3xl border border-red-500/20 bg-red-500/5 p-5">
-                        <p className="text-sm uppercase tracking-[0.18em] text-red-300">
-                          Perdidas
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold text-red-400">
-                          {stats.games_lost}
-                        </p>
-                      </div>
-
-                      <div className="rounded-3xl border border-yellow-500/20 bg-yellow-500/5 p-5">
-                        <p className="text-sm uppercase tracking-[0.18em] text-yellow-300">
-                          Racha actual
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold text-yellow-300">
-                          {stats.current_win_streak}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {statsTab === "progress" && (
-                  <div className="space-y-4">
-                    <div className="rounded-[28px] border border-yellow-500/20 bg-yellow-500/5 p-5 shadow-[0_0_35px_rgba(250,204,21,0.06)]">
-  <div className="flex items-center justify-between gap-4">
-    <div>
-      <p className="text-sm uppercase tracking-[0.18em] text-yellow-300">
-        Nivel {levelInfo.level}
-      </p>
-
-      <p className="mt-2 text-3xl font-extrabold">
-        {levelInfo.emblem} {levelInfo.title}
-      </p>
-
-      <p className="mt-2 text-sm text-white/60">
-        {levelInfo.isMaxLevel
-          ? "Ya alcanzaste el nivel máximo actual."
-          : `Faltan ${levelInfo.xpNeededForNextLevel} XP para nivel ${
-              levelInfo.level + 1
-            }.`}
-      </p>
-    </div>
-
-    <div className="rounded-full border border-yellow-500/25 bg-black/30 px-4 py-2 text-sm font-bold text-yellow-200">
-      {levelInfo.progressPercent}%
-    </div>
-  </div>
-
-  <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/10">
-    <div
-      className="h-full rounded-full bg-yellow-400 transition-all"
-      style={{ width: `${levelInfo.progressPercent}%` }}
-    />
-  </div>
-
-  <div className="mt-3 flex justify-between text-xs text-white/45">
-    <span>{levelInfo.currentLevelXp} XP</span>
-    <span>
-      {levelInfo.isMaxLevel
-        ? `${levelInfo.currentXp} XP`
-        : `${levelInfo.nextLevelXp} XP`}
-    </span>
-  </div>
-</div>
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
-                        <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                          Puntos actuales
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold">{points}</p>
-                      </div>
-
-                      <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 p-5">
-                        <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
-                          Puntos acumulados
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold text-orange-200">
-                          {stats.total_points_earned}
-                        </p>
-                      </div>
-
-                      <div className="rounded-3xl border border-yellow-500/20 bg-yellow-500/5 p-5 sm:col-span-2">
-                        <p className="text-sm uppercase tracking-[0.18em] text-yellow-300">
-                          Mejor racha de victorias
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold text-yellow-300">
-                          {stats.best_win_streak}
-                        </p>
-                        <p className="mt-2 text-sm text-white/60">
-                          Racha actual: {stats.current_win_streak}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {statsTab === "collection" && (
-                  <div className="space-y-4">
-                    <div className="rounded-[28px] border border-orange-500/20 bg-orange-500/5 p-5">
-                      <div className="flex items-center justify-between gap-4">
-                        <div>
-                          <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
-                            Colección total
-                          </p>
-                          <p className="mt-2 text-3xl font-extrabold">
-                            {totalCosmeticsCount}/{totalStoreCosmetics}
-                          </p>
-                          <p className="mt-2 text-sm text-white/60">
-                            Avanza tu colección comprando cosméticos en la tienda.
-                          </p>
-                        </div>
-
-                        <div className="rounded-full border border-orange-500/25 bg-black/30 px-4 py-2 text-sm font-bold text-orange-200">
-                          {collectionPercent}%
-                        </div>
-                      </div>
-
-                      <div className="mt-5 h-3 overflow-hidden rounded-full bg-white/10">
-                        <div
-                          className="h-full rounded-full bg-orange-500 transition-all"
-                          style={{ width: `${collectionPercent}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="rounded-3xl border border-cyan-500/20 bg-cyan-500/5 p-5">
-                        <p className="text-sm uppercase tracking-[0.18em] text-cyan-300">
-                          Avatares
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold">
-                          {purchasedAvatarsCount}/{STORE_AVATARS.length}
-                        </p>
-                        <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-                          <div
-                            className="h-full rounded-full bg-cyan-400"
-                            style={{ width: `${avatarCollectionPercent}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="rounded-3xl border border-violet-500/20 bg-violet-500/5 p-5">
-                        <p className="text-sm uppercase tracking-[0.18em] text-violet-300">
-                          Marcos
-                        </p>
-                        <p className="mt-2 text-3xl font-extrabold">
-                          {purchasedFramesCount}/{STORE_FRAMES.length}
-                        </p>
-                        <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
-                          <div
-                            className="h-full rounded-full bg-violet-400"
-                            style={{ width: `${frameCollectionPercent}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setLeftTab("preview");
-                          setRightTab("shop");
-                        }}
-                        className="rounded-3xl border border-orange-500/25 bg-orange-500 px-5 py-4 font-extrabold text-black transition hover:bg-orange-400 sm:col-span-2"
-                      >
-                        Ir a la tienda ✨
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
-            )}
-          </section>
-
-                     <section className="rounded-[34px] border border-orange-500/15 bg-zinc-950/90 p-8 shadow-[0_0_40px_rgba(249,115,22,0.05)] md:p-10">
-            <div className="mb-6 flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => setRightTab("customization")}
-                className={`rounded-2xl border px-6 py-3 text-base font-black transition ${
-                  rightTab === "customization"
-                    ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
-                    : "border-white/10 bg-white/[0.03] text-white/65 hover:bg-white/[0.06]"
-                }`}
-              >
-                Personalización
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setRightTab("shop")}
-                className={`rounded-2xl border px-6 py-3 text-base font-black transition ${
-                  rightTab === "shop"
-                    ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
-                    : "border-white/10 bg-white/[0.03] text-white/65 hover:bg-white/[0.06]"
-                }`}
-              >
-                Tienda ✨
-              </button>
             </div>
+          )}
 
-            {rightTab === "customization" && (
-              <div className="space-y-6">
-                <div>
-                  <label className="mb-3 block text-base font-black uppercase tracking-[0.22em] text-orange-300">
-                    Nombre visible
-                  </label>
+          {activeTab === "customization" && (
+            <div className="grid gap-5 lg:grid-cols-[0.85fr_1.15fr]">
+              <aside className="rounded-[2rem] border border-orange-500/15 bg-zinc-950/90 p-5 sm:p-7 lg:sticky lg:top-5 lg:h-fit">
+                <p className="text-xs font-black uppercase tracking-[0.24em] text-orange-300">Vista previa</p>
+                <div className="mt-5 flex flex-col items-center text-center">
+                  <ProfileAvatarPreview avatar={selectedAvatar} frame={selectedFrame} />
+                  <h2 className="mt-5 max-w-full truncate text-3xl font-black">{displayName || "Jugador"}</h2>
+                  <p className="mt-1 text-sm font-bold text-white/45">{selectedAvatar.label} + {selectedFrame.label}</p>
+                </div>
 
+                <div className="mt-6">
+                  <label className="mb-2 block text-xs font-black uppercase tracking-[0.22em] text-white/50">Nombre visible</label>
                   <input
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    className="w-full rounded-2xl border border-orange-500/25 bg-black px-5 py-4 text-lg font-bold text-white outline-none transition focus:border-orange-500/70"
+                    className="w-full rounded-2xl border border-white/10 bg-black px-4 py-3.5 text-base font-bold text-white outline-none transition placeholder:text-white/30 focus:border-orange-500/70"
+                    placeholder="Tu nombre"
                   />
                 </div>
 
-                <div>
-                  <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
-                    Avatares básicos
-                  </p>
-
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {BASIC_AVATARS.map((avatar) => (
-                      <button
-                        key={avatar.key}
-                        type="button"
-                        onClick={() => setAvatarKey(avatar.key)}
-                        className={`rounded-2xl border p-4 text-center transition ${
-                          avatarKey === avatar.key
-                            ? "border-orange-500 bg-orange-500/10"
-                            : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
-                        }`}
-                      >
-                        {avatar.image ? (
-                          <img
-                            src={avatar.image}
-                            alt={avatar.label}
-                            className="mx-auto h-14 w-14 object-contain"
-                          />
-                        ) : (
-                          <p className="text-3xl">{avatar.emoji ?? "🙂"}</p>
-                        )}
-
-                        <p className="mt-2 text-sm font-bold">{avatar.label}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {ownedStoreAvatars.length > 0 && (
-                  <div>
-                    <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
-                      Avatares desbloqueados
-                    </p>
-
-                    <div className="mb-4 flex flex-wrap gap-2">
-                      {ownedAvatarGroups.map((group) => (
-                        <button
-                          key={group}
-                          type="button"
-                          onClick={() => setOwnedAvatarGroupTab(group)}
-                          className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
-                            activeOwnedAvatarGroup === group
-                              ? "border-orange-500/40 bg-orange-500/15 text-orange-200"
-                              : "border-white/10 bg-white/[0.03] text-white/60 hover:bg-white/[0.06]"
-                          }`}
-                        >
-                          {group}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      {(groupedOwnedAvatars[activeOwnedAvatarGroup] ?? []).map((avatar) => (
-                        <button
-                          key={avatar.key}
-                          type="button"
-                          onClick={() => setAvatarKey(avatar.key)}
-                          className={`rounded-2xl border p-4 text-center transition ${
-                            avatarKey === avatar.key
-                              ? "border-orange-500 bg-orange-500/10"
-                              : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
-                          }`}
-                        >
-                          {avatar.image && (
-                            <img
-                              src={avatar.image}
-                              alt={avatar.label}
-                              className="mx-auto h-14 w-14 object-contain"
-                            />
-                          )}
-                          <p className="mt-2 text-sm font-bold">{avatar.label}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
-                    Marcos básicos
-                  </p>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {BASIC_FRAMES.map((frame) => (
-                      <button
-                        key={frame.key}
-                        type="button"
-                        onClick={() => setFrameKey(frame.key)}
-                        className={`rounded-2xl border p-4 text-left transition ${
-                          frameKey === frame.key
-                            ? "border-orange-500 bg-orange-500/10"
-                            : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`flex h-10 w-10 items-center justify-center rounded-full border-4 bg-black ${
-                              frame.className ?? ""
-                            }`}
-                          />
-                          <div>
-                            <p className="font-bold">{frame.label}</p>
-                            <p className="text-xs text-white/60">Marco básico</p>
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {ownedStoreFrames.length > 0 && (
-                  <div>
-                    <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-white/60">
-                      Marcos desbloqueados
-                    </p>
-
-                    <div className="mb-4 flex flex-wrap gap-2">
-                      {ownedFrameGroups.map((group) => (
-                        <button
-                          key={group}
-                          type="button"
-                          onClick={() => setOwnedFrameGroupTab(group)}
-                          className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
-                            activeOwnedFrameGroup === group
-                              ? "border-orange-500/40 bg-orange-500/15 text-orange-200"
-                              : "border-white/10 bg-white/[0.03] text-white/60 hover:bg-white/[0.06]"
-                          }`}
-                        >
-                          {group}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {(groupedOwnedFrames[activeOwnedFrameGroup] ?? []).map((frame) => (
-                        <button
-                          key={frame.key}
-                          type="button"
-                          onClick={() => setFrameKey(frame.key)}
-                          className={`rounded-2xl border p-4 text-left transition ${
-                            frameKey === frame.key
-                              ? "border-orange-500 bg-orange-500/10"
-                              : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center">
-                              {frame.image && (
-                                <img
-                                  src={frame.image}
-                                  alt={frame.label}
-                                  className="max-h-10 max-w-10 object-contain"
-                                />
-                              )}
-                            </div>
-
-                            <div>
-                              <p className="font-bold">{frame.label}</p>
-                              <p className="text-xs text-white/60">
-                                Marco {getTierLabel(frame.tier)}
-                              </p>
-                            </div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <button
-                  onClick={handleSaveProfile}
-                  disabled={saving || !!playerIdentity?.is_guest}
-                  className="w-full rounded-2xl bg-orange-500 px-5 py-3.5 text-lg font-bold text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
-                >
+                <button onClick={handleSaveProfile} disabled={saving || !!playerIdentity?.is_guest} className="mt-5 w-full rounded-2xl bg-orange-500 px-5 py-3.5 text-base font-black text-black transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60">
                   {saving ? "Guardando..." : "Guardar perfil"}
                 </button>
 
-                {message && (
-                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-emerald-300">
-                    {message}
+                {message && <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-300">{message}</div>}
+                {errorMessage && <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-300">{errorMessage}</div>}
+              </aside>
+
+              <div className="space-y-5">
+                <div className="rounded-[2rem] border border-white/10 bg-zinc-950/90 p-5 sm:p-7">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.24em] text-orange-300">Avatares</p>
+                      <h3 className="mt-2 text-2xl font-black">Elige tu personaje</h3>
+                    </div>
+                    <p className="text-sm font-bold text-white/45">Solo desbloqueados</p>
                   </div>
-                )}
 
-                {errorMessage && (
-                  <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
-                    {errorMessage}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {rightTab === "shop" && (
-              <div className="space-y-8">
-                <div className="rounded-3xl border border-orange-500/15 bg-orange-500/5 p-5">
-                  <p className="text-sm uppercase tracking-[0.18em] text-orange-300">
-                    Tienda
-                  </p>
-                  <h2 className="mt-3 text-3xl font-extrabold">Cosméticos</h2>
-                  <p className="mt-2 text-white/70">
-                    Compra avatares y marcos usando tus puntos actuales.
-                  </p>
-
-                  <div className="mt-5 rounded-2xl border border-white/10 bg-black/30 p-4">
-                    <p className="text-sm uppercase tracking-[0.18em] text-white/50">
-                      Tus puntos actuales
-                    </p>
-                    <p className="mt-2 text-3xl font-extrabold text-orange-200">{points}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-8">
-                  <h3 className="text-2xl font-extrabold">Avatares</h3>
-
-                  {Object.entries(groupedStoreAvatars).map(([group, avatars]) => (
-                    <div key={group}>
-                      <h4 className="mb-4 text-lg font-bold text-orange-200">{group}</h4>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        {avatars.map((avatar) => {
-                          const isOwned = ownedAvatars.includes(avatar.key);
-                          const isEquipped = avatarKey === avatar.key;
-
-                          return (
-                            <div
+                  <div className="mt-5 space-y-5">
+                    {Object.entries(groupedOwnedAvatars).map(([group, avatars]) => (
+                      <div key={group}>
+                        <h4 className="mb-3 text-sm font-black uppercase tracking-[0.2em] text-white/45">{group}</h4>
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
+                          {avatars.map((avatar) => (
+                            <button
                               key={avatar.key}
-                              className="rounded-3xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-orange-500/25 hover:bg-white/[0.05]"
+                              type="button"
+                              onClick={() => setAvatarKey(avatar.key)}
+                              className={`rounded-3xl border p-4 text-center transition ${
+                                avatarKey === avatar.key
+                                  ? "border-orange-500/60 bg-orange-500/15 shadow-[0_0_25px_rgba(249,115,22,0.12)]"
+                                  : "border-white/10 bg-white/[0.03] hover:border-orange-500/25 hover:bg-white/[0.06]"
+                              }`}
                             >
-                              <div className="flex flex-col items-center text-center">
-                                {avatar.image && (
-                                  <img
-                                    src={avatar.image}
-                                    alt={avatar.label}
-                                    className="h-20 w-20 object-contain"
-                                  />
-                                )}
-
-                                <p className="mt-3 font-bold">{avatar.label}</p>
-
-                                <span
-                                  className={`mt-2 rounded-full border px-3 py-1 text-xs font-bold ${getTierBadgeClass(
-                                    avatar.tier
-                                  )}`}
-                                >
-                                  {getTierLabel(avatar.tier)}
-                                </span>
-
-                                <div className="mt-3 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-sm text-white/70">
-                                  {avatar.price} puntos
-                                </div>
-
-                                <div className="mt-4 w-full">
-                                  {isEquipped ? (
-                                    <button
-                                      type="button"
-                                      disabled
-                                      className="w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-bold text-emerald-300"
-                                    >
-                                      Equipado
-                                    </button>
-                                  ) : isOwned ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setAvatarKey(avatar.key);
-                                        setRightTab("customization");
-                                      }}
-                                      className="w-full rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-500/20"
-                                    >
-                                      Equipar
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleBuyAvatar(avatar)}
-                                      disabled={
-                                        buyingAvatarKey === avatar.key ||
-                                        !!playerIdentity?.is_guest
-                                      }
-                                      className="w-full rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm font-bold text-orange-200 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                                    >
-                                      {buyingAvatarKey === avatar.key
-                                        ? "Comprando..."
-                                        : "Comprar"}
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
+                              {avatar.image ? <img src={avatar.image} alt={avatar.label} className="mx-auto h-16 w-16 object-contain" /> : <p className="text-4xl">{avatar.emoji ?? "🙂"}</p>}
+                              <p className="mt-3 truncate text-sm font-black">{avatar.label}</p>
+                              <span className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[0.65rem] font-black ${getTierBadgeClass(avatar.tier)}`}>{getTierLabel(avatar.tier)}</span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
 
-                <div className="space-y-8">
-                  <h3 className="text-2xl font-extrabold">Marcos</h3>
+                <div className="rounded-[2rem] border border-white/10 bg-zinc-950/90 p-5 sm:p-7">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.24em] text-orange-300">Marcos</p>
+                      <h3 className="mt-2 text-2xl font-black">Elige tu marco</h3>
+                    </div>
+                    <p className="text-sm font-bold text-white/45">Solo desbloqueados</p>
+                  </div>
 
-                  {Object.entries(groupedStoreFrames).map(([group, frames]) => (
-                    <div key={group}>
-                      <h4 className="mb-4 text-lg font-bold text-orange-200">{group}</h4>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        {frames.map((frame) => {
-                          const isOwned = ownedFrames.includes(frame.key);
-                          const isEquipped = frameKey === frame.key;
-
-                          return (
-                            <div
+                  <div className="mt-5 space-y-5">
+                    {Object.entries(groupedOwnedFrames).map(([group, frames]) => (
+                      <div key={group}>
+                        <h4 className="mb-3 text-sm font-black uppercase tracking-[0.2em] text-white/45">{group}</h4>
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                          {frames.map((frame) => (
+                            <button
                               key={frame.key}
-                              className="rounded-3xl border border-white/10 bg-white/[0.03] p-4 transition hover:border-orange-500/25 hover:bg-white/[0.05]"
+                              type="button"
+                              onClick={() => setFrameKey(frame.key)}
+                              className={`rounded-3xl border p-4 text-left transition ${
+                                frameKey === frame.key
+                                  ? "border-orange-500/60 bg-orange-500/15 shadow-[0_0_25px_rgba(249,115,22,0.12)]"
+                                  : "border-white/10 bg-white/[0.03] hover:border-orange-500/25 hover:bg-white/[0.06]"
+                              }`}
                             >
-                              <div className="flex flex-col items-center text-center">
-                                <div className="flex h-20 w-20 items-center justify-center">
-                                  {frame.image && (
-                                    <img
-                                      src={frame.image}
-                                      alt={frame.label}
-                                      className="max-h-20 max-w-20 object-contain"
-                                    />
-                                  )}
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-black">
+                                  {frame.image ? <img src={frame.image} alt={frame.label} className="h-12 w-12 object-contain" /> : <div className={`h-10 w-10 rounded-full border-4 ${frame.className ?? ""}`} />}
                                 </div>
-
-                                <p className="mt-3 font-bold">{frame.label}</p>
-
-                                <span
-                                  className={`mt-2 rounded-full border px-3 py-1 text-xs font-bold ${getTierBadgeClass(
-                                    frame.tier
-                                  )}`}
-                                >
-                                  {getTierLabel(frame.tier)}
-                                </span>
-
-                                <div className="mt-3 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-sm text-white/70">
-                                  {frame.price} puntos
-                                </div>
-
-                                <div className="mt-4 w-full">
-                                  {isEquipped ? (
-                                    <button
-                                      type="button"
-                                      disabled
-                                      className="w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-bold text-emerald-300"
-                                    >
-                                      Equipado
-                                    </button>
-                                  ) : isOwned ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setFrameKey(frame.key);
-                                        setRightTab("customization");
-                                      }}
-                                      className="w-full rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-bold text-cyan-200 transition hover:bg-cyan-500/20"
-                                    >
-                                      Equipar
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleBuyFrame(frame)}
-                                      disabled={
-                                        buyingFrameKey === frame.key ||
-                                        !!playerIdentity?.is_guest
-                                      }
-                                      className="w-full rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2 text-sm font-bold text-orange-200 transition hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                                    >
-                                      {buyingFrameKey === frame.key
-                                        ? "Comprando..."
-                                        : "Comprar"}
-                                    </button>
-                                  )}
+                                <div className="min-w-0">
+                                  <p className="truncate font-black">{frame.label}</p>
+                                  <p className="text-xs font-bold text-white/45">{getTierLabel(frame.tier)}</p>
                                 </div>
                               </div>
-                            </div>
-                          );
-                        })}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "stats" && (
+            <div className="space-y-5">
+              <div className="rounded-[2rem] border border-orange-500/15 bg-zinc-950/90 p-5 sm:p-7">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.24em] text-orange-300">Dashboard gamer</p>
+                    <h2 className="mt-3 text-3xl font-black sm:text-4xl">Tu rendimiento</h2>
+                    <p className="mt-2 text-sm text-white/55">{playerRankLabel} · {winRateMessage}</p>
+                  </div>
+
+                  <div className="rounded-[2rem] border border-orange-500/25 bg-orange-500/10 p-5 text-center lg:min-w-56">
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-200">Win Rate</p>
+                    <p className="mt-2 text-5xl font-black text-orange-100">{winRate}%</p>
+                  </div>
                 </div>
 
-                {message && (
-                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-emerald-300">
-                    {message}
-                  </div>
-                )}
-
-                {errorMessage && (
-                  <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
-                    {errorMessage}
-                  </div>
-                )}
+                <div className="mt-6">
+                  <ProgressBar value={winRateNumber} />
+                </div>
               </div>
-            )}
-          </section>
-        </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <StatCard label="Partidas" value={stats.games_played} helper="Jugadas" />
+                <StatCard label="Victorias" value={stats.games_won} helper="Ganadas" tone="emerald" />
+                <StatCard label="Derrotas" value={stats.games_lost} helper="Perdidas" />
+                <StatCard label="Saldo" value={winDifference >= 0 ? `+${winDifference}` : winDifference} helper="Victorias - derrotas" tone="orange" />
+              </div>
+
+              <div className="grid gap-5 lg:grid-cols-2">
+                <div className="rounded-[2rem] border border-yellow-500/15 bg-yellow-500/5 p-5 sm:p-7">
+                  <p className="text-xs font-black uppercase tracking-[0.24em] text-yellow-300">Rachas</p>
+                  <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                    <StatCard label="Racha actual" value={stats.current_win_streak} tone="yellow" />
+                    <StatCard label="Mejor racha" value={stats.best_win_streak} tone="yellow" />
+                  </div>
+                </div>
+
+                <div className="rounded-[2rem] border border-cyan-500/15 bg-cyan-500/5 p-5 sm:p-7">
+                  <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan-300">Progreso</p>
+                  <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                    <StatCard label="XP total" value={stats.total_points_earned} tone="cyan" />
+                    <StatCard label="Nivel" value={levelInfo.level} helper={levelInfo.title} tone="cyan" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[2rem] border border-white/10 bg-zinc-950/90 p-5 sm:p-7">
+                <p className="text-xs font-black uppercase tracking-[0.24em] text-white/45">Mejores juegos</p>
+                <div className="mt-4 rounded-3xl border border-dashed border-white/10 bg-white/[0.025] p-6 text-center text-white/50">
+                  <p className="text-lg font-black text-white/70">Próximamente</p>
+                  <p className="mt-2 text-sm">Aquí podemos conectar estadísticas por juego cuando dejemos lista esa tabla/resumen.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "collection" && (
+            <div className="space-y-5">
+              <div className="rounded-[2rem] border border-cyan-500/15 bg-zinc-950/90 p-5 sm:p-7">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan-300">Colección</p>
+                    <h2 className="mt-3 text-3xl font-black sm:text-4xl">Cosméticos desbloqueados</h2>
+                    <p className="mt-2 text-sm text-white/55">Tu progreso visual sin mezclar compras dentro del perfil.</p>
+                  </div>
+
+                  <div className="rounded-[2rem] border border-cyan-500/25 bg-cyan-500/10 p-5 text-center lg:min-w-56">
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-200">Premium</p>
+                    <p className="mt-2 text-4xl font-black text-cyan-100">{ownedPremiumTotal}/{premiumTotal}</p>
+                  </div>
+                </div>
+
+                <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                    <div className="flex items-center justify-between">
+                      <p className="font-black text-white/80">Avatares</p>
+                      <p className="font-black text-cyan-200">{ownedPremiumAvatarsCount}/{PREMIUM_AVATARS.length}</p>
+                    </div>
+                    <div className="mt-3"><ProgressBar value={avatarCollectionPercent} className="bg-cyan-400" /></div>
+                  </div>
+
+                  <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5">
+                    <div className="flex items-center justify-between">
+                      <p className="font-black text-white/80">Marcos</p>
+                      <p className="font-black text-violet-200">{ownedPremiumFramesCount}/{PREMIUM_FRAMES.length}</p>
+                    </div>
+                    <div className="mt-3"><ProgressBar value={frameCollectionPercent} className="bg-violet-400" /></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {(["unlocked", "locked", "all"] as CosmeticFilter[]).map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => setCollectionFilter(filter)}
+                    className={`rounded-full border px-4 py-2 text-sm font-black transition ${
+                      collectionFilter === filter
+                        ? "border-orange-500/40 bg-orange-500/15 text-orange-100"
+                        : "border-white/10 bg-white/[0.03] text-white/60 hover:bg-white/[0.06]"
+                    }`}
+                  >
+                    {filter === "unlocked" ? "Desbloqueados" : filter === "locked" ? "Bloqueados" : "Todos"}
+                  </button>
+                ))}
+              </div>
+
+              {(collectionFilter === "unlocked" || collectionFilter === "all") && (
+                <div className="grid gap-5 lg:grid-cols-2">
+                  <CollectionPanel title="Avatares desbloqueados" groups={groupedOwnedAvatars} type="avatar" ownedKeys={ownedAvatars} />
+                  <CollectionPanel title="Marcos desbloqueados" groups={groupedOwnedFrames} type="frame" ownedKeys={ownedFrames} />
+                </div>
+              )}
+
+              {(collectionFilter === "locked" || collectionFilter === "all") && (
+                <div className="grid gap-5 lg:grid-cols-2">
+                  <CollectionPanel title="Avatares bloqueados" groups={groupedLockedAvatars} type="avatar" ownedKeys={ownedAvatars} locked />
+                  <CollectionPanel title="Marcos bloqueados" groups={groupedLockedFrames} type="frame" ownedKeys={ownedFrames} locked />
+                </div>
+              )}
+
+              <Link href="/tienda" className="flex w-full items-center justify-center rounded-3xl bg-orange-500 px-5 py-4 text-base font-black text-black transition hover:bg-orange-400">
+                Abrir tienda completa ✨
+              </Link>
+            </div>
+          )}
+        </section>
       </div>
     </main>
+  );
+}
+
+function CollectionPanel({
+  title,
+  groups,
+  type,
+  locked = false,
+}: {
+  title: string;
+  groups: Record<string, CosmeticItem[]>;
+  type: "avatar" | "frame";
+  ownedKeys: string[];
+  locked?: boolean;
+}) {
+  const entries = Object.entries(groups);
+
+  return (
+    <div className="rounded-[2rem] border border-white/10 bg-zinc-950/90 p-5 sm:p-7">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-xl font-black">{title}</h3>
+        {locked && <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-black text-white/45">En tienda</span>}
+      </div>
+
+      {entries.length === 0 ? (
+        <div className="mt-4 rounded-3xl border border-dashed border-white/10 bg-white/[0.025] p-5 text-center text-sm font-bold text-white/45">
+          No hay elementos para mostrar.
+        </div>
+      ) : (
+        <div className="mt-5 space-y-5">
+          {entries.map(([group, items]) => (
+            <div key={group}>
+              <h4 className="mb-3 text-xs font-black uppercase tracking-[0.2em] text-white/45">{group}</h4>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {items.map((item) => (
+                  <div key={item.key} className={`rounded-3xl border border-white/10 bg-white/[0.03] p-4 text-center ${locked ? "opacity-55 grayscale" : ""}`}>
+                    {type === "avatar" ? (
+                      "image" in item && item.image ? (
+                        <img src={item.image} alt={item.label} className="mx-auto h-16 w-16 object-contain" />
+                      ) : (
+                        <p className="text-4xl">{"emoji" in item ? item.emoji ?? "🙂" : "🙂"}</p>
+                      )
+                    ) : "image" in item && item.image ? (
+                      <img src={item.image} alt={item.label} className="mx-auto h-16 w-16 object-contain" />
+                    ) : (
+                      <div className={`mx-auto h-14 w-14 rounded-full border-4 bg-black ${"className" in item ? item.className ?? "" : ""}`} />
+                    )}
+
+                    <p className="mt-3 truncate text-sm font-black">{item.label}</p>
+                    <span className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[0.65rem] font-black ${getTierBadgeClass(item.tier)}`}>{locked ? `${item.price} pts` : getTierLabel(item.tier)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
