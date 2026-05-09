@@ -15,8 +15,8 @@ export default function HomeStatsSection({ stats }: Props) {
       </div>
 
       <div className="rounded-3xl bg-white/[0.02] px-4 py-6">
-        <p className="text-5xl font-extrabold text-white">{stats.classicGames}</p>
-        <p className="mt-1 text-white/70">Juegos clásicos</p>
+        <p className="text-5xl font-extrabold text-white">{stats.availableGames}</p>
+        <p className="mt-1 text-white/70">Juegos disponibles</p>
       </div>
 
       <div className="rounded-3xl bg-white/[0.02] px-4 py-6">
