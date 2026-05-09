@@ -591,14 +591,9 @@ export default function AmigosPage() {
                   `${player.points ?? 0} pts · ${gamesPlayed} jugadas · ${gamesWon} ganadas`}
               </p>
 
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <FriendPresenceBadge profile={player} />
-                {presence.tone === "playing" && (
-                  <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-orange-200">
-                    Disponible para invitar pronto
-                  </span>
-                )}
-              </div>
+              <div className="mt-3 max-w-full">
+  <FriendPresenceBadge profile={player} />
+</div>
 
               <p className="mt-2 text-xs text-orange-200/70">
                 Toca para ver perfil completo
@@ -844,13 +839,13 @@ export default function AmigosPage() {
           {(message || errorMessage) && (
             <div className="mx-auto mt-8 max-w-5xl">
               {message && (
-                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-emerald-300">
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-emerald-300">
                   {message}
                 </div>
               )}
 
               {errorMessage && (
-                <div className="mt-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-300">
+                <div className="mt-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-red-300">
                   {errorMessage}
                 </div>
               )}
@@ -882,7 +877,7 @@ export default function AmigosPage() {
                     if (e.key === "Enter") void handleSearch();
                   }}
                   placeholder="Nombre del jugador"
-                  className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-black px-4 py-3 text-white outline-none transition focus:border-orange-500/50"
+                  className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-black px-3 py-2 text-white outline-none transition focus:border-orange-500/50"
                 />
 
                 <button
@@ -1046,7 +1041,7 @@ export default function AmigosPage() {
                 ].map((feature) => (
                   <div
                     key={feature}
-                    className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3 font-bold text-white/70"
+                    className="rounded-2xl border border-white/10 bg-black/35 px-3 py-2 font-bold text-white/70"
                   >
                     ✨ {feature}
                   </div>
