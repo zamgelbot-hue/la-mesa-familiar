@@ -6,14 +6,23 @@ export type FriendPresenceProfile = {
   current_game_slug?: string | null;
 };
 
+export type FriendPresenceTone =
+  | "online"
+  | "playing"
+  | "room"
+  | "away"
+  | "offline";
+
 export type FriendPresenceInfo = {
   label: string;
   detail: string;
-  tone: "online" | "playing" | "room" | "away" | "offline";
+  tone: FriendPresenceTone;
+  icon: string;
 };
 
 const GAME_LABELS: Record<string, string> = {
   ppt: "Piedra, Papel o Tijera",
+  "piedra-papel-o-tijera": "Piedra, Papel o Tijera",
   "loteria-mexicana": "Lotería Mexicana",
   "pregunta-pregunta": "Pregunta Pregunta",
   gato: "El Gato",
@@ -33,16 +42,33 @@ function minutesSince(dateValue?: string | null) {
   return Math.max(0, Math.floor((Date.now() - time) / 60_000));
 }
 
+function getGameLabel(gameSlug?: string | null) {
+  if (!gameSlug) return "En partida";
+
+  const normalized = gameSlug.trim();
+
+  if (!normalized) return "En partida";
+
+  // Compatibilidad con el estado temporal actual:
+  // current_game_slug = "En partida"
+  if (normalized.toLowerCase() === "en partida") {
+    return "En partida";
+  }
+
+  return GAME_LABELS[normalized] ?? normalized;
+}
+
 export function getFriendPresenceInfo(
   profile: FriendPresenceProfile,
 ): FriendPresenceInfo {
   if (profile.current_game_slug) {
     return {
-      label: `Jugando ${GAME_LABELS[profile.current_game_slug] ?? profile.current_game_slug}`,
+      label: getGameLabel(profile.current_game_slug),
       detail: profile.current_room_code
         ? `Sala ${profile.current_room_code}`
-        : "En partida",
+        : "Partida activa",
       tone: "playing",
+      icon: "🎮",
     };
   }
 
@@ -51,6 +77,7 @@ export function getFriendPresenceInfo(
       label: "En sala",
       detail: `Sala ${profile.current_room_code}`,
       tone: "room",
+      icon: "🏠",
     };
   }
 
@@ -58,9 +85,10 @@ export function getFriendPresenceInfo(
 
   if (minutes === null) {
     return {
-      label: "Sin actividad reciente",
+      label: "Sin actividad",
       detail: "Todavía no hay registro",
       tone: "offline",
+      icon: "⚫",
     };
   }
 
@@ -69,14 +97,16 @@ export function getFriendPresenceInfo(
       label: "En línea",
       detail: "Activo ahora",
       tone: "online",
+      icon: "🟢",
     };
   }
 
   if (minutes < 60) {
     return {
-      label: `Activo hace ${minutes} min`,
+      label: `Hace ${minutes} min`,
       detail: "Actividad reciente",
       tone: "away",
+      icon: "🟡",
     };
   }
 
@@ -84,17 +114,19 @@ export function getFriendPresenceInfo(
 
   if (hours < 24) {
     return {
-      label: `Activo hace ${hours} h`,
+      label: `Hace ${hours} h`,
       detail: "Hoy estuvo conectado",
       tone: "away",
+      icon: "🟡",
     };
   }
 
   const days = Math.floor(hours / 24);
 
   return {
-    label: `Activo hace ${days} día${days === 1 ? "" : "s"}`,
+    label: `Hace ${days} día${days === 1 ? "" : "s"}`,
     detail: "Sin conexión reciente",
     tone: "offline",
+    icon: "⚫",
   };
 }
