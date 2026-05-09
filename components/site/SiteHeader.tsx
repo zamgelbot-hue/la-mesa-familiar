@@ -303,6 +303,13 @@ export default function SiteHeader({
             </button>
 
             <button
+              onClick={() => router.push("/soporte")}
+              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 font-semibold text-white hover:bg-white/10"
+            >
+              Soporte
+            </button>
+
+            <button
               onClick={() => router.push("/tienda")}
               className="rounded-2xl border border-orange-500/25 bg-orange-500/10 px-5 py-2.5 font-bold text-orange-200 hover:bg-orange-500/20"
             >
@@ -436,6 +443,7 @@ export default function SiteHeader({
               <div className="my-3 border-t border-white/10" />
 
               <MenuButton label="📘 Tutoriales" onClick={() => goTo("/tutoriales")} />
+              <MenuButton label="🛟 Soporte" onClick={() => goTo("/soporte")} />
               <MenuButton label="+ Crear sala" onClick={() => goTo("/crear")} />
 
               <div className="my-3 border-t border-white/10" />

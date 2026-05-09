@@ -390,6 +390,13 @@ export default function HomeFooter() {
               </div>
 
               <div className="flex flex-wrap items-center gap-4 text-sm">
+                <Link
+                  href="/soporte"
+                  className="text-white/60 transition hover:text-orange-300"
+                >
+                  Soporte
+                </Link>
+
                 <button
                   onClick={() => setLegalOpen("terms")}
                   className="text-white/60 transition hover:text-orange-300"
@@ -404,6 +411,17 @@ export default function HomeFooter() {
                   Política de Privacidad
                 </button>
               </div>
+            </div>
+
+            <div className="mt-5 border-t border-white/10 pt-4 text-center text-xs font-semibold uppercase tracking-[0.22em] text-white/35">
+              Powered by{" "}
+              <Link
+                href="https://zamgelcore.com"
+                target="_blank"
+                className="text-orange-300/80 transition hover:text-orange-200"
+              >
+                Zamgel Core
+              </Link>
             </div>
           </div>
         </div>
