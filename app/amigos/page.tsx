@@ -8,6 +8,7 @@ import { getPlayerIdentity, type PlayerIdentity } from "@/lib/profile/getPlayerI
 import { getAvatarByKey, getFrameByKey } from "@/lib/profile/profileCosmetics";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import SiteHeader from "@/components/site/SiteHeader";
+import FriendPresenceBadge from "@/components/social/FriendPresenceBadge";
 
 type ProfileRow = {
   id: string;
@@ -22,6 +23,9 @@ type ProfileRow = {
   best_win_streak: number | null;
   avatar_key: string | null;
   frame_key: string | null;
+  last_seen_at: string | null;
+  current_room_code: string | null;
+  current_game_slug: string | null;
 };
 
 type FriendshipRow = {
@@ -58,6 +62,18 @@ export default function AmigosPage() {
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
+  const updateOwnPresence = useCallback(async (userId?: string | null) => {
+    if (!userId) return;
+
+    await supabase
+      .from("profiles")
+      .update({
+        last_seen_at: new Date().toISOString(),
+      })
+      .eq("id", userId);
+  }, [supabase]);
+
+
   const loadIdentity = useCallback(async () => {
     const identity = await getPlayerIdentity();
     setPlayerIdentity(identity);
@@ -66,8 +82,10 @@ export default function AmigosPage() {
       data: { user },
     } = await supabase.auth.getUser();
 
-    setCurrentUserId(user?.id ?? null);
-  }, [supabase]);
+    const userId = user?.id ?? null;
+    setCurrentUserId(userId);
+    await updateOwnPresence(userId);
+  }, [supabase, updateOwnPresence]);
 
   const loadFriendships = useCallback(
     async (userId?: string | null) => {
@@ -108,7 +126,7 @@ export default function AmigosPage() {
       const { data: profileData, error: profilesError } = await supabase
         .from("profiles")
         .select(
-          "id, display_name, username, points, games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak, avatar_key, frame_key"
+          "id, display_name, username, points, games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak, avatar_key, frame_key, last_seen_at, current_room_code, current_game_slug"
         )
         .in("id", otherIds);
 
@@ -147,6 +165,18 @@ export default function AmigosPage() {
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    void updateOwnPresence(currentUserId);
+
+    const interval = window.setInterval(() => {
+      void updateOwnPresence(currentUserId);
+    }, 60_000);
+
+    return () => window.clearInterval(interval);
+  }, [currentUserId, updateOwnPresence]);
 
   const friendshipByUserId = useMemo(() => {
     const map = new Map<string, FriendshipRow>();
@@ -230,7 +260,7 @@ export default function AmigosPage() {
       const { data, error } = await supabase
         .from("profiles")
         .select(
-          "id, display_name, username, points, games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak, avatar_key, frame_key"
+          "id, display_name, username, points, games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak, avatar_key, frame_key, last_seen_at, current_room_code, current_game_slug"
         )
         .or(`display_name.ilike.%${term}%,username.ilike.%${term}%`)
         .neq("id", currentUserId)
@@ -493,7 +523,11 @@ export default function AmigosPage() {
                   `${player.points ?? 0} pts · ${gamesPlayed} jugadas · ${gamesWon} ganadas`}
               </p>
 
-              <p className="mt-1 text-xs text-orange-200/70">
+              <div className="mt-2">
+                <FriendPresenceBadge profile={player} />
+              </div>
+
+              <p className="mt-2 text-xs text-orange-200/70">
                 Toca para ver estadísticas
               </p>
             </div>
@@ -541,6 +575,9 @@ export default function AmigosPage() {
                   {player.display_name || player.username || "Jugador"}
                 </h2>
                 <p className="text-sm text-white/60">Resumen del jugador</p>
+                <div className="mt-2">
+                  <FriendPresenceBadge profile={player} />
+                </div>
               </div>
             </div>
 
