@@ -145,6 +145,31 @@ export default function SiteHeader({
     void loadDailyReward();
   }, [loadSocialNotifications, loadDailyReward]);
 
+    const updatePresence = useCallback(async () => {
+  if (!playerIdentity?.user_id || playerIdentity.is_guest) return;
+
+  await supabase
+    .from("profiles")
+    .update({
+      last_seen_at: new Date().toISOString(),
+    })
+    .eq("id", playerIdentity.user_id);
+}, [supabase, playerIdentity?.user_id, playerIdentity?.is_guest]);
+
+  useEffect(() => {
+  if (!playerIdentity?.user_id || playerIdentity.is_guest) return;
+
+  void updatePresence();
+
+  const interval = window.setInterval(() => {
+    void updatePresence();
+  }, 60_000);
+
+  return () => {
+    window.clearInterval(interval);
+  };
+}, [playerIdentity?.user_id, playerIdentity?.is_guest, updatePresence]);
+
   const handleClaimReward = async () => {
     if (!canUseDailyReward || !playerIdentity?.user_id) {
       handleLoginClick();
