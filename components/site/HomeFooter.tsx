@@ -414,15 +414,15 @@ export default function HomeFooter() {
             </div>
 
             <div className="mt-5 border-t border-white/10 pt-4 text-center text-xs font-semibold uppercase tracking-[0.22em] text-white/35">
-              Powered by{" "}
-              <Link
-                href="https://zamgelcore.com"
-                target="_blank"
-                className="text-orange-300/80 transition hover:text-orange-200"
-              >
-                Zamgel Core
-              </Link>
-            </div>
+  Powered by{" "}
+  <Link
+    href="https://www.instagram.com/zamgelcore"
+    target="_blank"
+    className="text-orange-300/80 transition hover:text-orange-200 hover:drop-shadow-[0_0_10px_rgba(249,115,22,0.45)]"
+  >
+    Zamgel Core
+  </Link>
+</div>
           </div>
         </div>
       </footer>
