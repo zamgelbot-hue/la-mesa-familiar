@@ -240,7 +240,7 @@ setDisplayName("");
       const appUrl =
   process.env.NEXT_PUBLIC_SITE_URL ?? "https://lamesafamiliar.net";
 
-const redirectTo = `${appUrl}/acceso?mode=recovery`;
+const redirectTo = `${appUrl}/auth/callback?next=/acceso?mode=recovery`;
 
       const { error } = await supabase.auth.resetPasswordForEmail(
         normalizedEmail,
