@@ -2,13 +2,23 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { createClient } from "@/lib/supabase/client";
-import { getPlayerIdentity, type PlayerIdentity } from "@/lib/profile/getPlayerIdentity";
+import {
+  getPlayerIdentity,
+  type PlayerIdentity,
+} from "@/lib/profile/getPlayerIdentity";
 import { getAvatarByKey, getFrameByKey } from "@/lib/profile/profileCosmetics";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import SiteHeader from "@/components/site/SiteHeader";
 import FriendPresenceBadge from "@/components/social/FriendPresenceBadge";
+import { getFriendPresenceInfo } from "@/lib/social/friendPresence";
 
 type ProfileRow = {
   id: string;
@@ -46,14 +56,19 @@ type FriendProfile = ProfileRow & {
 export default function AmigosPage() {
   const supabase = createClient();
 
-  const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(null);
+  const [playerIdentity, setPlayerIdentity] = useState<PlayerIdentity | null>(
+    null,
+  );
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<ProfileRow[]>([]);
   const [friendships, setFriendships] = useState<FriendshipRow[]>([]);
-  const [profilesMap, setProfilesMap] = useState<Record<string, ProfileRow>>({});
-  const [selectedStatsPlayer, setSelectedStatsPlayer] = useState<ProfileRow | null>(null);
+  const [profilesMap, setProfilesMap] = useState<Record<string, ProfileRow>>(
+    {},
+  );
+  const [selectedStatsPlayer, setSelectedStatsPlayer] =
+    useState<ProfileRow | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
@@ -62,17 +77,19 @@ export default function AmigosPage() {
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
 
-  const updateOwnPresence = useCallback(async (userId?: string | null) => {
-    if (!userId) return;
+  const updateOwnPresence = useCallback(
+    async (userId?: string | null) => {
+      if (!userId) return;
 
-    await supabase
-      .from("profiles")
-      .update({
-        last_seen_at: new Date().toISOString(),
-      })
-      .eq("id", userId);
-  }, [supabase]);
-
+      await supabase
+        .from("profiles")
+        .update({
+          last_seen_at: new Date().toISOString(),
+        })
+        .eq("id", userId);
+    },
+    [supabase],
+  );
 
   const loadIdentity = useCallback(async () => {
     const identity = await getPlayerIdentity();
@@ -113,9 +130,9 @@ export default function AmigosPage() {
       const otherIds = Array.from(
         new Set(
           rows.map((row) =>
-            row.requester_id === userId ? row.addressee_id : row.requester_id
-          )
-        )
+            row.requester_id === userId ? row.addressee_id : row.requester_id,
+          ),
+        ),
       );
 
       if (!otherIds.length) {
@@ -126,7 +143,7 @@ export default function AmigosPage() {
       const { data: profileData, error: profilesError } = await supabase
         .from("profiles")
         .select(
-          "id, display_name, username, points, games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak, avatar_key, frame_key, last_seen_at, current_room_code, current_game_slug"
+          "id, display_name, username, points, games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak, avatar_key, frame_key, last_seen_at, current_room_code, current_game_slug",
         )
         .in("id", otherIds);
 
@@ -142,7 +159,7 @@ export default function AmigosPage() {
 
       setProfilesMap(map);
     },
-    [supabase]
+    [supabase],
   );
 
   const loadAll = useCallback(async () => {
@@ -185,7 +202,9 @@ export default function AmigosPage() {
 
     for (const row of friendships) {
       const otherId =
-        row.requester_id === currentUserId ? row.addressee_id : row.requester_id;
+        row.requester_id === currentUserId
+          ? row.addressee_id
+          : row.requester_id;
 
       map.set(otherId, row);
     }
@@ -202,7 +221,9 @@ export default function AmigosPage() {
 
     for (const row of friendships) {
       const otherId =
-        row.requester_id === currentUserId ? row.addressee_id : row.requester_id;
+        row.requester_id === currentUserId
+          ? row.addressee_id
+          : row.requester_id;
 
       const profile = profilesMap[otherId];
       if (!profile) continue;
@@ -260,7 +281,7 @@ export default function AmigosPage() {
       const { data, error } = await supabase
         .from("profiles")
         .select(
-          "id, display_name, username, points, games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak, avatar_key, frame_key, last_seen_at, current_room_code, current_game_slug"
+          "id, display_name, username, points, games_played, games_won, games_lost, total_points_earned, current_win_streak, best_win_streak, avatar_key, frame_key, last_seen_at, current_room_code, current_game_slug",
         )
         .or(`display_name.ilike.%${term}%,username.ilike.%${term}%`)
         .neq("id", currentUserId)
@@ -311,7 +332,7 @@ export default function AmigosPage() {
         () => {
           void loadFriendships(currentUserId);
           setMessage("🤝 Tu lista de amigos se actualizó.");
-        }
+        },
       )
       .on(
         "postgres_changes",
@@ -324,7 +345,7 @@ export default function AmigosPage() {
         () => {
           void loadFriendships(currentUserId);
           setMessage("🤝 Tienes una actualización de amistad.");
-        }
+        },
       )
       .subscribe();
 
@@ -449,7 +470,10 @@ export default function AmigosPage() {
       );
     }
 
-    if (existing.status === "pending" && existing.requester_id === currentUserId) {
+    if (
+      existing.status === "pending" &&
+      existing.requester_id === currentUserId
+    ) {
       return (
         <button
           type="button"
@@ -462,7 +486,10 @@ export default function AmigosPage() {
       );
     }
 
-    if (existing.status === "pending" && existing.addressee_id === currentUserId) {
+    if (
+      existing.status === "pending" &&
+      existing.addressee_id === currentUserId
+    ) {
       return (
         <>
           <button
@@ -493,21 +520,62 @@ export default function AmigosPage() {
     );
   };
 
+  const getCardToneClass = (player: ProfileRow) => {
+    const presence = getFriendPresenceInfo(player);
+
+    if (presence.tone === "playing") {
+      return "border-orange-400/30 bg-gradient-to-br from-orange-500/12 via-white/[0.04] to-black shadow-[0_0_32px_rgba(249,115,22,0.10)]";
+    }
+
+    if (presence.tone === "online") {
+      return "border-emerald-400/25 bg-gradient-to-br from-emerald-500/10 via-white/[0.035] to-black shadow-[0_0_26px_rgba(16,185,129,0.08)]";
+    }
+
+    if (presence.tone === "away" || presence.tone === "room") {
+      return "border-yellow-400/20 bg-gradient-to-br from-yellow-500/8 via-white/[0.03] to-black";
+    }
+
+    return "border-white/10 bg-white/[0.03]";
+  };
+
+  const inviteSoonButton = (
+    <button
+      type="button"
+      disabled
+      title="Muy pronto podrás invitar directo a una sala."
+      className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-2 text-sm font-black text-orange-200 opacity-80"
+    >
+      Invitar · Pronto
+    </button>
+  );
+
+  const viewProfileButton = (player: ProfileRow) => (
+    <button
+      type="button"
+      onClick={() => setSelectedStatsPlayer(player)}
+      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-black text-white/80 transition hover:border-orange-500/30 hover:bg-orange-500/10 hover:text-orange-100"
+    >
+      Ver perfil
+    </button>
+  );
+
   const renderPlayerCard = (
     player: ProfileRow,
     action?: ReactNode,
-    subtitle?: string
+    subtitle?: string,
   ) => {
     const avatar = getAvatarByKey(player.avatar_key);
     const frame = getFrameByKey(player.frame_key);
     const gamesPlayed = player.games_played ?? 0;
     const gamesWon = player.games_won ?? 0;
 
+    const presence = getFriendPresenceInfo(player);
+
     return (
       <div
         key={player.id}
         onClick={() => setSelectedStatsPlayer(player)}
-        className="cursor-pointer rounded-[28px] border border-white/10 bg-white/[0.03] p-5 transition hover:border-orange-500/30 hover:bg-white/[0.05]"
+        className={`group cursor-pointer rounded-[28px] border p-5 transition hover:-translate-y-0.5 hover:border-orange-500/35 hover:bg-white/[0.055] ${getCardToneClass(player)}`}
       >
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex min-w-0 items-center gap-4">
@@ -523,12 +591,17 @@ export default function AmigosPage() {
                   `${player.points ?? 0} pts · ${gamesPlayed} jugadas · ${gamesWon} ganadas`}
               </p>
 
-              <div className="mt-2">
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 <FriendPresenceBadge profile={player} />
+                {presence.tone === "playing" && (
+                  <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-orange-200">
+                    Disponible para invitar pronto
+                  </span>
+                )}
               </div>
 
               <p className="mt-2 text-xs text-orange-200/70">
-                Toca para ver estadísticas
+                Toca para ver perfil completo
               </p>
             </div>
           </div>
@@ -591,41 +664,89 @@ export default function AmigosPage() {
           </div>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              disabled
+              className="rounded-3xl border border-orange-500/20 bg-orange-500/10 p-4 text-left opacity-80"
+            >
+              <p className="text-sm font-black text-orange-200">
+                Invitar a sala
+              </p>
+              <p className="mt-1 text-xs text-white/45">
+                Próximamente podrás invitar directo desde aquí.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              disabled
+              className="rounded-3xl border border-cyan-500/20 bg-cyan-500/10 p-4 text-left opacity-80"
+            >
+              <p className="text-sm font-black text-cyan-200">Historial VS</p>
+              <p className="mt-1 text-xs text-white/45">
+                Pronto verás victorias y derrotas contra este amigo.
+              </p>
+            </button>
+          </div>
+
+          <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-white/35">
+              Actividad social
+            </p>
+            <p className="mt-2 text-sm text-white/60">
+              Todavía no hay eventos recientes. Más adelante mostraremos
+              partidas ganadas, logros y cosméticos desbloqueados.
+            </p>
+          </div>
+
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/45">Puntos</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-white/45">
+                Puntos
+              </p>
               <p className="mt-2 text-3xl font-extrabold text-orange-400">
                 {player.points ?? 0}
               </p>
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/45">Win Rate</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-white/45">
+                Win Rate
+              </p>
               <p className="mt-2 text-3xl font-extrabold text-emerald-300">
                 {winRate}%
               </p>
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/45">Jugadas</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-white/45">
+                Jugadas
+              </p>
               <p className="mt-2 text-3xl font-extrabold">{gamesPlayed}</p>
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/45">Récord</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-white/45">
+                Récord
+              </p>
               <p className="mt-2 text-lg font-bold">
                 {gamesWon} ganadas · {gamesLost} perdidas
               </p>
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/45">Racha actual</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-white/45">
+                Racha actual
+              </p>
               <p className="mt-2 text-3xl font-extrabold text-yellow-300">
                 {player.current_win_streak ?? 0}
               </p>
             </div>
 
             <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-white/45">Mejor racha</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-white/45">
+                Mejor racha
+              </p>
               <p className="mt-2 text-3xl font-extrabold text-yellow-300">
                 {player.best_win_streak ?? 0}
               </p>
@@ -715,7 +836,8 @@ export default function AmigosPage() {
             </h1>
 
             <p className="mx-auto mt-8 max-w-3xl text-xl leading-relaxed text-white/70">
-              Busca jugadores, envía solicitudes y administra tu círculo de amigos.
+              Busca jugadores, envía solicitudes y administra tu círculo de
+              amigos.
             </p>
           </div>
 
@@ -737,10 +859,20 @@ export default function AmigosPage() {
 
           <div className="mx-auto mt-10 grid max-w-6xl gap-6 lg:grid-cols-[0.95fr_1.05fr]">
             <section className="rounded-[34px] border border-orange-500/15 bg-zinc-950/90 p-6">
-              <h2 className="text-2xl font-bold">Buscar jugadores</h2>
-              <p className="mt-2 text-white/60">
-                Escribe al menos 2 letras. La búsqueda se actualiza sola.
-              </p>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-orange-300/70">
+                    Explorar comunidad
+                  </p>
+                  <h2 className="mt-2 text-2xl font-black">Buscar jugadores</h2>
+                  <p className="mt-2 text-white/60">
+                    Escribe al menos 2 letras. La búsqueda se actualiza sola.
+                  </p>
+                </div>
+                <div className="hidden rounded-2xl border border-white/10 bg-black/40 px-4 py-2 text-xs font-black text-white/45 sm:block">
+                  Beta social
+                </div>
+              </div>
 
               <div className="mt-5 flex gap-3">
                 <input
@@ -766,19 +898,20 @@ export default function AmigosPage() {
               <div className="mt-6 space-y-4">
                 {query.trim().length < 2 ? (
                   <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 text-white/60">
-                    Empieza a escribir para buscar jugadores.
+                    Escribe 2 letras o más para encontrar jugadores.
                   </div>
                 ) : searching ? (
                   <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 text-white/60">
-                    Buscando jugadores...
+                    Buscando jugadores en La Mesa Familiar...
                   </div>
                 ) : searchResults.length === 0 ? (
                   <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 text-white/60">
-                    No encontramos jugadores con ese nombre.
+                    No encontramos jugadores con ese nombre. Revisa la escritura
+                    o intenta con otro nombre.
                   </div>
                 ) : (
                   searchResults.map((player) =>
-                    renderPlayerCard(player, getSearchAction(player))
+                    renderPlayerCard(player, getSearchAction(player)),
                   )
                 )}
               </div>
@@ -800,7 +933,9 @@ export default function AmigosPage() {
                         <>
                           <button
                             type="button"
-                            onClick={() => void acceptRequest(player.friendshipId)}
+                            onClick={() =>
+                              void acceptRequest(player.friendshipId)
+                            }
                             disabled={workingId === player.friendshipId}
                             className="rounded-2xl bg-emerald-500 px-4 py-2 font-bold text-black transition hover:bg-emerald-400 disabled:opacity-60"
                           >
@@ -809,14 +944,16 @@ export default function AmigosPage() {
 
                           <button
                             type="button"
-                            onClick={() => void deleteFriendship(player.friendshipId)}
+                            onClick={() =>
+                              void deleteFriendship(player.friendshipId)
+                            }
                             disabled={workingId === player.friendshipId}
                             className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-2 font-bold text-red-300 transition hover:bg-red-500/20 disabled:opacity-60"
                           >
                             Rechazar
                           </button>
-                        </>
-                      )
+                        </>,
+                      ),
                     )
                   )}
                 </div>
@@ -834,15 +971,21 @@ export default function AmigosPage() {
                     categorizedFriends.accepted.map((player) =>
                       renderPlayerCard(
                         player,
-                        <button
-                          type="button"
-                          onClick={() => void deleteFriendship(player.friendshipId)}
-                          disabled={workingId === player.friendshipId}
-                          className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-2 font-bold text-red-300 transition hover:bg-red-500/20 disabled:opacity-60"
-                        >
-                          Eliminar
-                        </button>
-                      )
+                        <>
+                          {inviteSoonButton}
+                          {viewProfileButton(player)}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void deleteFriendship(player.friendshipId)
+                            }
+                            disabled={workingId === player.friendshipId}
+                            className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-2 font-bold text-red-300 transition hover:bg-red-500/20 disabled:opacity-60"
+                          >
+                            Eliminar
+                          </button>
+                        </>,
+                      ),
                     )
                   )}
                 </div>
@@ -862,20 +1005,55 @@ export default function AmigosPage() {
                         player,
                         <button
                           type="button"
-                          onClick={() => void deleteFriendship(player.friendshipId)}
+                          onClick={() =>
+                            void deleteFriendship(player.friendshipId)
+                          }
                           disabled={workingId === player.friendshipId}
                           className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-2 font-bold text-red-300 transition hover:bg-red-500/20 disabled:opacity-60"
                         >
                           Cancelar
                         </button>,
-                        "Solicitud pendiente"
-                      )
+                        "Solicitud pendiente",
+                      ),
                     )
                   )}
                 </div>
               </div>
             </section>
           </div>
+
+          <section className="mx-auto mt-8 max-w-6xl rounded-[34px] border border-orange-500/15 bg-gradient-to-br from-orange-500/10 via-zinc-950 to-black p-6 shadow-[0_0_45px_rgba(249,115,22,0.08)]">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.24em] text-orange-300/75">
+                  Próximamente
+                </p>
+                <h2 className="mt-2 text-2xl font-black">
+                  Más funciones sociales
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm text-white/60">
+                  La base social ya está lista. Estas mejoras llegarán después
+                  para convertir LMF en una plataforma más viva.
+                </p>
+              </div>
+
+              <div className="grid gap-2 text-sm sm:grid-cols-2 lg:min-w-[440px]">
+                {[
+                  "Invitaciones directas a sala",
+                  "Historial VS amigos",
+                  "Familias y grupos",
+                  "Actividad reciente",
+                ].map((feature) => (
+                  <div
+                    key={feature}
+                    className="rounded-2xl border border-white/10 bg-black/35 px-4 py-3 font-bold text-white/70"
+                  >
+                    ✨ {feature}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
         </div>
       </section>
     </main>
