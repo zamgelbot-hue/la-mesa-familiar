@@ -17,12 +17,16 @@ type GamePageLayoutProps = {
   className?: string;
 };
 
-function detectGameName(pathname: string) {
-  if (pathname.includes("/juego/")) {
-    return "En partida";
-  }
+function getRoomCodeFromPath(pathname: string) {
+  const roomCode = pathname.split("/juego/")[1]?.split("?")[0]?.trim();
 
-  return "Jugando";
+  if (!roomCode) return "";
+
+  return roomCode.toUpperCase();
+}
+
+function getPresenceLabel() {
+  return "En partida";
 }
 
 export default function GamePageLayout({
@@ -32,7 +36,7 @@ export default function GamePageLayout({
   const pathname = usePathname();
 
   useEffect(() => {
-    const roomCode = pathname.split("/juego/")[1]?.split("?")[0];
+    const roomCode = getRoomCodeFromPath(pathname);
 
     if (!roomCode) return;
 
@@ -49,15 +53,15 @@ export default function GamePageLayout({
         .from("profiles")
         .update({
           last_seen_at: new Date().toISOString(),
-          current_room_code: roomCode.toUpperCase(),
-          current_game_slug: detectGameName(pathname),
+          current_room_code: roomCode,
+          current_game_slug: getPresenceLabel(),
         })
         .eq("id", identity.user_id);
     }
 
     setCurrentGamePresence({
       roomCode,
-      gameName: detectGameName(pathname),
+      gameName: getPresenceLabel(),
     });
 
     void updateGamePresence();
@@ -70,20 +74,11 @@ export default function GamePageLayout({
       cancelled = true;
       window.clearInterval(interval);
 
+      // Importante:
+      // No limpiamos current_room_code/current_game_slug aquí porque algunos juegos
+      // desmontan/remontan el layout y eso borraba la presencia inmediatamente.
+      // La limpieza correcta se hará al volver a sala.
       clearCurrentGamePresence();
-
-      void getPlayerIdentity().then((identity) => {
-        if (!identity?.user_id || identity.is_guest) return;
-
-        void supabase
-          .from("profiles")
-          .update({
-            current_room_code: null,
-            current_game_slug: null,
-            last_seen_at: new Date().toISOString(),
-          })
-          .eq("id", identity.user_id);
-      });
     };
   }, [pathname]);
 
