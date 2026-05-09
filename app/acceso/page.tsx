@@ -11,10 +11,20 @@ type AccessMode = "login" | "register" | "guest" | "recovery" | "reset";
 
 const GUEST_STORAGE_KEY = "lmf:guest-profile";
 
-function getSafeNextPath(nextValue: string | null) {
-  if (!nextValue) return "/";
-  if (!nextValue.startsWith("/")) return "/";
-  return nextValue;
+function getSafeNextPath(rawNext: string | null) {
+  if (!rawNext) return "/";
+
+  try {
+    const decoded = decodeURIComponent(rawNext);
+
+    if (!decoded.startsWith("/")) return "/";
+    if (decoded.startsWith("//")) return "/";
+    if (decoded.startsWith("/acceso")) return "/";
+
+    return decoded;
+  } catch {
+    return "/";
+  }
 }
 
 function AccesoContent() {
