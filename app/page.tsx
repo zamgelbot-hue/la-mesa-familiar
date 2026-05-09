@@ -22,7 +22,12 @@ import GamesGridSection from "@/components/home/GamesGridSection";
 import HowItWorksSection from "@/components/home/HowItWorksSection";
 import HomeFeaturesSection from "@/components/home/HomeFeaturesSection";
 import type { Game, HomeStats, OpenRoom, RoomVisibility, TopPlayer } from "@/lib/home/homeTypes";
-import { DEFAULT_STATS, loadHomeStats, loadTopPlayers } from "@/lib/home/homePlayerQueries";
+import {
+  DEFAULT_STATS,
+  loadHomeStats,
+  loadTopPlayers,
+  registerHomeDailyVisit,
+} from "@/lib/home/homePlayerQueries";
 import { loadFriendRooms, loadPublicRooms } from "@/lib/home/homeRoomQueries";
 import { createHomeRoom, joinHomeRoom } from "@/lib/home/homeRoomActions";
 
@@ -181,11 +186,24 @@ export default function HomePage() {
 
   useEffect(() => {
     loadGames();
-    refreshStats();
     loadPlayerIdentity();
     refreshTopPlayers();
     refreshPublicRooms();
-  }, [loadGames, refreshStats, loadPlayerIdentity, refreshTopPlayers, refreshPublicRooms]);
+
+    const registerVisitAndRefreshStats = async () => {
+      await registerHomeDailyVisit(supabase);
+      await refreshStats();
+    };
+
+    void registerVisitAndRefreshStats();
+  }, [
+    loadGames,
+    loadPlayerIdentity,
+    refreshTopPlayers,
+    refreshPublicRooms,
+    refreshStats,
+    supabase,
+  ]);
 
   useEffect(() => {
     refreshFriendRooms();

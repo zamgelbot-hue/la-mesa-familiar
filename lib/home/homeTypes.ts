@@ -13,8 +13,9 @@ export type Game = {
 
 export type HomeStats = {
   activePlayers: number;
-  classicGames: number;
+  availableGames: number;
   gamesPlayed: number;
+  roomsCreated: number;
 };
 
 export type TopPlayer = {
@@ -52,6 +53,7 @@ export type FriendshipRow = {
 
 export const DEFAULT_STATS: HomeStats = {
   activePlayers: 0,
-  classicGames: 0,
+  availableGames: 0,
   gamesPlayed: 0,
+  roomsCreated: 0,
 };

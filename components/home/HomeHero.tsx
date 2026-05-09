@@ -65,16 +65,6 @@ export default function HomeHero({ playerIdentity, onRankingClick }: Props) {
               {playerIdentity.is_guest ? "(Invitado)" : ""}
             </span>
           </div>
-
-          {!playerIdentity.is_guest && (
-            <button
-              type="button"
-              onClick={onRankingClick}
-              className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-5 py-3 font-bold text-orange-200 transition hover:bg-orange-500/15"
-            >
-              Ver ranking global
-            </button>
-          )}
         </div>
       )}
     </div>
