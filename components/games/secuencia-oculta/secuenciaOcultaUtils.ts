@@ -77,6 +77,7 @@ export function createInitialSecuenciaGameState(
     winnerName: null,
     cells: createSecuenciaCells(boardSize),
     moves: [],
+    rewards_applied: false,
   };
 }
 

@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { applyHeadToHeadMatchRewards } from "@/lib/gameRewards";
 import { GameResultOverlay } from "@/components/games/core";
 
 import GuerraTotalBoard from "./GuerraTotalBoard";
@@ -193,6 +194,7 @@ export default function GuerraTotalGame({
         boardSize: saved.boardSize ?? GT_DEFAULT_BOARD_SIZE,
         boards: saved.boards ?? {},
         shots: saved.shots ?? [],
+        rewards_applied: saved.rewards_applied ?? false,
       };
     },
     [cleanVariant],
@@ -776,6 +778,52 @@ export default function GuerraTotalGame({
     if (latestShot.result === "hit") playHitSound();
     if (latestShot.result === "sunk") playSunkSound();
   }, [gameState.shots]);
+
+
+  useEffect(() => {
+    async function applyMatchRewards() {
+      if (!room || !isHost) return;
+      if (gameState.phase !== "finished" || !gameState.winnerKey) return;
+      if (gameState.rewards_applied) return;
+      if (gameState.winnerKey === GT_BOT_KEY) {
+        await updateGtState((current) => ({
+          ...current,
+          rewards_applied: true,
+        }));
+        return;
+      }
+
+      const winner = sortedPlayers.find(
+        (player) => getGtPlayerKey(player) === gameState.winnerKey,
+      );
+      const loser = sortedPlayers.find(
+        (player) => getGtPlayerKey(player) !== gameState.winnerKey,
+      );
+
+      await applyHeadToHeadMatchRewards({
+        supabase,
+        winnerUserId: winner?.user_id,
+        loserUserId: loser?.user_id,
+        gameType: "guerra-total",
+      });
+
+      await updateGtState((current) => ({
+        ...current,
+        rewards_applied: true,
+      }));
+    }
+
+    void applyMatchRewards();
+  }, [
+    gameState.phase,
+    gameState.winnerKey,
+    gameState.rewards_applied,
+    isHost,
+    room,
+    sortedPlayers,
+    supabase,
+    updateGtState,
+  ]);
 
   useEffect(() => {
     if (gameState.phase === "finished" && gameState.winnerKey) {

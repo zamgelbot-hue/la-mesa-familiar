@@ -1,3 +1,5 @@
+// 📍 Ruta del archivo: lib/gameRewards.ts
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { applyRewardsEngine } from "@/lib/rewards/rewardEngine";
 
@@ -6,7 +8,12 @@ export type RewardGameType =
   | "ppt_bot"
   | "pregunta-pregunta"
   | "loteria"
-  | "gato";
+  | "gato"
+  | "personaje-secreto"
+  | "guerra-total"
+  | "memorama"
+  | "secuencia-oculta"
+  | "domino";
 
 type RewardConfig = {
   winnerPoints: number;
@@ -14,26 +21,16 @@ type RewardConfig = {
 };
 
 const REWARD_TABLE: Record<RewardGameType, RewardConfig> = {
-  ppt_human: {
-    winnerPoints: 6,
-    loserPoints: 2,
-  },
-  ppt_bot: {
-    winnerPoints: 2,
-    loserPoints: 1,
-  },
-  pregunta: {
-    winnerPoints: 10,
-    loserPoints: 4,
-  },
-  loteria: {
-    winnerPoints: 7,
-    loserPoints: 3,
-  },
-    gato: {
-    winnerPoints: 4,
-    loserPoints: 1,
-  },
+  ppt_human: { winnerPoints: 6, loserPoints: 2 },
+  ppt_bot: { winnerPoints: 2, loserPoints: 1 },
+  "pregunta-pregunta": { winnerPoints: 10, loserPoints: 4 },
+  loteria: { winnerPoints: 7, loserPoints: 3 },
+  gato: { winnerPoints: 4, loserPoints: 1 },
+  "personaje-secreto": { winnerPoints: 8, loserPoints: 3 },
+  "guerra-total": { winnerPoints: 9, loserPoints: 3 },
+  memorama: { winnerPoints: 6, loserPoints: 2 },
+  "secuencia-oculta": { winnerPoints: 7, loserPoints: 2 },
+  domino: { winnerPoints: 8, loserPoints: 3 },
 };
 
 type ApplyHeadToHeadMatchRewardsParams = {
@@ -67,16 +64,8 @@ export async function applyHeadToHeadMatchRewards({
     supabase,
     gameType,
     players: [
-      {
-        userId: winnerUserId,
-        placement: 1,
-        basePoints: rewardConfig.winnerPoints,
-      },
-      {
-        userId: loserUserId,
-        placement: 2,
-        basePoints: rewardConfig.loserPoints,
-      },
+      { userId: winnerUserId, placement: 1, basePoints: rewardConfig.winnerPoints },
+      { userId: loserUserId, placement: 2, basePoints: rewardConfig.loserPoints },
     ],
   });
 }
@@ -95,8 +84,10 @@ export async function applySingleWinnerMatchRewards({
   }
 
   const uniqueParticipants = Array.from(
-    new Set((participantUserIds ?? []).filter(Boolean))
+    new Set((participantUserIds ?? []).filter(Boolean)),
   ) as string[];
+
+  if (uniqueParticipants.length === 0) return;
 
   await applyRewardsEngine({
     supabase,

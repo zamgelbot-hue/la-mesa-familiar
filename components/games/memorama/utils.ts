@@ -105,6 +105,7 @@ export const createInitialMemoramaState = (
 
     createdAt: now,
     updatedAt: now,
+    rewards_applied: false,
   };
 };
 

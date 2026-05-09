@@ -54,4 +54,5 @@ export type MemoramaGameState = {
 
   createdAt: string;
   updatedAt: string;
+  rewards_applied: boolean;
 };

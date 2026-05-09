@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { applySingleWinnerMatchRewards } from "@/lib/gameRewards";
 import { GameResultOverlay } from "@/components/games/core";
 
 import SecuenciaOcultaBoard from "./SecuenciaOcultaBoard";
@@ -144,6 +145,7 @@ export default function SecuenciaOcultaGame({
       ...saved,
       cells: saved.cells ?? [],
       moves: saved.moves ?? [],
+      rewards_applied: saved.rewards_applied ?? false,
     } as SecuenciaGameState;
   },
   [],
@@ -486,6 +488,42 @@ if (savedState) {
   players,
   isHost,
   roomVariant,
+  updateGameState,
+]);
+
+
+useEffect(() => {
+  async function applyMatchRewards() {
+    if (!room || !isHost) return;
+    if (gameState.phase !== "finished" || !gameState.winnerKey) return;
+    if (gameState.rewards_applied) return;
+
+    const winner = players.find(
+      (player) => getSecuenciaPlayerKey(player) === gameState.winnerKey,
+    );
+
+    await applySingleWinnerMatchRewards({
+      supabase,
+      winnerUserId: winner?.user_id,
+      participantUserIds: players.map((player) => player.user_id),
+      gameType: "secuencia-oculta",
+    });
+
+    await updateGameState((current) => ({
+      ...current,
+      rewards_applied: true,
+    }));
+  }
+
+  void applyMatchRewards();
+}, [
+  gameState.phase,
+  gameState.winnerKey,
+  gameState.rewards_applied,
+  isHost,
+  players,
+  room,
+  supabase,
   updateGameState,
 ]);
 

@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { applySingleWinnerMatchRewards } from "@/lib/gameRewards";
 import type { PsAnswer, PsGameState, PsGuess, PsQuestion } from "./psTypes";
 import {
   createInitialPsGameState,
@@ -96,6 +97,7 @@ function extractPsState(
     secrets: saved.secrets ?? {},
     questions: saved.questions ?? [],
     guesses: saved.guesses ?? [],
+    rewards_applied: saved.rewards_applied ?? false,
   };
 }
 
@@ -670,6 +672,42 @@ export default function PersonajeSecretoGame({
       supabase.removeChannel(channel);
     };
   }, [supabase, roomCode, loadRoom, loadPlayers]);
+
+
+  useEffect(() => {
+    async function applyMatchRewards() {
+      if (!room || !isHost) return;
+      if (gameState.phase !== "finished" || !gameState.winnerKey) return;
+      if (gameState.rewards_applied) return;
+
+      const winner = sortedPlayers.find(
+        (player) => getPsPlayerKey(player) === gameState.winnerKey,
+      );
+
+      await applySingleWinnerMatchRewards({
+        supabase,
+        winnerUserId: winner?.user_id,
+        participantUserIds: sortedPlayers.map((player) => player.user_id),
+        gameType: "personaje-secreto",
+      });
+
+      await updatePsState((current) => ({
+        ...current,
+        rewards_applied: true,
+      }));
+    }
+
+    void applyMatchRewards();
+  }, [
+    gameState.phase,
+    gameState.winnerKey,
+    gameState.rewards_applied,
+    isHost,
+    room,
+    sortedPlayers,
+    supabase,
+    updatePsState,
+  ]);
 
   useEffect(() => {
     if (gameState.phase === "finished" && gameState.winnerKey) {

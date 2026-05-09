@@ -71,6 +71,7 @@ export function createInitialPsGameState() {
     secrets: {},
     questions: [],
     guesses: [],
+    rewards_applied: false,
   };
 }
 

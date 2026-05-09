@@ -54,6 +54,7 @@ export function createInitialGtGameState(
     winnerName: null,
     boards: {},
     shots: [],
+    rewards_applied: false,
   };
 }
 

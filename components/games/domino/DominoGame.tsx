@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
+import { applySingleWinnerMatchRewards } from "@/lib/gameRewards";
 import { GameResultOverlay } from "@/components/games/core";
 
 import DominoBoard from "./DominoBoard";
@@ -558,6 +559,38 @@ export default function DominoGame({
     // Si se agregan `players/isHost/room`, React reinicia el boot y se queda parpadeando en loading.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, roomVariant, router, supabase]);
+
+
+  useEffect(() => {
+    async function applyMatchRewards() {
+      if (!isHost) return;
+      if (gameState.status !== "finished" || !gameState.winner_key) return;
+      if (gameState.rewards_applied) return;
+
+      const winner = gameState.players.find(
+        (player) => player.key === gameState.winner_key,
+      );
+
+      await applySingleWinnerMatchRewards({
+        supabase,
+        winnerUserId: winner?.userId,
+        participantUserIds: gameState.players.map((player) => player.userId),
+        gameType: "domino",
+      });
+
+      await writeDominoState({
+        ...gameState,
+        rewards_applied: true,
+      });
+    }
+
+    void applyMatchRewards();
+  }, [
+    gameState,
+    isHost,
+    supabase,
+    writeDominoState,
+  ]);
 
   useEffect(() => {
     if (gameState.status !== "finished") return;

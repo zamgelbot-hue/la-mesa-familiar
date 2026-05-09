@@ -40,4 +40,5 @@ export type SecuenciaGameState = {
   winnerName: string | null;
   cells: SecuenciaCell[];
   moves: SecuenciaMove[];
+  rewards_applied: boolean;
 };

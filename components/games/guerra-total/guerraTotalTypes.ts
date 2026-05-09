@@ -66,6 +66,7 @@ export type GtGameState = {
   winnerName: string | null;
   boards: Record<string, GtPlayerBoard>;
   shots: GtShot[];
+  rewards_applied: boolean;
 };
 
 export type GtRoomPlayer = {

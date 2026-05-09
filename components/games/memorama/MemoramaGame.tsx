@@ -10,6 +10,7 @@ import {
   GameResultOverlay,
 } from "@/components/games/core";
 import { createClient } from "@/lib/supabase/client";
+import { applySingleWinnerMatchRewards } from "@/lib/gameRewards";
 
 import MemoramaBoard from "./MemoramaBoard";
 import MemoramaHeader from "./MemoramaHeader.tsx";
@@ -147,6 +148,7 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
       lastResult: saved.lastResult ?? null,
       turnStartedAt: saved.turnStartedAt ?? null,
       turnEndsAt: saved.turnEndsAt ?? null,
+      rewards_applied: saved.rewards_applied ?? false,
     };
   };
 
@@ -662,6 +664,42 @@ export default function MemoramaGame({ roomCode }: MemoramaGameProps) {
       </GamePageLayout>
     );
   }
+
+
+  useEffect(() => {
+    async function applyMatchRewards() {
+      if (!room || !isHost) return;
+      if (gameState.phase !== "finished") return;
+      if (gameState.rewards_applied) return;
+
+      const winner = sortedPlayers.find(
+        (player) => getPlayerKey(player) === gameState.winnerKey,
+      );
+
+      await applySingleWinnerMatchRewards({
+        supabase,
+        winnerUserId: winner?.user_id,
+        participantUserIds: sortedPlayers.map((player) => player.user_id),
+        gameType: "memorama",
+      });
+
+      await updateMemoramaState((current) => ({
+        ...current,
+        rewards_applied: true,
+      }));
+    }
+
+    void applyMatchRewards();
+  }, [
+    gameState.phase,
+    gameState.winnerKey,
+    gameState.rewards_applied,
+    isHost,
+    room,
+    sortedPlayers,
+    supabase,
+    updateMemoramaState,
+  ]);
 
   const variantLabel = MEMORAMA_SET_LABELS[gameState.variant.set] ?? "Clásico";
   const variantPreview = MEMORAMA_SETS[gameState.variant.set]?.slice(0, 6) ?? [];

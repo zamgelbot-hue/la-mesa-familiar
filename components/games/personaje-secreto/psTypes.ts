@@ -47,4 +47,5 @@ export type PsGameState = {
   secrets: Record<string, PsPlayerSecret>;
   questions: PsQuestion[];
   guesses: PsGuess[];
+  rewards_applied: boolean;
 };
