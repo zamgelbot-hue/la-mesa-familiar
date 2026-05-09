@@ -145,15 +145,19 @@ function AccesoContent() {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase.auth.signUp({
-        email: normalizedEmail,
-        password,
-        options: {
-          data: {
-            display_name: normalizedDisplayName,
-          },
-        },
-      });
+      const appUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://lamesafamiliar.net";
+
+const { data, error } = await supabase.auth.signUp({
+  email: normalizedEmail,
+  password,
+  options: {
+    emailRedirectTo: `${appUrl}/acceso?mode=login&verified=1`,
+    data: {
+      display_name: normalizedDisplayName,
+    },
+  },
+});
 
       if (error) {
         setErrorMessage(error.message);
@@ -178,9 +182,11 @@ function AccesoContent() {
       }
 
       setMessage(
-        "Cuenta creada correctamente. Revisa tu correo para verificarla si es necesario.",
-      );
-      finishAccess();
+  "Cuenta creada. Te enviamos un correo de verificación. Revisa tu inbox o spam antes de iniciar sesión.",
+);
+setMode("login");
+setPassword("");
+setDisplayName("");
     } finally {
       setLoading(false);
     }
