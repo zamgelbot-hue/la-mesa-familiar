@@ -96,6 +96,50 @@ function AccesoContent() {
     setMode(nextMode);
   };
 
+  const handleLogin = async (e: FormEvent) => {
+  e.preventDefault();
+  resetFeedback();
+
+  if (!email.trim() || !password.trim()) {
+    setErrorMessage("Escribe tu correo y contraseña.");
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: normalizedEmail,
+      password,
+    });
+
+    if (error) {
+      const message = error.message.toLowerCase();
+
+      if (
+        message.includes("email not confirmed") ||
+        message.includes("not confirmed")
+      ) {
+        setErrorMessage(
+          "Tu cuenta todavía no está verificada. Revisa tu correo o reenvía la verificación.",
+        );
+        setRecoveryEmail(normalizedEmail);
+        return;
+      }
+
+      setErrorMessage(error.message);
+      return;
+    }
+
+    setMessage("Sesión iniciada correctamente.");
+    finishAccess();
+  } finally {
+    setLoading(false);
+  }
+};
+
   const handleResendVerification = async () => {
   resetFeedback();
 
