@@ -86,34 +86,42 @@ function AccesoContent() {
     setMode(nextMode);
   };
 
-  const handleLogin = async (e: FormEvent) => {
-    e.preventDefault();
-    resetFeedback();
+  const handleResendVerification = async () => {
+  resetFeedback();
 
-    if (!email.trim() || !password.trim()) {
-      setErrorMessage("Escribe tu correo y contraseña.");
+  const normalizedEmail = (recoveryEmail || email).trim().toLowerCase();
+
+  if (!normalizedEmail) {
+    setErrorMessage("Escribe tu correo para reenviar la verificación.");
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    const appUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ?? "https://lamesafamiliar.net";
+
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: normalizedEmail,
+      options: {
+        emailRedirectTo: `${appUrl}/acceso?mode=login&verified=1`,
+      },
+    });
+
+    if (error) {
+      setErrorMessage(error.message);
       return;
     }
 
-    try {
-      setLoading(true);
-
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
-
-      if (error) {
-        setErrorMessage(error.message);
-        return;
-      }
-
-      setMessage("Sesión iniciada correctamente.");
-      finishAccess();
-    } finally {
-      setLoading(false);
-    }
-  };
+    setMessage(
+      "Te reenviamos el correo de verificación. Revisa tu inbox o spam.",
+    );
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleRegister = async (e: FormEvent) => {
     e.preventDefault();
@@ -400,6 +408,16 @@ const redirectTo = `${appUrl}/auth/callback?next=/acceso?mode=recovery`;
                   >
                     {loading ? "Entrando..." : "Entrar"}
                   </button>
+
+                  <button
+  type="button"
+  onClick={() => void handleResendVerification()}
+  disabled={loading}
+  className="rounded-2xl border border-orange-500/25 bg-orange-500/10 px-4 py-3 text-sm font-black text-orange-200 transition hover:bg-orange-500/20 disabled:opacity-60"
+>
+  Reenviar correo de verificación
+</button>
+
                 </form>
               )}
 
