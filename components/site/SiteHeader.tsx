@@ -148,10 +148,20 @@ export default function SiteHeader({
     const updatePresence = useCallback(async () => {
   if (!playerIdentity?.user_id || playerIdentity.is_guest) return;
 
+  const isInsideGame =
+    typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/juego/");
+
   await supabase
     .from("profiles")
     .update({
       last_seen_at: new Date().toISOString(),
+      ...(isInsideGame
+        ? {}
+        : {
+            current_room_code: null,
+            current_game_slug: null,
+          }),
     })
     .eq("id", playerIdentity.user_id);
 }, [supabase, playerIdentity?.user_id, playerIdentity?.is_guest]);
