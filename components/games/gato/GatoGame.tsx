@@ -446,37 +446,33 @@ export default function GatoGame({
     router,
   ]);
 
-  const handleRematch = async () => {
-    if (!currentPlayerName) return;
+const handleRematch = async () => {
+  setMessage("");
 
-    if (isVsBot) {
-      await updateGameState(() =>
-        buildFreshState(sortedPlayers, boardSize, winLength, bonusWinLength),
-      );
-      return;
-    }
+  if (!currentPlayerName) {
+    setMessage("Selecciona tu jugador primero.");
+    return;
+  }
 
-    await updateGameState((prev) => {
-      const votes = Array.from(
-        new Set([...(prev.rematch_votes ?? []), currentPlayerName]),
-      );
+  if (!isHost && !isVsBot) {
+    setMessage("Solo el host puede iniciar la revancha por ahora.");
+    return;
+  }
 
-      const allAccepted =
-        sortedPlayers.length >= 2 &&
-        sortedPlayers.every((player) => votes.includes(player.player_name));
+  const fresh = buildFreshState(
+    sortedPlayers,
+    boardSize,
+    winLength,
+    bonusWinLength,
+  );
 
-      if (allAccepted) {
-        return buildFreshState(
-          sortedPlayers,
-          boardSize,
-          winLength,
-          bonusWinLength,
-        );
-      }
+  lastEndSoundKeyRef.current = "";
+  awardingRef.current = false;
 
-      return { ...prev, rematch_votes: votes };
-    });
-  };
+  await writeGameState(fresh);
+
+  playGatoSound("tap");
+};
 
   const handleSelectIdentity = (playerName: string) => {
     persistPlayerName(code, playerName);
@@ -864,7 +860,9 @@ export default function GatoGame({
               : undefined
         }
         primaryActionLabel="Volver a sala"
-        secondaryActionLabel="Revancha"
+        secondaryActionLabel={
+        isHost || isVsBot ? "Revancha" : "Esperando host"
+        }
         onPrimaryAction={goBackToRoom}
         onSecondaryAction={handleRematch}
       />
