@@ -100,9 +100,9 @@ type SessionPlayerRow = {
   created_at?: string;
 };
 
-const QUESTION_INTRO_MS = 3000;
-const REVEAL_MS = 3000;
-const SCOREBOARD_MS = 3000;
+const QUESTION_INTRO_MS = 1800;
+const REVEAL_MS = 2200;
+const SCOREBOARD_MS = 2200;
 
 function getCategoryFromVariantOrSettings(
   roomVariant?: string | null,
@@ -134,7 +134,20 @@ function getTotalRoundsForMode(categoryMode: QuestionCategory) {
 }
 
 function getAnswerTimeForMode(categoryMode: QuestionCategory) {
-  return categoryMode === "sabelotodo" ? 6000 : 8000;
+  return categoryMode === "sabelotodo" ? 5000 : 6000;
+}
+
+function shuffleQuestions<T>(items: T[]): T[] {
+  const copy = [...items];
+
+  for (let index = copy.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    const temp = copy[index];
+    copy[index] = copy[randomIndex];
+    copy[randomIndex] = temp;
+  }
+
+  return copy;
 }
 
 export default function QuestionGame({
@@ -332,10 +345,12 @@ export default function QuestionGame({
       excludeIds: [],
     });
 
-    setQuestionBank(fetchedQuestions);
-    setRoundQuestions(buildRoundQuestionSet(fetchedQuestions, totalRounds));
+    const shuffledQuestions = shuffleQuestions(fetchedQuestions);
 
-    return fetchedQuestions;
+    setQuestionBank(shuffledQuestions);
+    setRoundQuestions(buildRoundQuestionSet(shuffledQuestions, totalRounds));
+
+    return shuffledQuestions;
   }, [supabase, categoryMode, totalRounds]);
 
   const createSessionIfNeeded = useCallback(async () => {
@@ -356,10 +371,12 @@ export default function QuestionGame({
       return null;
     }
 
-    setQuestionBank(fetchedQuestions);
+    const shuffledQuestions = shuffleQuestions(fetchedQuestions);
+
+    setQuestionBank(shuffledQuestions);
 
     const stableRoundQuestions = buildRoundQuestionSet(
-      fetchedQuestions,
+      shuffledQuestions,
       totalRounds,
     );
 
